@@ -34,6 +34,10 @@
 namespace ClangTools {
 namespace Internal {
 
+// Not UI-related, but requires the tree model (or else a huge refactoring or code duplication).
+QString removeClangTidyCheck(const QString &checks, const QString &check);
+QString removeClazyCheck(const QString &checks, const QString &check);
+
 namespace Ui {
 class ClazyChecks;
 class TidyChecks;
@@ -50,7 +54,7 @@ class DiagnosticConfigsWidget : public CppTools::ClangDiagnosticConfigsWidget
 
 public:
     DiagnosticConfigsWidget(const CppTools::ClangDiagnosticConfigs &configs,
-                            const Core::Id &configToSelect,
+                            const Utils::Id &configToSelect,
                             const ClangTidyInfo &tidyInfo,
                             const ClazyStandaloneInfo &clazyInfo);
     ~DiagnosticConfigsWidget();

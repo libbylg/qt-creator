@@ -38,11 +38,16 @@ Column {
 
     property bool supportGradient: false
 
-    property string caption: "Color"
+    property string caption: qsTr("Color")
 
     property variant backendValue
 
-    property variant value: backendValue.value
+    property variant value: {
+        if (isVector3D)
+            return Qt.rgba(backendValue.value.x, backendValue.value.y, backendValue.value.z, 1);
+        else
+            return backendValue.value;
+    }
 
     property alias gradientPropertyName: gradientLine.gradientPropertyName
 
@@ -51,6 +56,8 @@ Column {
     property alias transparent: transparentButton.checked
 
     property color originalColor
+
+    property bool isVector3D: false
 
     function isNotInGradientMode() {
         return (buttonRow.checkedIndex === 0 || transparent)
@@ -70,8 +77,15 @@ Column {
         interval: 100
         running: false
         onTriggered: {
-            if (backendValue !== undefined)
-                backendValue.value = colorEditor.color
+            if (colorEditor.backendValue !== undefined) {
+                if (isVector3D) {
+                    colorEditor.backendValue.value = Qt.vector3d(colorEditor.color.r,
+                                                                 colorEditor.color.g,
+                                                                 colorEditor.color.b);
+                } else {
+                    colorEditor.backendValue.value = colorEditor.color;
+                }
+            }
         }
     }
 
@@ -88,6 +102,8 @@ Column {
             //Delay setting the color to keep ui responsive
             colorEditorTimer.restart()
         }
+
+        colorPalette.selectedColor = color
     }
 
     ColorLine {
@@ -178,6 +194,7 @@ Column {
                 }
                 gradientLine.isInValidState = true
                 colorEditor.originalColor = colorEditor.color
+                colorPalette.selectedColor = colorEditor.color
             }
         }
 
@@ -228,8 +245,15 @@ Column {
 
                 onCommitData: {
                     colorEditor.color = colorFromString(textField.text)
-                    if (isNotInGradientMode())
-                        backendValue.value = colorEditor.color
+                    if (isNotInGradientMode()) {
+                        if (colorEditor.isVector3D) {
+                            backendValue.value = Qt.vector3d(colorEditor.color.r,
+                                                             colorEditor.color.g,
+                                                             colorEditor.color.b);
+                        } else {
+                            backendValue.value = colorEditor.color;
+                        }
+                    }
                 }
 
                 Layout.fillWidth: true
@@ -623,7 +647,7 @@ Column {
 
             sliderMargins: 4
 
-            onClicked: {
+            onUpdateColor: {
                 colorEditor.color = colorButton.color
                 if (contextMenu.opened)
                     contextMenu.close()
@@ -673,8 +697,10 @@ Column {
                             border.width: 1
                             border.color: "#555555"
 
-                            MouseArea {
+                            ToolTipArea {
                                 anchors.fill: parent
+
+                                tooltip: originalColorRectangle.color
                                 onClicked: {
                                     if (!colorEditor.transparent)
                                         colorEditor.color = colorEditor.originalColor
@@ -722,7 +748,6 @@ Column {
                         onDialogColorChanged: colorEditor.color = colorPalette.selectedColor
                     }
                 }
-
             }
         }
     }

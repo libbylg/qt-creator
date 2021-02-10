@@ -26,19 +26,16 @@
 #pragma once
 
 #include "cmakeconfigitem.h"
-#include "cmakeproject.h"
 #include "configmodel.h"
 
+#include <projectexplorer/buildaspects.h>
 #include <projectexplorer/buildconfiguration.h>
-#include <projectexplorer/buildtargetinfo.h>
-#include <projectexplorer/deploymentdata.h>
 
 namespace CMakeProjectManager {
 class CMakeProject;
 
 namespace Internal {
 
-class BuildDirManager;
 class CMakeBuildSystem;
 class CMakeBuildSettingsWidget;
 
@@ -46,20 +43,16 @@ class CMakeBuildConfiguration final : public ProjectExplorer::BuildConfiguration
 {
     Q_OBJECT
 
-    // used in DebuggerRunConfigurationAspect
-    Q_PROPERTY(bool linkQmlDebuggingLibrary
-               READ isQmlDebuggingEnabled
-               NOTIFY configurationForCMakeChanged)
-
     friend class ProjectExplorer::BuildConfigurationFactory;
-    CMakeBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
+    CMakeBuildConfiguration(ProjectExplorer::Target *target, Utils::Id id);
     ~CMakeBuildConfiguration() final;
 
 public:
-    void emitBuildTypeChanged();
-
-    CMakeConfig configurationForCMake() const;
     CMakeConfig configurationFromCMake() const;
+
+    QStringList extraCMakeArguments() const;
+
+    QStringList initialCMakeArguments() const;
 
     QString error() const;
     QString warning() const;
@@ -72,11 +65,17 @@ public:
     void buildTarget(const QString &buildTarget);
     ProjectExplorer::BuildSystem *buildSystem() const final;
 
-signals:
-    void errorOccured(const QString &message);
-    void warningOccured(const QString &message);
+    void runCMakeWithExtraArguments();
 
-    void configurationForCMakeChanged();
+    void setSourceDirectory(const Utils::FilePath& path);
+    Utils::FilePath sourceDirectory() const;
+
+    QString cmakeBuildType() const;
+    void setCMakeBuildType(const QString &cmakeBuildType);
+
+signals:
+    void errorOccurred(const QString &message);
+    void warningOccurred(const QString &message);
 
 private:
     QVariantMap toMap() const override;
@@ -90,15 +89,13 @@ private:
     void clearError(ForceEnabledChanged fec = ForceEnabledChanged::False);
 
     void setConfigurationFromCMake(const CMakeConfig &config);
-    void setConfigurationForCMake(const QList<ConfigModel::DataItem> &items);
-    void setConfigurationForCMake(const CMakeConfig &config);
+
+    void setExtraCMakeArguments(const QStringList &args);
+    void setInitialCMakeArguments(const QStringList &args);
 
     void setError(const QString &message);
     void setWarning(const QString &message);
 
-    bool isQmlDebuggingEnabled() const;
-
-    CMakeConfig m_configurationForCMake;
     CMakeConfig m_initialConfiguration;
     QString m_error;
     QString m_warning;
@@ -106,10 +103,10 @@ private:
     CMakeConfig m_configurationFromCMake;
     CMakeBuildSystem *m_buildSystem = nullptr;
 
+    QStringList m_extraCMakeArguments;
+
     friend class CMakeBuildSettingsWidget;
     friend class CMakeBuildSystem;
-    friend class CMakeProject;
-    friend class BuildDirManager;
 };
 
 class CMakeProjectImporter;
@@ -133,6 +130,31 @@ private:
 
     friend class CMakeProjectImporter;
 };
+
+class InitialCMakeArgumentsAspect final : public Utils::StringAspect
+{
+    Q_OBJECT
+
+public:
+    InitialCMakeArgumentsAspect();
+};
+
+class SourceDirectoryAspect final : public Utils::StringAspect
+{
+    Q_OBJECT
+
+public:
+    SourceDirectoryAspect();
+};
+
+class BuildTypeAspect final : public Utils::StringAspect
+{
+    Q_OBJECT
+
+public:
+    BuildTypeAspect();
+};
+
 
 } // namespace Internal
 } // namespace CMakeProjectManager

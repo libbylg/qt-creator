@@ -101,11 +101,20 @@ TEST_F(ReadExportedDiagnostics, UnexpectedFileContents)
     ASSERT_THAT(diags, IsEmpty());
 }
 
+static QString appendYamlSuffix(const char *filePathFragment)
+{
+    const QString yamlSuffix = QLatin1String(Utils::HostOsInfo::isWindowsHost()
+                                             ? "_win.yaml" : ".yaml");
+    return filePathFragment + yamlSuffix;
+}
+
 TEST_F(ReadExportedDiagnostics, Tidy)
 {
     const QString sourceFile = TESTDATA "tidy.modernize-use-nullptr.cpp";
-    const QString exportedFile = createFile(TESTDATA "tidy.modernize-use-nullptr.yaml", sourceFile);
+    const QString exportedFile = createFile(appendYamlSuffix(TESTDATA "tidy.modernize-use-nullptr"),
+                                            sourceFile);
     Diagnostic expectedDiag;
+    expectedDiag.name = "modernize-use-nullptr";
     expectedDiag.location = {sourceFile, 2, 25};
     expectedDiag.description = "use nullptr [modernize-use-nullptr]";
     expectedDiag.type = "warning";
@@ -137,31 +146,14 @@ TEST_F(ReadExportedDiagnostics, AcceptDiagsFromFilePaths_None)
     ASSERT_THAT(diags, IsEmpty());
 }
 
-// Diagnostics from clang passed through via clang-tidy
-TEST_F(ReadExportedDiagnostics, Tidy_Clang)
-{
-    const QString sourceFile = TESTDATA "clang.unused-parameter.cpp";
-    const QString exportedFile = createFile(TESTDATA "clang.unused-parameter.yaml", sourceFile);
-    Diagnostic expectedDiag;
-    expectedDiag.location = {sourceFile, 4, 12};
-    expectedDiag.description = "unused parameter 'g' [clang-diagnostic-unused-parameter]";
-    expectedDiag.type = "warning";
-    expectedDiag.hasFixits = false;
-
-    Diagnostics diags = readExportedDiagnostics(Utils::FilePath::fromString(exportedFile),
-                                                {},
-                                                &errorMessage);
-
-    ASSERT_TRUE(errorMessage.isEmpty());
-    ASSERT_THAT(diags, ElementsAre(expectedDiag));
-}
-
 // Diagnostics from clang (static) analyzer passed through via clang-tidy
 TEST_F(ReadExportedDiagnostics, Tidy_ClangAnalyzer)
 {
     const QString sourceFile = TESTDATA "clang-analyzer.dividezero.cpp";
-    const QString exportedFile = createFile(TESTDATA "clang-analyzer.dividezero.yaml", sourceFile);
+    const QString exportedFile = createFile(appendYamlSuffix(TESTDATA "clang-analyzer.dividezero"),
+                                            sourceFile);
     Diagnostic expectedDiag;
+    expectedDiag.name = "clang-analyzer-core.DivideZero";
     expectedDiag.location = {sourceFile, 4, 15};
     expectedDiag.description = "Division by zero [clang-analyzer-core.DivideZero]";
     expectedDiag.type = "warning";
@@ -195,8 +187,9 @@ TEST_F(ReadExportedDiagnostics, Tidy_ClangAnalyzer)
 TEST_F(ReadExportedDiagnostics, Clazy)
 {
     const QString sourceFile = TESTDATA "clazy.qgetenv.cpp";
-    const QString exportedFile = createFile(TESTDATA "clazy.qgetenv.yaml", sourceFile);
+    const QString exportedFile = createFile(appendYamlSuffix(TESTDATA "clazy.qgetenv"), sourceFile);
     Diagnostic expectedDiag;
+    expectedDiag.name = "clazy-qgetenv";
     expectedDiag.location = {sourceFile, 7, 5};
     expectedDiag.description = "qgetenv().isEmpty() allocates. Use qEnvironmentVariableIsEmpty() instead [clazy-qgetenv]";
     expectedDiag.type = "warning";

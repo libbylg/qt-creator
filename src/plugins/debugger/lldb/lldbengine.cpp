@@ -89,7 +89,7 @@ LldbEngine::LldbEngine()
 
     connect(action(AutoDerefPointers), &SavedAction::valueChanged,
             this, &LldbEngine::updateLocals);
-    connect(action(CreateFullBacktrace), &QAction::triggered,
+    connect(action(CreateFullBacktrace)->action(), &QAction::triggered,
             this, &LldbEngine::fetchFullBacktrace);
     connect(action(UseDebuggingHelpers), &SavedAction::valueChanged,
             this, &LldbEngine::updateLocals);
@@ -151,7 +151,7 @@ void LldbEngine::runCommand(const DebuggerCommand &command)
     }
     showMessage(msg, LogInput);
     m_commandForToken[currentToken()] = cmd;
-    m_lldbProc.write("script theDumper." + function.toUtf8() + "\n");
+    executeCommand("script theDumper." + function.toUtf8());
 }
 
 void LldbEngine::debugLastCommand()
@@ -166,6 +166,13 @@ void LldbEngine::handleAttachedToCore()
     reloadFullStack();
     reloadModules();
     updateLocals();
+}
+
+void LldbEngine::executeCommand(const QByteArray &command)
+{
+    // For some reason, sometimes LLDB misses the first character of the next command on Windows
+    // if passing only 1 LF.
+    m_lldbProc.write(command + "\n\n");
 }
 
 void LldbEngine::shutdownInferior()
@@ -228,13 +235,13 @@ void LldbEngine::setupEngine()
     const QByteArray dumperSourcePath =
         ICore::resourcePath().toLocal8Bit() + "/debugger/";
 
-    m_lldbProc.write("script sys.path.insert(1, '" + dumperSourcePath + "')\n");
+    executeCommand("script sys.path.insert(1, '" + dumperSourcePath + "')");
     // This triggers reportState("enginesetupok") or "enginesetupfailed":
-    m_lldbProc.write("script from lldbbridge import *\n");
+    executeCommand("script from lldbbridge import *");
 
     QString commands = nativeStartupCommands();
     if (!commands.isEmpty())
-        m_lldbProc.write(commands.toLocal8Bit() + '\n');
+        executeCommand(commands.toLocal8Bit());
 
 
     const QString path = stringSetting(ExtraDumperFile);
@@ -278,6 +285,8 @@ void LldbEngine::setupEngine()
     cmd2.arg("workingdirectory", rp.inferior.workingDirectory);
     cmd2.arg("environment", rp.inferior.environment.toStringList());
     cmd2.arg("processargs", toHex(QtcProcess::splitArgs(rp.inferior.commandLineArguments).join(QChar(0))));
+    cmd2.arg("platform", rp.platform);
+    cmd2.arg("symbolfile", rp.symbolFile);
 
     if (terminal()) {
         const qint64 attachedPID = terminal()->applicationPid();
@@ -293,8 +302,8 @@ void LldbEngine::setupEngine()
         cmd2.arg("startmode", rp.startMode);
         // it is better not to check the start mode on the python sid (as we would have to duplicate the
         // enum values), and thus we assume that if the rp.attachPID is valid we really have to attach
-        QTC_CHECK(!rp.attachPID.isValid() || (rp.startMode == AttachCrashedExternal
-                                              || rp.startMode == AttachExternal));
+        QTC_CHECK(!rp.attachPID.isValid() || (rp.startMode == AttachToCrashedProcess
+                                              || rp.startMode == AttachToLocalProcess));
         cmd2.arg("attachpid", rp.attachPID.pid());
         cmd2.arg("sysroot", rp.deviceSymbolsRoot.isEmpty() ? rp.sysRoot.toString()
                                                            : rp.deviceSymbolsRoot);
@@ -303,7 +312,7 @@ void LldbEngine::setupEngine()
                                   ? rp.remoteChannel : QString()));
         cmd2.arg("platform", rp.platform);
         QTC_CHECK(!rp.continueAfterAttach || (rp.startMode == AttachToRemoteProcess
-                                              || rp.startMode == AttachExternal
+                                              || rp.startMode == AttachToLocalProcess
                                               || rp.startMode == AttachToRemoteServer));
         m_continueAtNextSpontaneousStop = false;
     }
@@ -312,6 +321,14 @@ void LldbEngine::setupEngine()
         const bool success = response.data["success"].toInt();
         if (success) {
             BreakpointManager::claimBreakpointsForEngine(this);
+            // Some extra roundtrip to make sure we end up behind all commands triggered
+            // from claimBreakpointsForEngine().
+            DebuggerCommand cmd3("executeRoundtrip");
+            cmd3.callback = [this](const DebuggerResponse &) {
+                notifyEngineSetupOk();
+                runEngine();
+            };
+            runCommand(cmd3);
         } else {
             notifyEngineSetupFailed();
         }
@@ -327,7 +344,7 @@ void LldbEngine::runEngine()
     QTC_ASSERT(state() == EngineRunRequested, qDebug() << state(); return);
     showStatusMessage(tr("Running requested..."), 5000);
     DebuggerCommand cmd("runEngine");
-    if (rp.startMode == AttachCore)
+    if (rp.startMode == AttachToCore)
         cmd.arg("coreFile", rp.coreFile);
     runCommand(cmd);
 }
@@ -400,6 +417,8 @@ void LldbEngine::handleResponse(const QString &response)
             notifyInferiorPid(item.toProcessHandle());
         else if (name == "breakpointmodified")
             handleInterpreterBreakpointModified(item);
+        else if (name == "bridgemessage")
+            showMessage(item["msg"].data(), item["channel"].toInt());
     }
 }
 
@@ -466,23 +485,9 @@ void LldbEngine::selectThread(const Thread &thread)
     runCommand(cmd);
 }
 
-bool LldbEngine::stateAcceptsBreakpointChanges() const
-{
-    switch (state()) {
-    case EngineSetupRequested:
-    case InferiorRunRequested:
-    case InferiorRunOk:
-    case InferiorStopRequested:
-    case InferiorStopOk:
-        return true;
-    default:
-        return false;
-    }
-}
-
 bool LldbEngine::acceptsBreakpoint(const BreakpointParameters &bp) const
 {
-    if (runParameters().startMode == AttachCore)
+    if (runParameters().startMode == AttachToCore)
         return false;
     if (bp.isCppBreakpoint())
         return true;
@@ -671,7 +676,7 @@ void LldbEngine::requestModuleSymbols(const QString &moduleName)
 {
     DebuggerCommand cmd("fetchSymbols");
     cmd.arg("module", moduleName);
-    cmd.callback = [this, moduleName](const DebuggerResponse &response) {
+    cmd.callback = [moduleName](const DebuggerResponse &response) {
         const GdbMi &symbols = response.data["symbols"];
         QString moduleName = response.data["module"].data();
         Symbols syms;
@@ -784,6 +789,7 @@ void LldbEngine::doUpdateLocals(const UpdateParameters &params)
     cmd.callback = [this](const DebuggerResponse &response) {
         updateLocalsView(response.data);
         watchHandler()->notifyUpdateFinished();
+        updateToolTips();
     };
 
     runCommand(cmd);
@@ -900,8 +906,6 @@ void LldbEngine::handleStateNotification(const GdbMi &item)
         notifyInferiorStopFailed();
     else if (newState == "inferiorill")
         notifyInferiorIll();
-    else if (newState == "enginesetupok")
-        notifyEngineSetupOk();
     else if (newState == "enginesetupfailed") {
         Core::AsynchronousMessageBox::critical(adapterStartFailed(),
                                                item["error"].data());
@@ -917,7 +921,7 @@ void LldbEngine::handleStateNotification(const GdbMi &item)
         continueInferior();
     } else if (newState == "enginerunokandinferiorunrunnable") {
         notifyEngineRunOkAndInferiorUnrunnable();
-        if (runParameters().startMode == AttachCore)
+        if (runParameters().startMode == AttachToCore)
             handleAttachedToCore();
     } else if (newState == "inferiorshutdownfinished")
         notifyInferiorShutdownFinished();
@@ -1090,7 +1094,7 @@ bool LldbEngine::hasCapability(unsigned cap) const
         | MemoryAddressCapability))
         return true;
 
-    if (runParameters().startMode == AttachCore)
+    if (runParameters().startMode == AttachToCore)
         return false;
 
     //return cap == SnapshotCapability;

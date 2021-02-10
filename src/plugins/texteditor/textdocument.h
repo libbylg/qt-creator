@@ -29,8 +29,9 @@
 #include "formatter.h"
 #include "indenter.h"
 
-#include <coreplugin/id.h>
 #include <coreplugin/textdocument.h>
+
+#include <utils/id.h>
 #include <utils/link.h>
 
 #include <QList>
@@ -65,7 +66,7 @@ class TEXTEDITOR_EXPORT TextDocument : public Core::BaseTextDocument
     Q_OBJECT
 
 public:
-    explicit TextDocument(Core::Id id = Core::Id());
+    explicit TextDocument(Utils::Id id = Utils::Id());
     ~TextDocument() override;
 
     static QMap<QString, QString> openedTextDocumentContents();
@@ -100,6 +101,7 @@ public:
 
     void setFormatter(Formatter *indenter); // transfers ownership
     void autoFormat(const QTextCursor &cursor);
+    bool applyChangeSet(const Utils::ChangeSet &changeSet);
 
     TextMarks marks() const;
     bool addMark(TextMark *mark);
@@ -114,10 +116,8 @@ public:
     QByteArray contents() const override;
     bool setContents(const QByteArray &contents) override;
     bool shouldAutoSave() const override;
-    bool isFileReadOnly() const override;
     bool isModified() const override;
     bool isSaveAsAllowed() const override;
-    void checkPermissions() override;
     bool reload(QString *errorString, ReloadFlag flag, ChangeType type) override;
     void setFilePath(const Utils::FilePath &newName) override;
 
@@ -169,7 +169,7 @@ protected:
 private:
     OpenResult openImpl(QString *errorString, const QString &fileName, const QString &realFileName,
                         bool reload);
-    void cleanWhitespace(QTextCursor &cursor, bool cleanIndentation, bool inEntireDocument);
+    void cleanWhitespace(QTextCursor &cursor, bool inEntireDocument, bool cleanIndentation);
     void ensureFinalNewLine(QTextCursor &cursor);
     void modificationChanged(bool modified);
     void updateLayout() const;

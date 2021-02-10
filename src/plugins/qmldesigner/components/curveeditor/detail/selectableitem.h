@@ -27,7 +27,30 @@
 
 #include <QGraphicsObject>
 
-namespace DesignTools {
+namespace QmlDesigner {
+
+class CurveEditorItem : public QGraphicsObject
+{
+public:
+    CurveEditorItem(QGraphicsItem *parent);
+
+    virtual void lockedCallback();
+    virtual void pinnedCallback();
+    virtual void underMouseCallback();
+
+    bool locked() const;
+    bool pinned() const;
+    bool isUnderMouse() const;
+
+    void setLocked(bool locked);
+    void setPinned(bool pinned);
+    void setIsUnderMouse(bool under);
+
+private:
+    bool m_locked;
+    bool m_pinned;
+    bool m_underMouse;
+};
 
 enum ItemType {
     ItemTypeKeyframe = QGraphicsItem::UserType + 1,
@@ -35,39 +58,35 @@ enum ItemType {
     ItemTypeCurve = QGraphicsItem::UserType + 3
 };
 
-enum class SelectionMode : unsigned int {
-    Undefined,
-    Clear,
-    New,
-    Add,
-    Remove,
-    Toggle
-};
 
-class SelectableItem : public QGraphicsObject
+class SelectableItem : public CurveEditorItem
 {
     Q_OBJECT
 
 public:
+    enum class SelectionMode : unsigned int { Undefined, Clear, New, Add, Remove, Toggle };
+
     SelectableItem(QGraphicsItem *parent = nullptr);
 
     ~SelectableItem() override;
 
-    virtual void setLocked(bool locked);
+    void lockedCallback() override;
 
     bool activated() const;
 
     bool selected() const;
 
-    bool locked() const;
-
     void setActivated(bool active);
+
+    void setSelected(bool selected);
 
     void setPreselected(SelectionMode mode);
 
     void applyPreselection();
 
 protected:
+    virtual void activationCallback();
+
     virtual void selectionCallback();
 
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
@@ -81,9 +100,7 @@ private:
 
     bool m_selected;
 
-    bool m_locked;
-
     SelectionMode m_preSelected;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

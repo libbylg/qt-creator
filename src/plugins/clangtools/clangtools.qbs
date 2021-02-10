@@ -8,27 +8,25 @@ QtcPlugin {
     Depends { name: "Core" }
     Depends { name: "TextEditor" }
     Depends { name: "CppTools" }
+    Depends { name: "CppEditor" }
     Depends { name: "ProjectExplorer" }
+    Depends { name: "QtSupport"; condition: qtc.testsEnabled }
     Depends { name: "QtcSsh" }
     Depends { name: "Utils" }
 
-    Depends { name: "libclang"; required: false }
     Depends { name: "yaml-cpp" }
     Depends { name: "clang_defines" }
 
     Depends { name: "Qt.widgets" }
 
+    pluginRecommends: [
+        "CppEditor"
+    ]
+
     pluginTestDepends: [
         "QbsProjectManager",
         "QmakeProjectManager",
     ]
-
-    condition: libclang.present
-
-    cpp.includePaths: base.concat(libclang.llvmIncludeDir)
-    cpp.libraryPaths: base.concat(libclang.llvmLibDir)
-    cpp.dynamicLibraries: base.concat(libclang.llvmLibs)
-    cpp.rpaths: base.concat(libclang.llvmLibDir)
 
     files: [
         "clangfileinfo.h",
@@ -69,6 +67,12 @@ QtcPlugin {
         "clazychecks.ui",
         "diagnosticconfigswidget.cpp",
         "diagnosticconfigswidget.h",
+        "diagnosticmark.cpp",
+        "diagnosticmark.h",
+        "documentclangtoolrunner.cpp",
+        "documentclangtoolrunner.h",
+        "documentquickfixfactory.cpp",
+        "documentquickfixfactory.h",
         "executableinfo.cpp",
         "executableinfo.h",
         "filterdialog.cpp",
@@ -81,6 +85,8 @@ QtcPlugin {
         "settingswidget.h",
         "settingswidget.ui",
         "tidychecks.ui",
+        "virtualfilesystemoverlay.cpp",
+        "virtualfilesystemoverlay.h",
     ]
 
     Group {

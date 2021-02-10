@@ -25,15 +25,13 @@
 
 #pragma once
 
-#include "autotestplugin.h"
 #include "testconfiguration.h"
 
 #include <debugger/debuggerrunconfigurationaspect.h>
 
-#include <projectexplorer/applicationlauncher.h>
+#include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/runconfiguration.h>
 
 #include <utils/qtcassert.h>
@@ -57,10 +55,9 @@ public:
         if (auto debuggable = dynamic_cast<DebuggableTestConfiguration *>(config))
             enableQuick = debuggable->mixedDebugging();
 
-        if (auto debugAspect = aspect<Debugger::DebuggerRunConfigurationAspect>()) {
-            debugAspect->setUseQmlDebugger(enableQuick);
-            ProjectExplorer::ProjectExplorerPlugin::instance()->updateRunActions();
-        }
+        auto debugAspect = addAspect<Debugger::DebuggerRunConfigurationAspect>(parent);
+        debugAspect->setUseQmlDebugger(enableQuick);
+        ProjectExplorer::ProjectExplorerPlugin::updateRunActions();
         m_testConfig = config;
     }
 

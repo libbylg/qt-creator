@@ -26,7 +26,6 @@
 #include "gitgrep.h"
 #include "gitclient.h"
 #include "gitconstants.h"
-#include "gitplugin.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/progressmanager/progressmanager.h>
@@ -109,7 +108,7 @@ public:
             filePath.remove(0, m_ref.length());
         single.fileName = m_directory + '/' + filePath;
         const int textSeparator = line.indexOf(QChar::Null, lineSeparator + 1);
-        single.lineNumber = line.midRef(lineSeparator + 1, textSeparator - lineSeparator - 1).toInt();
+        single.lineNumber = line.mid(lineSeparator + 1, textSeparator - lineSeparator - 1).toInt();
         QString text = line.mid(textSeparator + 1);
         QRegularExpression regexp;
         QVector<Match> matches;
@@ -129,11 +128,11 @@ public:
             QTC_ASSERT(matchEnd != -1, break);
             const int matchLength = matchEnd - matchTextStart;
             Match match(matchStart, matchLength);
-            const QStringRef matchText = text.midRef(matchTextStart, matchLength);
+            const QString matchText = text.mid(matchTextStart, matchLength);
             if (m_parameters.flags & FindRegularExpression)
                 match.regexpCapturedTexts = regexp.match(matchText).capturedTexts();
             matches.append(match);
-            text = text.leftRef(matchStart) + matchText + text.midRef(matchEnd + resetColor.size());
+            text = text.left(matchStart) + matchText + text.mid(matchEnd + resetColor.size());
         }
         single.matchingLine = text;
 
@@ -187,7 +186,7 @@ public:
                     return QString(":!" + filter);
                 });
         arguments << "--" << filterArgs << exclusionArgs;
-        QScopedPointer<VcsCommand> command(GitPlugin::client()->createCommand(m_directory));
+        QScopedPointer<VcsCommand> command(GitClient::instance()->createCommand(m_directory));
         command->addFlags(VcsCommand::SilentOutput | VcsCommand::SuppressFailMessage);
         command->setProgressiveOutput(true);
         QFutureWatcher<FileSearchResultList> watcher;
@@ -195,7 +194,7 @@ public:
         connect(&watcher, &QFutureWatcher<FileSearchResultList>::canceled,
                 command.data(), &VcsCommand::cancel);
         connect(command.data(), &VcsCommand::stdOutText, this, &GitGrepRunner::read);
-        SynchronousProcessResponse resp = command->runCommand({GitPlugin::client()->vcsBinary(), arguments}, 0);
+        SynchronousProcessResponse resp = command->runCommand({GitClient::instance()->vcsBinary(), arguments}, 0);
         switch (resp.result) {
         case SynchronousProcessResponse::TerminatedAbnormally:
         case SynchronousProcessResponse::StartFailed:
@@ -316,30 +315,10 @@ IEditor *GitGrep::openEditor(const SearchResultItem &item,
     if (params.ref.isEmpty() || item.path.isEmpty())
         return nullptr;
     const QString path = QDir::fromNativeSeparators(item.path.first());
-    QByteArray content;
     const QString topLevel = parameters.additionalParameters.toString();
-    const QString relativePath = QDir(topLevel).relativeFilePath(path);
-    if (!m_client->synchronousShow(topLevel, params.ref + ":./" + relativePath,
-                                              &content, nullptr)) {
-        return nullptr;
-    }
-    if (content.isEmpty())
-        return nullptr;
-    QByteArray fileContent;
-    if (TextFileFormat::readFileUTF8(path, nullptr, &fileContent, nullptr)
-            == TextFileFormat::ReadSuccess) {
-        if (fileContent == content)
-            return nullptr; // open the file for read/write
-    }
-
-    const QString documentId = QLatin1String(Git::Constants::GIT_PLUGIN)
-            + QLatin1String(".GitShow.") + params.id()
-            + QLatin1String(".") + relativePath;
-    QString title = tr("Git Show %1:%2").arg(params.ref).arg(relativePath);
-    IEditor *editor = EditorManager::openEditorWithContents(Id(), &title, content, documentId,
-                                                            EditorManager::DoNotSwitchToDesignMode);
+    IEditor *editor = m_client->openShowEditor(
+                topLevel, params.ref, path, GitClient::ShowEditor::OnlyIfDifferent);
     editor->gotoLine(item.mainRange.begin.line, item.mainRange.begin.column);
-    editor->document()->setTemporary(true);
     return editor;
 }
 

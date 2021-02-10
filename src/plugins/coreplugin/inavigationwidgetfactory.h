@@ -25,7 +25,9 @@
 
 #pragma once
 
-#include "id.h"
+#include "core_global.h"
+
+#include <utils/id.h>
 
 #include <QObject>
 #include <QList>
@@ -36,6 +38,10 @@ class QSettings;
 class QToolButton;
 class QWidget;
 QT_END_NAMESPACE
+
+namespace Utils {
+class QtcSettings;
+}
 
 namespace Core {
 
@@ -59,12 +65,12 @@ public:
 
     void setDisplayName(const QString &displayName);
     void setPriority(int priority);
-    void setId(Id id);
+    void setId(Utils::Id id);
     void setActivationSequence(const QKeySequence &keys);
 
     QString displayName() const { return m_displayName ; }
     int priority() const { return m_priority; }
-    Id id() const { return m_id; }
+    Utils::Id id() const { return m_id; }
     QKeySequence activationSequence() const;
 
     // This design is not optimal, think about it again once we need to extend it
@@ -73,13 +79,13 @@ public:
     // Similar to how IView
     virtual NavigationView createWidget() = 0;
 
-    virtual void saveSettings(QSettings *settings, int position, QWidget *widget);
+    virtual void saveSettings(Utils::QtcSettings *settings, int position, QWidget *widget);
     virtual void restoreSettings(QSettings *settings, int position, QWidget *widget);
 
 private:
     QString m_displayName;
     int m_priority = 0;
-    Id m_id;
+    Utils::Id m_id;
     QKeySequence m_activationSequence;
 };
 

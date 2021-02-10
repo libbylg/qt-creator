@@ -51,7 +51,7 @@ public:
 
     void removeEditors(const QList<Core::IEditor *> &editors);
 
-    static void goIntoComponent(const ModelNode &modelNode);
+    static bool goIntoComponent(const ModelNode &modelNode);
 
     static bool createFile(const QString &filePath, const QString &contents);
     static void addFileToVersionControl(const QString &directoryPath, const QString &newFilePath);
@@ -65,6 +65,7 @@ public:
     static bool isoProFileSupportsAddingExistingFiles(const QString &resourceFileProPath);
     static bool addResourceFileToIsoProject(const QString &resourceFileProPath, const QString &resourceFilePath);
     static bool belongsToQmakeProject();
+    static Utils::FilePath currentResourcePath();
 
 private:
     QHash<Core::IEditor *,QPointer<DesignDocument> > m_designDocumentHash;

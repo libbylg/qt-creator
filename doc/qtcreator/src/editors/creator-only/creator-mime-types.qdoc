@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-language-servers.html
     \page creator-mime-types.html
     \nextpage creator-modeling.html
@@ -69,7 +68,8 @@
 
     \list 1
 
-        \li Select \uicontrol {Tools > Options > Environment > MIME Types}.
+        \li Select \uicontrol Tools > \uicontrol Options >
+            \uicontrol Environment > \uicontrol {MIME Types}.
 
             \image qtcreator-mime-types.png "MIME Types"
 

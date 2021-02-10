@@ -75,17 +75,15 @@ static bool updateButtonIconByTheme(QAbstractButton *button, const QString &name
     return false;
 }
 
-ImageViewer::ImageViewer(QWidget *parent)
-    : IEditor(parent),
-    d(new ImageViewerPrivate)
+ImageViewer::ImageViewer()
+    : d(new ImageViewerPrivate)
 {
     d->file.reset(new ImageViewerFile);
     ctor();
 }
 
-ImageViewer::ImageViewer(const QSharedPointer<ImageViewerFile> &document, QWidget *parent)
-    : IEditor(parent),
-      d(new ImageViewerPrivate)
+ImageViewer::ImageViewer(const QSharedPointer<ImageViewerFile> &document)
+    : d(new ImageViewerPrivate)
 {
     d->file = document;
     ctor();
@@ -191,6 +189,9 @@ Core::IEditor *ImageViewer::duplicate()
     other->d->imageView->createScene();
     other->updateToolButtons();
     other->d->ui_toolbar.labelImageSize->setText(d->ui_toolbar.labelImageSize->text());
+
+    emit editorDuplicated(other);
+
     return other;
 }
 

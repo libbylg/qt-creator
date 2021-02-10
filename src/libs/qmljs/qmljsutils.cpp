@@ -27,6 +27,8 @@
 
 #include "parser/qmljsast_p.h"
 
+#include <utils/stringutils.h>
+
 #include <QColor>
 #include <QDir>
 #include <QRegularExpression>
@@ -81,7 +83,7 @@ QColor QmlJS::toQColor(const QString &qmlColorString)
     QColor color;
     if (qmlColorString.size() == 9 && qmlColorString.at(0) == QLatin1Char('#')) {
         bool ok;
-        const int alpha = qmlColorString.midRef(1, 2).toInt(&ok, 16);
+        const int alpha = qmlColorString.mid(1, 2).toInt(&ok, 16);
         if (ok) {
             const QString name = qmlColorString.at(0) + qmlColorString.right(6);
             if (QColor::isValidColor(name)) {
@@ -104,7 +106,7 @@ QString QmlJS::toString(UiQualifiedId *qualifiedId, QChar delimiter)
         if (iter != qualifiedId)
             result += delimiter;
 
-        result += iter->name;
+        result += iter->name.toString();
     }
 
     return result;
@@ -191,7 +193,7 @@ UiQualifiedId *QmlJS::qualifiedTypeNameId(Node *node)
     return nullptr;
 }
 
-DiagnosticMessage QmlJS::errorMessage(const AST::SourceLocation &loc, const QString &message)
+DiagnosticMessage QmlJS::errorMessage(const SourceLocation &loc, const QString &message)
 {
     return DiagnosticMessage(Severity::Error, loc, message);
 }
@@ -231,15 +233,15 @@ bool QmlJS::maybeModuleVersion(const QString &version) {
  * \return The module paths if found, an empty string otherwise
  * \see qmlimportscanner in qtdeclarative/tools
  */
-QString QmlJS::modulePath(const QString &name, const QString &version,
-                          const QStringList &importPaths)
+QStringList QmlJS::modulePaths(const QString &name, const QString &version,
+                               const QStringList &importPaths)
 {
     Q_ASSERT(maybeModuleVersion(version));
     if (importPaths.isEmpty())
-        return QString();
+        return {};
 
     const QString sanitizedVersion = version == undefinedVersion ? QString() : version;
-    const QStringList parts = name.split(QLatin1Char('.'), QString::SkipEmptyParts);
+    const QStringList parts = name.split('.', Qt::SkipEmptyParts);
     auto mkpath = [] (const QStringList &xs) -> QString { return xs.join(QLatin1Char('/')); };
 
     // Regular expression for building candidates by successively removing minor and major
@@ -247,6 +249,7 @@ QString QmlJS::modulePath(const QString &name, const QString &version,
     // sanitized version.
     const QRegularExpression re("\\.?\\d+$");
 
+    QStringList result;
     QString candidate;
 
     for (QString ver = sanitizedVersion; !ver.isEmpty(); ver.remove(re)) {
@@ -258,7 +261,7 @@ QString QmlJS::modulePath(const QString &name, const QString &version,
                                                                    ver,
                                                                    mkpath(parts.mid(i + 1))));
                 if (QDir(candidate).exists())
-                    return candidate;
+                    result << candidate;
             }
         }
     }
@@ -267,10 +270,10 @@ QString QmlJS::modulePath(const QString &name, const QString &version,
     for (const QString &path: importPaths) {
         candidate = QDir::cleanPath(QString::fromLatin1("%1/%2").arg(path, mkpath(parts)));
         if (QDir(candidate).exists())
-            return candidate;
+            result << candidate;
     }
 
-    return QString();
+    return result;
 }
 
 bool QmlJS::isValidBuiltinPropertyType(const QString &name)

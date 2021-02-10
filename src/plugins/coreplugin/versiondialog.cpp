@@ -52,14 +52,12 @@ VersionDialog::VersionDialog(QWidget *parent)
         setWindowIcon(Icons::QTCREATORLOGO_BIG.icon());
 
     setWindowTitle(tr("About %1").arg(Core::Constants::IDE_DISPLAY_NAME));
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     auto layout = new QGridLayout(this);
     layout->setSizeConstraint(QLayout::SetFixedSize);
 
     QString ideRev;
 #ifdef IDE_REVISION
-    //: This gets conditionally inserted as argument %8 into the description string.
-    const QString revUrl = QString::fromLatin1(Constants::IDE_REVISION_URL_STR);
+    const QString revUrl = QString::fromLatin1(Constants::IDE_REVISION_URL);
     const QString rev = QString::fromLatin1(Constants::IDE_REVISION_STR).left(10);
     ideRev = tr("<br/>From revision %1<br/>")
             .arg(revUrl.isEmpty() ? rev

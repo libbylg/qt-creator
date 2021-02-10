@@ -30,6 +30,8 @@ import subprocess
 import sys
 
 encoding = locale.getdefaultlocale()[1]
+if not encoding:
+    encoding = 'UTF-8'
 
 def is_windows_platform():
     return sys.platform.startswith('win')
@@ -39,6 +41,41 @@ def is_linux_platform():
 
 def is_mac_platform():
     return sys.platform.startswith('darwin')
+
+def to_posix_path(path):
+    if is_windows_platform():
+        # should switch to pathlib from python3
+        return path.replace('\\', '/')
+    return path
+
+def check_print_call(command, workdir=None, env=None):
+    print('------------------------------------------')
+    print('COMMAND:')
+    print(' '.join(['"' + c.replace('"', '\\"') + '"' for c in command]))
+    print('PWD:      "' + (workdir if workdir else os.getcwd()) + '"')
+    print('------------------------------------------')
+    subprocess.check_call(command, cwd=workdir, env=env)
+
+
+def get_git_SHA(path):
+    try:
+        output = subprocess.check_output(['git', 'rev-list', '-n1', 'HEAD'], cwd=path).strip()
+        decoded_output = output.decode(encoding) if encoding else output
+        return decoded_output
+    except subprocess.CalledProcessError:
+        return None
+    return None
+
+
+# get commit SHA either directly from git, or from a .tag file in the source directory
+def get_commit_SHA(path):
+    git_sha = get_git_SHA(path)
+    if not git_sha:
+        tagfile = os.path.join(path, '.tag')
+        if os.path.exists(tagfile):
+            with open(tagfile, 'r') as f:
+                git_sha = f.read().strip()
+    return git_sha
 
 # copy of shutil.copytree that does not bail out if the target directory already exists
 # and that does not create empty directories
@@ -91,7 +128,8 @@ def copytree(src, dst, symlinks=False, ignore=None):
 
 def get_qt_install_info(qmake_bin):
     output = subprocess.check_output([qmake_bin, '-query'])
-    lines = output.decode(encoding).strip().split('\n')
+    decoded_output = output.decode(encoding) if encoding else output
+    lines = decoded_output.strip().split('\n')
     info = {}
     for line in lines:
         (var, sep, value) = line.partition(':')
@@ -103,16 +141,17 @@ def get_rpath(libfilepath, chrpath=None):
         chrpath = 'chrpath'
     try:
         output = subprocess.check_output([chrpath, '-l', libfilepath]).strip()
+        decoded_output = output.decode(encoding) if encoding else output
     except subprocess.CalledProcessError: # no RPATH or RUNPATH
         return []
     marker = 'RPATH='
-    index = output.decode(encoding).find(marker)
+    index = decoded_output.find(marker)
     if index < 0:
         marker = 'RUNPATH='
-        index = output.find(marker)
+        index = decoded_output.find(marker)
     if index < 0:
         return []
-    return output[index + len(marker):].split(':')
+    return decoded_output[index + len(marker):].split(':')
 
 def fix_rpaths(path, qt_deploy_path, qt_install_info, chrpath=None):
     if chrpath is None:
@@ -125,12 +164,13 @@ def fix_rpaths(path, qt_deploy_path, qt_install_info, chrpath=None):
         if len(rpath) <= 0:
             return
         # remove previous Qt RPATH
-        new_rpath = filter(lambda path: not path.startswith(qt_install_prefix) and not path.startswith(qt_install_libs),
-                           rpath)
+        new_rpath = list(filter(lambda path: not path.startswith(qt_install_prefix) and not path.startswith(qt_install_libs),
+                           rpath))
 
         # check for Qt linking
         lddOutput = subprocess.check_output(['ldd', filepath])
-        if lddOutput.decode(encoding).find('libQt5') >= 0 or lddOutput.find('libicu') >= 0:
+        lddDecodedOutput = lddOutput.decode(encoding) if encoding else lddOutput
+        if lddDecodedOutput.find('libQt5') >= 0 or lddDecodedOutput.find('libicu') >= 0:
             # add Qt RPATH if necessary
             relative_path = os.path.relpath(qt_deploy_path, os.path.dirname(filepath))
             if relative_path == '.':
@@ -150,7 +190,7 @@ def fix_rpaths(path, qt_deploy_path, qt_install_info, chrpath=None):
     def is_unix_executable(filepath):
         # Whether a file is really a binary executable and not a script and not a symlink (unix only)
         if os.path.exists(filepath) and os.access(filepath, os.X_OK) and not os.path.islink(filepath):
-            with open(filepath) as f:
+            with open(filepath, 'rb') as f:
                 return f.read(2) != "#!"
 
     def is_unix_library(filepath):
@@ -178,28 +218,39 @@ def is_not_debug(path, filenames):
     files = [fn for fn in filenames if os.path.isfile(os.path.join(path, fn))]
     return [fn for fn in files if not is_debug_file(os.path.join(path, fn))]
 
-def codesign(app_path):
+def codesign_call():
     signing_identity = os.environ.get('SIGNING_IDENTITY')
-    if is_mac_platform() and signing_identity:
-        codesign_call = ['codesign', '-o', 'runtime', '--force', '-s', signing_identity,
-                         '-v']
-        signing_flags = os.environ.get('SIGNING_FLAGS')
-        if signing_flags:
-            codesign_call.extend(signing_flags.split())
+    if not signing_identity:
+        return None
+    codesign_call = ['codesign', '-o', 'runtime', '--force', '-s', signing_identity,
+                     '-v']
+    signing_flags = os.environ.get('SIGNING_FLAGS')
+    if signing_flags:
+        codesign_call.extend(signing_flags.split())
+    return codesign_call
 
-        def conditional_sign_recursive(path, filter):
-            for r, _, fs in os.walk(path):
-                for f in fs:
-                    ff = os.path.join(r, f)
-                    if filter(ff):
-                        print('codesign "' + ff + '"')
-                        subprocess.check_call(codesign_call + [ff])
+def os_walk(path, filter, function):
+    for r, _, fs in os.walk(path):
+        for f in fs:
+            ff = os.path.join(r, f)
+            if filter(ff):
+                function(ff)
 
-        # sign all executables in Resources
-        conditional_sign_recursive(os.path.join(app_path, 'Contents', 'Resources'),
-                                   lambda ff: os.access(ff, os.X_OK))
-        # sign all libraries in Imports
-        conditional_sign_recursive(os.path.join(app_path, 'Contents', 'Imports'),
-                                   lambda ff: ff.endswith('.dylib'))
+def conditional_sign_recursive(path, filter):
+    codesign = codesign_call()
+    if is_mac_platform() and codesign:
+        os_walk(path, filter, lambda fp: subprocess.check_call(codesign + [fp]))
+
+def codesign(app_path):
+    # sign all executables in Resources
+    conditional_sign_recursive(os.path.join(app_path, 'Contents', 'Resources'),
+                               lambda ff: os.access(ff, os.X_OK))
+    # sign all libraries in Imports
+    conditional_sign_recursive(os.path.join(app_path, 'Contents', 'Imports'),
+                               lambda ff: ff.endswith('.dylib'))
+    codesign = codesign_call()
+    if is_mac_platform() and codesign:
+        entitlements_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'dist',
+                                         'installer', 'mac', 'entitlements.plist')
         # sign the whole bundle
-        subprocess.check_call(codesign_call + ['--deep', app_path])
+        subprocess.check_call(codesign + ['--deep', app_path, '--entitlements', entitlements_path])

@@ -12,7 +12,8 @@ QTC_LIB_DEPENDS += \
 QTC_PLUGIN_DEPENDS += \
     coreplugin \
     qmljseditor \
-    qmakeprojectmanager
+    qmakeprojectmanager \
+    qmlprojectmanager
 
 CONFIG -= qtquickcompiler
 
@@ -49,7 +50,9 @@ INCLUDEPATH += $$IDE_SOURCE_TREE/src/plugins/qmldesigner/components/stateseditor
 INCLUDEPATH += $$IDE_SOURCE_TREE/src/plugins/qmldesigner/components/formeditor
 INCLUDEPATH += $$IDE_SOURCE_TREE/src/plugins/qmldesigner/components/propertyeditor
 INCLUDEPATH += $$IDE_SOURCE_TREE/src/plugins/qmldesigner/components/debugview
+INCLUDEPATH += $$IDE_SOURCE_TREE/src/plugins/qmldesigner/components/edit3d
 INCLUDEPATH *= $$IDE_SOURCE_TREE/src/libs/3rdparty
+INCLUDEPATH *= $$IDE_SOURCE_TREE/src/libs/sqlite
 
 include($$IDE_SOURCE_TREE/src/plugins/qmldesigner/designercore/designercore-lib.pri)
 
@@ -59,9 +62,13 @@ TEMPLATE = app
 SOURCES += \
     ../testview.cpp \
     testrewriterview.cpp \
-    tst_testcore.cpp
+    tst_testcore.cpp \
+    ../testconnectionmanager.cpp
+
 HEADERS += \
     ../testview.h \
     testrewriterview.h \
-    tst_testcore.h
+    tst_testcore.h \
+    ../testconnectionmanager.h
+
 RESOURCES += ../data/testfiles.qrc

@@ -33,14 +33,18 @@
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QRegularExpression>
 
 using namespace Core;
+using namespace Utils;
 
 /*!
     \class Core::ILocatorFilter
+    \inheaderfile coreplugin/locator/ilocatorfilter.h
     \inmodule QtCreator
 
     \brief The ILocatorFilter class adds a locator filter.
@@ -115,32 +119,55 @@ void ILocatorFilter::prepareSearch(const QString &entry)
 }
 
 /*!
-    Sets the \a shortcut string that can be used to explicitly choose this
-    filter in the locator input field. Call from the constructor of subclasses
-    to set the default setting.
+    Sets the default \a shortcut string that can be used to explicitly choose
+    this filter in the locator input field. Call for example from the
+    constructor of subclasses.
 
     \sa shortcutString()
+*/
+void ILocatorFilter::setDefaultShortcutString(const QString &shortcut)
+{
+    m_defaultShortcut = shortcut;
+    m_shortcut = shortcut;
+}
+
+/*!
+    Sets the current shortcut string of the filter to \a shortcut. Use
+    setDefaultShortcutString() if you want to set the default shortcut string
+    instead.
+
+    \sa setDefaultShortcutString()
 */
 void ILocatorFilter::setShortcutString(const QString &shortcut)
 {
     m_shortcut = shortcut;
 }
 
+const char kShortcutStringKey[] = "shortcut";
+const char kIncludedByDefaultKey[] = "includeByDefault";
+
 /*!
     Returns data that can be used to restore the settings for this filter
     (for example at startup).
     By default, adds the base settings (shortcut string, included by default)
-    with a data stream.
+    and calls saveState() with a JSON object where subclasses should write
+    their custom settings.
 
     \sa restoreState()
 */
 QByteArray ILocatorFilter::saveState() const
 {
-    QByteArray value;
-    QDataStream out(&value, QIODevice::WriteOnly);
-    out << shortcutString();
-    out << isIncludedByDefault();
-    return value;
+    QJsonObject obj;
+    if (shortcutString() != m_defaultShortcut)
+        obj.insert(kShortcutStringKey, shortcutString());
+    if (isIncludedByDefault() != m_defaultIncludedByDefault)
+        obj.insert(kIncludedByDefaultKey, isIncludedByDefault());
+    saveState(obj);
+    if (obj.isEmpty())
+        return {};
+    QJsonDocument doc;
+    doc.setObject(obj);
+    return doc.toJson(QJsonDocument::Compact);
 }
 
 /*!
@@ -151,15 +178,22 @@ QByteArray ILocatorFilter::saveState() const
 */
 void ILocatorFilter::restoreState(const QByteArray &state)
 {
-    QString shortcut;
-    bool defaultFilter;
+    QJsonDocument doc = QJsonDocument::fromJson(state);
+    if (state.isEmpty() || doc.isObject()) {
+        const QJsonObject obj = doc.object();
+        setShortcutString(obj.value(kShortcutStringKey).toString(m_defaultShortcut));
+        setIncludedByDefault(obj.value(kIncludedByDefaultKey).toBool(m_defaultIncludedByDefault));
+        restoreState(obj);
+    } else {
+        // TODO read old settings, remove some time after Qt Creator 4.15
+        m_shortcut = m_defaultShortcut;
+        m_includedByDefault = m_defaultIncludedByDefault;
 
-    QDataStream in(state);
-    in >> shortcut;
-    in >> defaultFilter;
-
-    setShortcutString(shortcut);
-    setIncludedByDefault(defaultFilter);
+        // TODO this reads legacy settings from Qt Creator < 4.15
+        QDataStream in(state);
+        in >> m_shortcut;
+        in >> m_includedByDefault;
+    }
 }
 
 /*!
@@ -178,39 +212,7 @@ void ILocatorFilter::restoreState(const QByteArray &state)
 bool ILocatorFilter::openConfigDialog(QWidget *parent, bool &needsRefresh)
 {
     Q_UNUSED(needsRefresh)
-
-    QDialog dialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint);
-    dialog.setWindowTitle(msgConfigureDialogTitle());
-
-    auto vlayout = new QVBoxLayout(&dialog);
-    auto hlayout = new QHBoxLayout;
-    QLineEdit *shortcutEdit = new QLineEdit(shortcutString());
-    QCheckBox *includeByDefault = new QCheckBox(msgIncludeByDefault());
-    includeByDefault->setToolTip(msgIncludeByDefaultToolTip());
-    includeByDefault->setChecked(isIncludedByDefault());
-
-    auto prefixLabel = new QLabel(msgPrefixLabel());
-    prefixLabel->setToolTip(msgPrefixToolTip());
-    hlayout->addWidget(prefixLabel);
-    hlayout->addWidget(shortcutEdit);
-    hlayout->addWidget(includeByDefault);
-
-    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok |
-                                                       QDialogButtonBox::Cancel);
-    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-    vlayout->addLayout(hlayout);
-    vlayout->addStretch();
-    vlayout->addWidget(buttonBox);
-
-    if (dialog.exec() == QDialog::Accepted) {
-        setShortcutString(shortcutEdit->text().trimmed());
-        setIncludedByDefault(includeByDefault->isChecked());
-        return true;
-    }
-
-    return false;
+    return openConfigDialog(parent, nullptr);
 }
 
 /*!
@@ -311,12 +313,25 @@ bool ILocatorFilter::isIncludedByDefault() const
 }
 
 /*!
-    Sets whether using the shortcut string is required to use this filter
-    to \a includedByDefault.
+    Sets the default setting for whether using the shortcut string is required
+    to use this filter to \a includedByDefault.
 
-    Call from the constructor of subclasses to change the default.
+    Call for example from the constructor of subclasses.
 
     \sa isIncludedByDefault()
+*/
+void ILocatorFilter::setDefaultIncludedByDefault(bool includedByDefault)
+{
+    m_defaultIncludedByDefault = includedByDefault;
+    m_includedByDefault = includedByDefault;
+}
+
+/*!
+    Sets whether using the shortcut string is required to use this filter to
+    \a includedByDefault. Use setDefaultIncludedByDefault() if you want to
+    set the default value instead.
+
+    \sa setDefaultIncludedByDefault()
 */
 void ILocatorFilter::setIncludedByDefault(bool includedByDefault)
 {
@@ -432,7 +447,8 @@ void ILocatorFilter::setPriority(Priority priority)
 }
 
 /*!
-    Sets the translated display name of this filter to \a displayString.
+    Sets the translated display name of this filter to \a
+    displayString.
 
     Subclasses must set the display name in their constructor.
 
@@ -455,7 +471,95 @@ void ILocatorFilter::setConfigurable(bool configurable)
 }
 
 /*!
-    \fn QList<LocatorFilterEntry> ILocatorFilter::matchesFor(QFutureInterface<LocatorFilterEntry> &future, const QString &entry)
+    Shows the standard configuration dialog with options for the prefix string
+    and for isIncludedByDefault(). The \a additionalWidget is added at the top.
+    Ownership of \a additionalWidget stays with the caller, but its parent is
+    reset to \c nullptr.
+
+    Returns \c false if the user canceled the dialog.
+*/
+bool ILocatorFilter::openConfigDialog(QWidget *parent, QWidget *additionalWidget)
+{
+    QDialog dialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint);
+    dialog.setWindowTitle(msgConfigureDialogTitle());
+
+    auto vlayout = new QVBoxLayout(&dialog);
+    auto hlayout = new QHBoxLayout;
+    QLineEdit *shortcutEdit = new QLineEdit(shortcutString());
+    QCheckBox *includeByDefault = new QCheckBox(msgIncludeByDefault());
+    includeByDefault->setToolTip(msgIncludeByDefaultToolTip());
+    includeByDefault->setChecked(isIncludedByDefault());
+
+    auto prefixLabel = new QLabel(msgPrefixLabel());
+    prefixLabel->setToolTip(msgPrefixToolTip());
+    hlayout->addWidget(prefixLabel);
+    hlayout->addWidget(shortcutEdit);
+    hlayout->addWidget(includeByDefault);
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok
+                                                       | QDialogButtonBox::Cancel);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (additionalWidget)
+        vlayout->addWidget(additionalWidget);
+    vlayout->addLayout(hlayout);
+    vlayout->addStretch();
+    vlayout->addWidget(buttonBox);
+
+    bool accepted = false;
+    if (dialog.exec() == QDialog::Accepted) {
+        setShortcutString(shortcutEdit->text().trimmed());
+        setIncludedByDefault(includeByDefault->isChecked());
+        accepted = true;
+    }
+    if (additionalWidget) {
+        additionalWidget->setVisible(false);
+        additionalWidget->setParent(nullptr);
+    }
+    return accepted;
+}
+
+/*!
+    Saves the filter settings and state to the JSON \a object.
+
+    The default implementation does nothing.
+
+    Implementations should write key-value pairs to the \a object for their
+    custom settings that changed from the default. Default values should
+    never be saved.
+*/
+void ILocatorFilter::saveState(QJsonObject &object) const
+{
+    Q_UNUSED(object)
+}
+
+/*!
+    Reads the filter settings and state from the JSON \a object
+
+    The default implementation does nothing.
+
+    Implementations should read their custom settings from the \a object,
+    resetting any missing setting to its default value.
+*/
+void ILocatorFilter::restoreState(const QJsonObject &object)
+{
+    Q_UNUSED(object)
+}
+
+/*!
+    Returns if \a state must be restored via pre-4.15 settings reading.
+*/
+bool ILocatorFilter::isOldSetting(const QByteArray &state)
+{
+    if (state.isEmpty())
+        return false;
+    const QJsonDocument doc = QJsonDocument::fromJson(state);
+    return !doc.isObject();
+}
+
+/*!
+    \fn QList<Core::LocatorFilterEntry> Core::ILocatorFilter::matchesFor(QFutureInterface<Core::LocatorFilterEntry> &future, const QString &entry)
 
     Returns the list of results of this filter for the search term \a entry.
     This is run in a separate thread, but is guaranteed to only run in a single
@@ -471,7 +575,7 @@ void ILocatorFilter::setConfigurable(bool configurable)
 */
 
 /*!
-    \fn void ILocatorFilter::accept(LocatorFilterEntry selection, QString *newText, int *selectionStart, int *selectionLength) const
+    \fn void Core::ILocatorFilter::accept(Core::LocatorFilterEntry selection, QString *newText, int *selectionStart, int *selectionLength) const
 
     Called with the entry specified by \a selection when the user activates it
     in the result list.
@@ -480,7 +584,7 @@ void ILocatorFilter::setConfigurable(bool configurable)
 */
 
 /*!
-    \fn void ILocatorFilter::refresh(QFutureInterface<void> &future)
+    \fn void Core::ILocatorFilter::refresh(QFutureInterface<void> &future)
 
     Refreshes cached data asynchronously.
 
@@ -488,7 +592,7 @@ void ILocatorFilter::setConfigurable(bool configurable)
 */
 
 /*!
-    \enum ILocatorFilter::Priority
+    \enum Core::ILocatorFilter::Priority
 
     This enum value holds the priority that is used for ordering the results
     when multiple filters are used.
@@ -505,7 +609,7 @@ void ILocatorFilter::setConfigurable(bool configurable)
 */
 
 /*!
-    \enum ILocatorFilter::MatchLevel
+    \enum Core::ILocatorFilter::MatchLevel
 
     This enum value holds the level for ordering the results based on how well
     they match the search criteria.

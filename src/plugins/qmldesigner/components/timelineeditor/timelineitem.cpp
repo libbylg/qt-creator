@@ -40,6 +40,7 @@
 #include <QCursor>
 #include <QGraphicsView>
 #include <QPainter>
+#include <QPainterPath>
 
 #include <cmath>
 
@@ -51,8 +52,7 @@ TimelineItem::TimelineItem(TimelineItem *parent)
 
 TimelineGraphicsScene *TimelineItem::timelineScene() const
 {
-    return static_cast<TimelineGraphicsScene *>(scene());
-    ;
+    return qobject_cast<TimelineGraphicsScene *>(scene());
 }
 
 TimelineFrameHandle::TimelineFrameHandle(TimelineItem *parent)
@@ -92,7 +92,7 @@ void TimelineFrameHandle::setPosition(qreal frame)
 
 void TimelineFrameHandle::setPositionInteractive(const QPointF &position)
 {
-    const double width = timelineScene()->width();
+    const double width = abstractScrollGraphicsScene()->width();
 
     if (position.x() > width) {
         callSetClampedXPosition(width - (rect().width() / 2) - 1);
@@ -103,7 +103,7 @@ void TimelineFrameHandle::setPositionInteractive(const QPointF &position)
     } else {
         callSetClampedXPosition(position.x() - rect().width() / 2);
         const qreal frame = std::round(mapFromSceneToFrame(rect().center().x()));
-        timelineScene()->commitCurrentFrame(frame);
+        timelineGraphicsScene()->commitCurrentFrame(frame);
     }
 }
 
@@ -125,6 +125,11 @@ qreal TimelineFrameHandle::position() const
 TimelineFrameHandle *TimelineFrameHandle::asTimelineFrameHandle()
 {
     return this;
+}
+
+TimelineGraphicsScene *TimelineFrameHandle::timelineGraphicsScene() const
+{
+    return qobject_cast<TimelineGraphicsScene* >(abstractScrollGraphicsScene());
 }
 
 void TimelineFrameHandle::scrollOffsetChanged()
@@ -181,7 +186,7 @@ void TimelineFrameHandle::paint(QPainter *painter,
 
 QPointF TimelineFrameHandle::mapFromGlobal(const QPoint &pos) const
 {
-    for (auto *view : timelineScene()->views()) {
+    for (auto *view : abstractScrollGraphicsScene()->views()) {
         if (view->objectName() == "SceneView") {
             auto graphicsViewCoords = view->mapFromGlobal(pos);
             auto sceneCoords = view->mapToScene(graphicsViewCoords);
@@ -194,7 +199,7 @@ QPointF TimelineFrameHandle::mapFromGlobal(const QPoint &pos) const
 int TimelineFrameHandle::computeScrollSpeed() const
 {
     const double mouse = mapFromGlobal(QCursor::pos()).x();
-    const double width = timelineScene()->width();
+    const double width = abstractScrollGraphicsScene()->width();
 
     const double acc = mouse > width ? mouse - width
                                      : double(TimelineConstants::sectionWidth) - mouse;
@@ -215,7 +220,7 @@ void TimelineFrameHandle::callSetClampedXPosition(double x)
     const int minimumWidth = TimelineConstants::sectionWidth + TimelineConstants::timelineLeftOffset
                              - rect().width() / 2;
     const int maximumWidth = minimumWidth
-                             + timelineScene()->rulerDuration() * timelineScene()->rulerScaling()
+                             + abstractScrollGraphicsScene()->rulerDuration() * abstractScrollGraphicsScene()->rulerScaling()
                              - scrollOffset();
 
     setClampedXPosition(x, minimumWidth, maximumWidth);
@@ -224,7 +229,7 @@ void TimelineFrameHandle::callSetClampedXPosition(double x)
 // Auto scroll when dragging playhead out of bounds.
 void TimelineFrameHandle::scrollOutOfBounds()
 {
-    const double width = timelineScene()->width();
+    const double width = abstractScrollGraphicsScene()->width();
     const double mouse = mapFromGlobal(QCursor::pos()).x();
 
     if (mouse > width)
@@ -235,14 +240,14 @@ void TimelineFrameHandle::scrollOutOfBounds()
 
 void TimelineFrameHandle::scrollOutOfBoundsMax()
 {
-    const double width = timelineScene()->width();
+    const double width = abstractScrollGraphicsScene()->width();
     if (QApplication::mouseButtons() == Qt::LeftButton) {
-        const double frameWidth = timelineScene()->rulerScaling();
+        const double frameWidth = abstractScrollGraphicsScene()->rulerScaling();
         const double upperThreshold = width - frameWidth;
 
         if (rect().center().x() > upperThreshold) {
-            timelineScene()->setScrollOffset(computeScrollSpeed());
-            timelineScene()->invalidateScrollbar();
+            abstractScrollGraphicsScene()->setScrollOffset(computeScrollSpeed());
+            abstractScrollGraphicsScene()->invalidateScrollbar();
         }
 
         callSetClampedXPosition(width - (rect().width() / 2) - 1);
@@ -252,8 +257,8 @@ void TimelineFrameHandle::scrollOutOfBoundsMax()
         callSetClampedXPosition(width - (rect().width() / 2) - 1);
 
         const int frame = std::floor(mapFromSceneToFrame(rect().center().x()));
-        const int ef = timelineScene()->endFrame();
-        timelineScene()->commitCurrentFrame(frame <= ef ? frame : ef);
+        const int ef = abstractScrollGraphicsScene()->endFrame();
+        timelineGraphicsScene()->commitCurrentFrame(frame <= ef ? frame : ef);
     }
 }
 
@@ -263,11 +268,11 @@ void TimelineFrameHandle::scrollOutOfBoundsMin()
         auto offset = computeScrollSpeed();
 
         if (offset >= 0)
-            timelineScene()->setScrollOffset(offset);
+            abstractScrollGraphicsScene()->setScrollOffset(offset);
         else
-            timelineScene()->setScrollOffset(0);
+            abstractScrollGraphicsScene()->setScrollOffset(0);
 
-        timelineScene()->invalidateScrollbar();
+        abstractScrollGraphicsScene()->invalidateScrollbar();
 
         callSetClampedXPosition(TimelineConstants::sectionWidth);
         m_timer.start();
@@ -277,7 +282,7 @@ void TimelineFrameHandle::scrollOutOfBoundsMin()
 
         int frame = mapFromSceneToFrame(rect().center().x());
 
-        const int sframe = timelineScene()->startFrame();
+        const int sframe = abstractScrollGraphicsScene()->startFrame();
         if (frame != sframe) {
             const qreal framePos = mapFromFrameToScene(frame);
 
@@ -286,7 +291,7 @@ void TimelineFrameHandle::scrollOutOfBoundsMin()
                 frame++;
         }
 
-        timelineScene()->commitCurrentFrame(frame >= sframe ? frame : sframe);
+        timelineGraphicsScene()->commitCurrentFrame(frame >= sframe ? frame : sframe);
     }
 }
 

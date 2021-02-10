@@ -87,7 +87,6 @@ UnstartedAppWatcherDialog::UnstartedAppWatcherDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Attach to Process Not Yet Started"));
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     m_kitChooser = new KitChooser(this);
     m_kitChooser->setKitPredicate([](const Kit *k) {
@@ -122,7 +121,7 @@ UnstartedAppWatcherDialog::UnstartedAppWatcherDialog(QWidget *parent)
             if (isLocal(runConfig)) {
                 resetExecutable->setEnabled(true);
                 connect(resetExecutable, &QPushButton::clicked, this, [this, runnable] {
-                    m_pathChooser->setFileName(runnable.executable);
+                    m_pathChooser->setFilePath(runnable.executable);
                 });
             }
         }
@@ -257,7 +256,7 @@ void UnstartedAppWatcherDialog::startStopTimer(bool start)
 
 void UnstartedAppWatcherDialog::findProcess()
 {
-    const QString &appName = Utils::FileUtils::normalizePathName(m_pathChooser->path());
+    const QString &appName = Utils::FileUtils::normalizePathName(m_pathChooser->filePath().toString());
     DeviceProcessItem fallback;
     foreach (const DeviceProcessItem &p, DeviceProcessList::localProcesses()) {
         if (Utils::FileUtils::normalizePathName(p.exe) == appName) {
@@ -292,8 +291,8 @@ void UnstartedAppWatcherDialog::kitChanged()
 
 bool UnstartedAppWatcherDialog::checkExecutableString() const
 {
-    if (!m_pathChooser->path().isEmpty()) {
-        QFileInfo fileInfo(m_pathChooser->path());
+    if (!m_pathChooser->filePath().toString().isEmpty()) {
+        QFileInfo fileInfo(m_pathChooser->filePath().toString());
         return (fileInfo.exists() && fileInfo.isFile());
     }
     return false;

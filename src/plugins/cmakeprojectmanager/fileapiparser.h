@@ -33,7 +33,11 @@
 #include <utils/filesystemwatcher.h>
 #include <utils/fileutils.h>
 
-#include <QObject>
+#include <QDir>
+#include <QString>
+#include <QVector>
+
+#include <vector>
 
 namespace CMakeProjectManager {
 namespace Internal {
@@ -52,7 +56,9 @@ class ReplyFileContents
 {
 public:
     QString generator;
+    bool isMultiConfig = false;
     QString cmakeExecutable;
+    QString ctestExecutable;
     QString cmakeRoot;
 
     QVector<ReplyObject> replies;
@@ -233,42 +239,22 @@ public:
     FileApiDetails::ReplyFileContents replyFile;
     CMakeConfig cache;
     std::vector<FileApiDetails::CMakeFileInfo> cmakeFiles;
-    std::vector<FileApiDetails::Configuration> codemodel;
+    FileApiDetails::Configuration codemodel;
     std::vector<FileApiDetails::TargetDetails> targetDetails;
 };
 
-class FileApiParser final : public QObject
+class FileApiParser
 {
-    Q_OBJECT
-
 public:
-    FileApiParser(const Utils::FilePath &sourceDirectory, const Utils::FilePath &buildDirectory);
-    ~FileApiParser() final;
+    static FileApiData parseData(const QFileInfo &replyFileInfo, const QString& cmakeBuildType,
+                                 QString &errorMessage);
 
-    Utils::FilePath cmakeReplyDirectory() const;
-    QFileInfo scanForCMakeReplyFile() const;
+    static bool setupCMakeFileApi(const Utils::FilePath &buildDirectory,
+                                  Utils::FileSystemWatcher &watcher);
 
-    QStringList cmakeQueryFileNames() const;
-    QStringList cmakeQueryFilePaths() const;
+    static QStringList cmakeQueryFilePaths(const Utils::FilePath &buildDirectory);
 
-    void setParsedReplyFilePath(const QString &filePath);
-
-    static FileApiData parseData(const QFileInfo &replyFileInfo, QString &errorMessage);
-
-signals:
-    void dataAvailable() const;
-    void errorOccurred(const QString &message) const;
-    void dirty() const;
-
-private:
-    void setupCMakeFileApi() const;
-
-    const Utils::FilePath &m_sourceDirectory;
-    const Utils::FilePath &m_buildDirectory;
-
-    void replyDirectoryHasChanged(const QString &directory) const;
-    Utils::FileSystemWatcher m_watcher;
-    QString m_lastParsedReplyFile;
+    static QFileInfo scanForCMakeReplyFile(const Utils::FilePath &buildDirectory);
 };
 
 } // namespace Internal

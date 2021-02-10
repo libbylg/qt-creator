@@ -32,15 +32,27 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/helpmanager.h>
 #include <extensionsystem/pluginmanager.h>
-#include <utils/algorithm.h>
 #include <utils/utilsicons.h>
 
 #include <QIcon>
+
+#ifndef HELP_NEW_FILTER_ENGINE
+
+#include <utils/algorithm.h>
+
 #include <QSqlDatabase>
 #include <QSqlDriver>
 #include <QSqlError>
 #include <QSqlQuery>
 
+#else
+
+#include "localhelpmanager.h"
+#include <QtHelp/QHelpEngine>
+#include <QtHelp/QHelpFilterEngine>
+#include <QtHelp/QHelpLink>
+
+#endif
 
 using namespace Core;
 using namespace Help;
@@ -50,8 +62,8 @@ HelpIndexFilter::HelpIndexFilter()
 {
     setId("HelpIndexFilter");
     setDisplayName(tr("Help Index"));
-    setIncludedByDefault(false);
-    setShortcutString("?");
+    setDefaultIncludedByDefault(false);
+    setDefaultShortcutString("?");
 
     m_icon = Utils::Icons::BOOKMARK.icon();
     connect(Core::HelpManager::Signals::instance(), &Core::HelpManager::Signals::setupFinished,
@@ -66,6 +78,8 @@ HelpIndexFilter::HelpIndexFilter()
 
 HelpIndexFilter::~HelpIndexFilter() = default;
 
+#ifndef HELP_NEW_FILTER_ENGINE
+
 void HelpIndexFilter::prepareSearch(const QString &entry)
 {
     Q_UNUSED(entry)
@@ -75,12 +89,8 @@ void HelpIndexFilter::prepareSearch(const QString &entry)
 
 QList<LocatorFilterEntry> HelpIndexFilter::matchesFor(QFutureInterface<LocatorFilterEntry> &future, const QString &entry)
 {
-    m_mutex.lock(); // guard m_needsUpdate
-    bool forceUpdate = m_needsUpdate;
-    m_mutex.unlock();
-
-    if (forceUpdate || m_searchTermCache.size() < 2 || m_searchTermCache.isEmpty()
-            || !entry.contains(m_searchTermCache)) {
+    if (m_needsUpdate.exchange(false) || m_searchTermCache.size() < 2
+            || m_searchTermCache.isEmpty() || !entry.contains(m_searchTermCache)) {
         int limit = entry.size() < 2 ? 200 : INT_MAX;
         QSet<QString> results;
         for (const QString &filePath : qAsConst(m_helpDatabases)) {
@@ -94,9 +104,6 @@ QList<LocatorFilterEntry> HelpIndexFilter::matchesFor(QFutureInterface<LocatorFi
                                       Q_ARG(int, limit));
             results.unite(result);
         }
-        m_mutex.lock(); // guard m_needsUpdate
-        m_needsUpdate = false;
-        m_mutex.unlock();
         m_keywordCache = results;
         m_searchTermCache = entry;
     }
@@ -133,6 +140,63 @@ QList<LocatorFilterEntry> HelpIndexFilter::matchesFor(QFutureInterface<LocatorFi
     return entries;
 }
 
+#else
+
+bool HelpIndexFilter::updateCache(QFutureInterface<LocatorFilterEntry> &future,
+                                  const QStringList &cache, const QString &entry)
+{
+    const Qt::CaseSensitivity cs = caseSensitivity(entry);
+    QStringList bestKeywords;
+    QStringList worseKeywords;
+    bestKeywords.reserve(cache.size());
+    worseKeywords.reserve(cache.size());
+    for (const QString &keyword : cache) {
+        if (future.isCanceled())
+            return false;
+        if (keyword.startsWith(entry, cs))
+            bestKeywords.append(keyword);
+        else if (keyword.contains(entry, cs))
+            worseKeywords.append(keyword);
+    }
+    bestKeywords << worseKeywords;
+    m_lastIndicesCache = bestKeywords;
+    m_lastEntry = entry;
+
+    return true;
+}
+
+QList<LocatorFilterEntry> HelpIndexFilter::matchesFor(QFutureInterface<LocatorFilterEntry> &future, const QString &entry)
+{
+    if (m_needsUpdate.exchange(false)) {
+        QStringList indices;
+        QMetaObject::invokeMethod(this, [this] { return allIndices(); },
+                                  Qt::BlockingQueuedConnection, &indices);
+        m_allIndicesCache = indices;
+        // force updating the cache taking the m_allIndicesCache
+        m_lastIndicesCache = QStringList();
+        m_lastEntry = QString();
+    }
+
+    const QStringList cacheBase = m_lastEntry.isEmpty() || !entry.contains(m_lastEntry)
+            ? m_allIndicesCache : m_lastIndicesCache;
+
+    if (!updateCache(future, cacheBase, entry))
+        return QList<LocatorFilterEntry>();
+
+    const Qt::CaseSensitivity cs = caseSensitivity(entry);
+    QList<LocatorFilterEntry> entries;
+    for (const QString &keyword : qAsConst(m_lastIndicesCache)) {
+        const int index = keyword.indexOf(entry, 0, cs);
+        LocatorFilterEntry filterEntry(this, keyword, QVariant(), m_icon);
+        filterEntry.highlightInfo = {index, int(entry.length())};
+        entries.append(filterEntry);
+    }
+
+    return entries;
+}
+
+#endif
+
 void HelpIndexFilter::accept(LocatorFilterEntry selection,
                              QString *newText, int *selectionStart, int *selectionLength) const
 {
@@ -140,7 +204,14 @@ void HelpIndexFilter::accept(LocatorFilterEntry selection,
     Q_UNUSED(selectionStart)
     Q_UNUSED(selectionLength)
     const QString &key = selection.displayName;
-    const QMap<QString, QUrl> &links = HelpManager::instance()->linksForKeyword(key);
+#ifndef HELP_NEW_FILTER_ENGINE
+    const QMultiMap<QString, QUrl> &links = HelpManager::instance()->linksForKeyword(key);
+#else
+    QMultiMap<QString, QUrl> links;
+    const QList<QHelpLink> docs = LocalHelpManager::helpEngine().documentsForKeyword(key, QString());
+    for (const auto &doc : docs)
+        links.insert(doc.title, doc.url);
+#endif
     emit linksActivated(links, key);
 }
 
@@ -149,6 +220,8 @@ void HelpIndexFilter::refresh(QFutureInterface<void> &future)
     Q_UNUSED(future)
     invalidateCache();
 }
+
+#ifndef HELP_NEW_FILTER_ENGINE
 
 QSet<QString> HelpIndexFilter::searchMatches(const QString &databaseFilePath,
                                            const QString &term, int limit)
@@ -180,9 +253,17 @@ QSet<QString> HelpIndexFilter::searchMatches(const QString &databaseFilePath,
     return keywords;
 }
 
+#else
+
+QStringList HelpIndexFilter::allIndices() const
+{
+    LocalHelpManager::setupGuiHelpEngine();
+    return LocalHelpManager::filterEngine()->indices(QString());
+}
+
+#endif
+
 void HelpIndexFilter::invalidateCache()
 {
-    m_mutex.lock();
     m_needsUpdate = true;
-    m_mutex.unlock();
 }

@@ -30,6 +30,8 @@
 
 #include <qmljs/parser/qmljsengine_p.h>
 
+#include <utils/stringutils.h>
+
 namespace Todo {
 namespace Internal {
 
@@ -78,12 +80,12 @@ void QmlJsTodoItemsScanner::processDocument(QmlJS::Document::Ptr doc)
 {
     QList<TodoItem> itemList;
 
-    foreach (const QmlJS::AST::SourceLocation &sourceLocation, doc->engine()->comments()) {
+    foreach (const QmlJS::SourceLocation &sourceLocation, doc->engine()->comments()) {
         QString source = doc->source().mid(sourceLocation.begin(), sourceLocation.length).trimmed();
 
         // Process every line
         // TODO: Do not create QStringList, just iterate through a string tracking line endings.
-        QStringList commentLines = source.split('\n', QString::SkipEmptyParts);
+        QStringList commentLines = source.split('\n', Qt::SkipEmptyParts);
         quint32 startLine = sourceLocation.startLine;
         for (int j = 0; j < commentLines.count(); ++j) {
             const QString &commentLine = commentLines.at(j);

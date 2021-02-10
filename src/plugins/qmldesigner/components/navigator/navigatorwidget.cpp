@@ -46,8 +46,8 @@
 namespace QmlDesigner {
 
 NavigatorWidget::NavigatorWidget(NavigatorView *view)
-    : m_treeView(new NavigatorTreeView),
-    m_navigatorView(view)
+    : m_treeView(new NavigatorTreeView)
+    , m_navigatorView(view)
 {
     m_treeView->setDragEnabled(true);
     m_treeView->setAcceptDrops(true);
@@ -61,43 +61,24 @@ NavigatorWidget::NavigatorWidget(NavigatorView *view)
     layout->setSpacing(0);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    auto tabBar = new QTabBar(this);
-    tabBar->addTab(tr("Navigator"));
-    tabBar->addTab(tr("Project"));
-    tabBar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    QWidget *toolBar = createToolBar();
 
-    QWidget *spacer = new QWidget(this);
-    spacer->setObjectName(QStringLiteral("itemLibrarySearchInputSpacer"));
-    spacer->setFixedHeight(4);
+    toolBar->setParent(this);
+    layout->addWidget(toolBar);
 
-    layout->addWidget(tabBar);
-    layout->addWidget(spacer);
-
-    auto stackedWidget = new QStackedWidget(this);
-    stackedWidget->addWidget(m_treeView);
-
-#ifndef QMLDESIGNER_TEST
-    auto projectManager = QmlDesignerPlugin::instance()->createProjectExplorerWidget(this);
-
-    QTC_ASSERT(projectManager, ;);
-    if (projectManager)
-        stackedWidget->addWidget(projectManager);
-#endif
-
-    connect(tabBar, &QTabBar::currentChanged, stackedWidget, &QStackedWidget::setCurrentIndex);
-
-    layout->addWidget(stackedWidget);
+    layout->addWidget(m_treeView);
     setLayout(layout);
 
     setWindowTitle(tr("Navigator", "Title of navigator view"));
 
 #ifndef QMLDESIGNER_TEST
-    setStyleSheet(Theme::replaceCssColors(QString::fromUtf8(Utils::FileReader::fetchQrc(":/qmldesigner/stylesheet.css"))));
-    m_treeView->setStyleSheet(Theme::replaceCssColors(QString::fromUtf8(Utils::FileReader::fetchQrc(":/qmldesigner/scrollbar.css"))));
+    QByteArray sheet = Utils::FileReader::fetchQrc(":/qmldesigner/stylesheet.css");
+    sheet += Utils::FileReader::fetchQrc(":/qmldesigner/scrollbar.css");
+    setStyleSheet(Theme::replaceCssColors(QString::fromUtf8(sheet)));
 #endif
 }
 
-void NavigatorWidget::setTreeModel(QAbstractItemModel* model)
+void NavigatorWidget::setTreeModel(QAbstractItemModel *model)
 {
     m_treeView->setModel(model);
 }
@@ -110,7 +91,6 @@ QTreeView *NavigatorWidget::treeView() const
 QList<QToolButton *> NavigatorWidget::createToolBarWidgets()
 {
     QList<QToolButton *> buttons;
-
 
     auto button = new QToolButton();
     button->setIcon(Icons::ARROW_LEFT.icon());
@@ -146,16 +126,39 @@ QList<QToolButton *> NavigatorWidget::createToolBarWidgets()
     filter->setPopupMode(QToolButton::InstantPopup);
     filter->setProperty("noArrow", true);
     auto filterMenu = new QMenu(filter);
-    auto objectAction = new QAction(tr("Show only visible items."), nullptr);
-    objectAction->setCheckable(true);
-    objectAction->setChecked(
-                DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS).toBool());
-    connect(objectAction, &QAction::toggled, this, &NavigatorWidget::filterToggled);
-    filterMenu->addAction(objectAction);
+    auto filterAction = new QAction(tr("Show only visible items."), nullptr);
+    filterAction->setCheckable(true);
+
+    bool filterFlag = DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_SHOW_ONLY_VISIBLE_ITEMS).toBool();
+    filterAction->setChecked(filterFlag);
+
+    connect(filterAction, &QAction::toggled, this, &NavigatorWidget::filterToggled);
+    filterMenu->addAction(filterAction);
+
+    auto reverseAction = new QAction(tr("Reverse item order."), nullptr);
+    reverseAction->setCheckable(true);
+
+    bool reverseFlag = DesignerSettings::getValue(DesignerSettingsKey::NAVIGATOR_REVERSE_ITEM_ORDER).toBool();
+    reverseAction->setChecked(reverseFlag);
+
+    connect(reverseAction, &QAction::toggled, this, &NavigatorWidget::reverseOrderToggled);
+    filterMenu->addAction(reverseAction);
+
     filter->setMenu(filterMenu);
     buttons.append(filter);
 
     return buttons;
+}
+
+QToolBar *NavigatorWidget::createToolBar()
+{
+    const QList<QToolButton*> buttons = createToolBarWidgets();
+
+    auto toolBar = new QToolBar();
+    for (auto toolButton : buttons)
+        toolBar->addWidget(toolButton);
+
+    return toolBar;
 }
 
 void NavigatorWidget::contextHelp(const Core::IContext::HelpCallback &callback) const
@@ -175,7 +178,6 @@ void NavigatorWidget::enableNavigator()
 {
     m_treeView->setEnabled(true);
 }
-
 
 NavigatorView *NavigatorWidget::navigatorView() const
 {

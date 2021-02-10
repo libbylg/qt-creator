@@ -29,6 +29,7 @@
 #include "ui_submiteditorwidget.h"
 
 #include <utils/algorithm.h>
+#include <utils/theme/theme.h>
 
 #include <QDebug>
 #include <QPointer>
@@ -503,9 +504,59 @@ void SubmitEditorWidget::hideDescription()
     setDescriptionMandatory(false);
 }
 
+void VcsBase::SubmitEditorWidget::verifyDescription()
+{
+    auto fontColor = [](Utils::Theme::Color color) {
+        return QString("<font color=\"%1\">")
+                .arg(Utils::creatorTheme()->color(color).name());
+    };
+    const QString hint = fontColor(Utils::Theme::OutputPanes_TestWarnTextColor);
+    const QString warning = fontColor(Utils::Theme::TextColorError);
+
+    const QChar newLine = '\n';
+    const int descriptionLength = d->m_description.length();
+    int subjectLength = d->m_description.indexOf(newLine);
+    int secondLineLength = 0;
+    if (subjectLength >= 0) {
+        const int secondLineStart = subjectLength + 1;
+        secondLineLength = d->m_description.indexOf(newLine, secondLineStart)
+                - secondLineStart;
+    } else {
+        subjectLength = descriptionLength;
+    }
+
+    enum { MaxSubjectLength = 72, WarningSubjectLength = 55 };
+    QStringList hints;
+    QStringList toolTips;
+    if (descriptionLength < 20)
+        hints.append(warning + tr("Warning: The commit message is very short."));
+
+    if (subjectLength > MaxSubjectLength)
+        hints.append(warning + tr("Warning: The commit subject is too long."));
+    else if (subjectLength > WarningSubjectLength)
+        hints.append(hint + tr("Hint: Aim for a shorter commit subject."));
+
+    if (secondLineLength > 0)
+        hints.append(hint + tr("Hint: The second line of a commit message should be empty."));
+
+    d->m_ui.descriptionHint->setText(hints.join("<br>"));
+    if (!d->m_ui.descriptionHint->text().isEmpty()) {
+        d->m_ui.descriptionHint->setToolTip(
+                    tr("<p>Writing good commit messages</p>"
+                       "<ul>"
+                       "<li>Avoid very short commit messages.</li>"
+                       "<li>Consider the first line as subject (like in email) "
+                       "and keep it shorter than %1 characters.</li>"
+                       "<li>After an empty second line, a longer description can be added.</li>"
+                       "<li>Describe why the change was done, not how it was done.</li>"
+                       "</ul>").arg(MaxSubjectLength));
+        }
+}
+
 void SubmitEditorWidget::descriptionTextChanged()
 {
     d->m_description = cleanupDescription(d->m_ui.description->toPlainText());
+    verifyDescription();
     wrapDescription();
     trimDescription();
     // append field entries
@@ -622,16 +673,6 @@ void SubmitEditorWidget::checkAllToggled()
     d->m_ui.checkAllCheckBox->setTristate(false);
 }
 
-void SubmitEditorWidget::checkAll()
-{
-    fileModel()->setAllChecked(true);
-}
-
-void SubmitEditorWidget::uncheckAll()
-{
-    fileModel()->setAllChecked(false);
-}
-
 void SubmitEditorWidget::fileListCustomContextMenuRequested(const QPoint & pos)
 {
     // Execute menu offering to check/uncheck all
@@ -642,11 +683,11 @@ void SubmitEditorWidget::fileListCustomContextMenuRequested(const QPoint & pos)
     QAction *uncheckAllAction = menu.addAction(tr("Unselect All"));
     QAction *action = menu.exec(d->m_ui.fileView->mapToGlobal(pos));
     if (action == checkAllAction) {
-        checkAll();
+        fileModel()->setAllChecked(true);;
         return;
     }
     if (action == uncheckAllAction) {
-        uncheckAll();
+        fileModel()->setAllChecked(false);
         return;
     }
 }

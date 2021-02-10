@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \page creator-keyboard-shortcuts.html
     \if defined(qtdesignstudio)
     \previouspage studio-platforms.html
@@ -43,15 +42,16 @@
     \title Keyboard Shortcuts
 
     \QC provides various keyboard shortcuts to speed up your development
-    process. In addition, you can specify your own keyboard shortcuts for some
+    process. You can add more shortcuts if your favorite combination is
+    missing. In addition, you can specify your own keyboard shortcuts for some
     functions that can be easily performed with a mouse, and therefore do not
     appear in menus or have default keyboard shortcuts. For example, selecting
     and deleting words or lines in an editor.
 
     To view all functions available in \QC and the keyboard shortcuts defined
     for them, select
-    \uicontrol {Tools > Options > Environment > Keyboard}. The shortcuts are listed by
-    category. To find a keyboard
+    \uicontrol Tools > \uicontrol Options > \uicontrol Environment >
+    \uicontrol Keyboard. The shortcuts are listed by category. To find a keyboard
     shortcut in the list, enter a function name or shortcut in the \uicontrol Filter
     field.
 
@@ -106,6 +106,9 @@
                     when you are done.
 
             \endlist
+
+        \li To assign multiple keyboard shortcuts to a function, select
+            \uicontrol Add, and enter or record an additional key combination.
 
         \li To revert to the default shortcut, select \uicontrol Reset.
 
@@ -239,14 +242,14 @@
             Where the number is the number of the output pane.
         \if defined(qtcreator)
         \row
-            \li  Activate \uicontrol Bookmarks pane
+            \li  Activate \uicontrol Bookmarks view
             \li  Alt+M
         \endif
         \row
-            \li  Activate \uicontrol{File System} pane
+            \li  Activate \uicontrol{File System} view
             \li  Alt+Y
         \row
-            \li  Activate \uicontrol{Open Documents} pane
+            \li  Activate \uicontrol{Open Documents} view
             \li  Alt+O
         \row
             \li  Maximize output panes
@@ -258,7 +261,7 @@
             \li  Move to previous item in output panes
             \li  Shift+F6
         \row
-            \li  Activate \uicontrol Projects pane
+            \li  Activate \uicontrol Projects view
             \li  Alt+X
         \row
             \li  Full screen
@@ -280,6 +283,12 @@
             \li  Esc
         \row
             \li  Exit \QC
+
+                 By default, \QC exits without asking for confirmation, unless
+                 there are unsaved changes in open files. To always be asked,
+                 select the \uicontrol {Ask for confirmation before exiting}
+                 check box in \uicontrol Tools > \uicontrol Options >
+                 \uicontrol Environment > \uicontrol System.
             \li  Ctrl+Q
     \endtable
 
@@ -301,6 +310,10 @@
         \row
             \li  Trigger a completion in this scope
             \li  Ctrl+Space
+        \row
+            \li  Display tooltips for function signatures regardless of the
+                 cursor position in the function call
+            \li  Ctrl+Shift+D
         \row
             \li  Copy line
             \li  Ctrl+Ins
@@ -338,7 +351,7 @@
             \li  Ctrl+0
         \row
             \li  Toggle Vim-style editing
-            \li  Alt+V, Alt+V
+            \li  Alt+Y, Alt+Y
         \row
             \li  Split
             \li  Ctrl+E, 2
@@ -504,7 +517,7 @@
             \li  Ctrl+Alt+Space
         \row
             \li  Execute user actions in FakeVim mode
-            \li  Alt+V, n, where n is the number of the user action, from 1 to 9
+            \li  Alt+Y, n, where n is the number of the user action, from 1 to 9
         \endif
     \endtable
 

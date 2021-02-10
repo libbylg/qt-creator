@@ -28,7 +28,7 @@
 #include "ui_findwidget.h"
 #include "currentdocumentfind.h"
 
-#include <coreplugin/id.h>
+#include <utils/id.h>
 #include <utils/styledbar.h>
 
 #include <QTimer>
@@ -124,7 +124,7 @@ private:
     void setFindFlag(FindFlag flag, bool enabled);
     bool hasFindFlag(FindFlag flag);
     FindFlags effectiveFindFlags();
-    FindToolBarPlaceHolder *findToolBarPlaceHolder() const;
+    static FindToolBarPlaceHolder *findToolBarPlaceHolder();
     bool toolBarHasFocus() const;
     ControlStyle controlStyle(bool replaceIsVisible);
     void setFindButtonStyle(Qt::ToolButtonStyle style);

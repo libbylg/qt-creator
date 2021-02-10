@@ -53,7 +53,7 @@ Column {
             }
 
             Label {
-                text: qsTr("Layout Direction")
+                text: qsTr("Layout direction")
             }
 
             SecondColumnLayout {
@@ -82,5 +82,8 @@ Column {
                 }
             }
         }
+    }
+
+    PaddingSection {
     }
 }

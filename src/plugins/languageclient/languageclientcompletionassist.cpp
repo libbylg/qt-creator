@@ -34,13 +34,13 @@
 #include <texteditor/codeassist/iassistprocessor.h>
 #include <texteditor/codeassist/genericproposal.h>
 #include <texteditor/codeassist/genericproposalmodel.h>
+#include <texteditor/texteditorsettings.h>
 #include <utils/algorithm.h>
 #include <utils/textutils.h>
 #include <utils/utilsicons.h>
 
 #include <QDebug>
 #include <QLoggingCategory>
-#include <QRegExp>
 #include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextDocument>
@@ -271,26 +271,34 @@ public:
 };
 
 
-class LanguageClientCompletionAssistProcessor : public IAssistProcessor
+class LanguageClientCompletionAssistProcessor final : public IAssistProcessor
 {
 public:
     LanguageClientCompletionAssistProcessor(Client *client);
+    ~LanguageClientCompletionAssistProcessor() override;
     IAssistProposal *perform(const AssistInterface *interface) override;
     bool running() override;
     bool needsRestart() const override { return true; }
+    void cancel() override;
 
 private:
     void handleCompletionResponse(const CompletionRequest::Response &response);
 
     QPointer<QTextDocument> m_document;
     QPointer<Client> m_client;
-    bool m_running = false;
+    Utils::optional<MessageId> m_currentRequest;
+    QMetaObject::Connection m_postponedUpdateConnection;
     int m_pos = -1;
 };
 
 LanguageClientCompletionAssistProcessor::LanguageClientCompletionAssistProcessor(Client *client)
     : m_client(client)
 { }
+
+LanguageClientCompletionAssistProcessor::~LanguageClientCompletionAssistProcessor()
+{
+    QTC_ASSERT(!running(), cancel());
+}
 
 static QString assistReasonString(AssistReason reason)
 {
@@ -307,20 +315,37 @@ IAssistProposal *LanguageClientCompletionAssistProcessor::perform(const AssistIn
     QTC_ASSERT(m_client, return nullptr);
     m_pos = interface->position();
     if (interface->reason() == IdleEditor) {
-        // Trigger an automatic completion request only when we are on a word with more than 2 "identifier" character
-        const QRegExp regexp("[_a-zA-Z0-9]*");
+        // Trigger an automatic completion request only when we are on a word with at least n "identifier" characters
+        const QRegularExpression regexp("^[_a-zA-Z0-9]+$");
+        auto hasMatch = [&regexp](const QString &txt) { return regexp.match(txt).hasMatch(); };
         int delta = 0;
-        while (m_pos - delta > 0 && regexp.exactMatch(interface->textAt(m_pos - delta - 1, delta + 1)))
+        while (m_pos - delta > 0 && hasMatch(interface->textAt(m_pos - delta - 1, delta + 1)))
             ++delta;
-        if (delta < 3)
+        if (delta < TextEditorSettings::completionSettings().m_characterThreshold)
             return nullptr;
+        if (m_client->documentUpdatePostponed(interface->filePath())) {
+            m_postponedUpdateConnection
+                = QObject::connect(m_client,
+                                   &Client::documentUpdated,
+                                   [this, interface](TextEditor::TextDocument *document) {
+                                       if (document->filePath() == interface->filePath())
+                                           perform(interface);
+                                   });
+            return nullptr;
+        }
     }
-    CompletionRequest completionRequest;
+    if (m_postponedUpdateConnection)
+        QObject::disconnect(m_postponedUpdateConnection);
     CompletionParams::CompletionContext context;
-    context.setTriggerKind(interface->reason() == ActivationCharacter
-                           ? CompletionParams::TriggerCharacter
-                           : CompletionParams::Invoked);
-    auto params = completionRequest.params().value_or(CompletionParams());
+    if (interface->reason() == ActivationCharacter) {
+        context.setTriggerKind(CompletionParams::TriggerCharacter);
+        QChar triggerCharacter = interface->characterAt(interface->position() - 1);
+        if (!triggerCharacter.isNull())
+            context.setTriggerCharacter(triggerCharacter);
+    } else {
+        context.setTriggerKind(CompletionParams::Invoked);
+    }
+    CompletionParams params;
     int line;
     int column;
     if (!Utils::Text::convertPosition(interface->textDocument(), m_pos, &line, &column))
@@ -329,14 +354,14 @@ IAssistProposal *LanguageClientCompletionAssistProcessor::perform(const AssistIn
     --column; // column is 0 based in the protocol
     params.setPosition({line, column});
     params.setContext(context);
-    params.setTextDocument(
-                DocumentUri::fromFilePath(Utils::FilePath::fromString(interface->fileName())));
+    params.setTextDocument(TextDocumentIdentifier(DocumentUri::fromFilePath(interface->filePath())));
+    CompletionRequest completionRequest(params);
     completionRequest.setResponseCallback([this](auto response) {
         this->handleCompletionResponse(response);
     });
-    completionRequest.setParams(params);
     m_client->sendContent(completionRequest);
-    m_running = true;
+    m_client->addAssistProcessor(this);
+    m_currentRequest = completionRequest.id();
     m_document = interface->textDocument();
     qCDebug(LOGLSPCOMPLETION) << QTime::currentTime()
                               << " : request completions at " << m_pos
@@ -346,22 +371,36 @@ IAssistProposal *LanguageClientCompletionAssistProcessor::perform(const AssistIn
 
 bool LanguageClientCompletionAssistProcessor::running()
 {
-    return m_running;
+    return m_currentRequest.has_value() || m_postponedUpdateConnection;
+}
+
+void LanguageClientCompletionAssistProcessor::cancel()
+{
+    if (m_currentRequest.has_value()) {
+        m_client->cancelRequest(m_currentRequest.value());
+        m_client->removeAssistProcessor(this);
+        m_currentRequest.reset();
+    } else if (m_postponedUpdateConnection) {
+        QObject::disconnect(m_postponedUpdateConnection);
+    }
 }
 
 void LanguageClientCompletionAssistProcessor::handleCompletionResponse(
     const CompletionRequest::Response &response)
 {
+    // We must report back to the code assistant under all circumstances
     qCDebug(LOGLSPCOMPLETION) << QTime::currentTime() << " : got completions";
-    m_running = false;
-    QTC_ASSERT(m_client, return);
-    if (auto error = response.error()) {
+    m_currentRequest.reset();
+    QTC_ASSERT(m_client, setAsyncProposalAvailable(nullptr); return);
+    if (auto error = response.error())
         m_client->log(error.value());
+
+    const Utils::optional<CompletionResult> &result = response.result();
+    if (!result || Utils::holds_alternative<std::nullptr_t>(*result)) {
+        setAsyncProposalAvailable(nullptr);
+        m_client->removeAssistProcessor(this);
         return;
     }
-    const Utils::optional<CompletionResult> &result = response.result();
-    if (!result || Utils::holds_alternative<std::nullptr_t>(*result))
-        return;
 
     QList<CompletionItem> items;
     if (Utils::holds_alternative<CompletionList>(*result)) {
@@ -374,12 +413,13 @@ void LanguageClientCompletionAssistProcessor::handleCompletionResponse(
     model->loadContent(Utils::transform(items, [](const CompletionItem &item){
         return static_cast<AssistProposalItemInterface *>(new LanguageClientCompletionItem(item));
     }));
-    auto proposal = new LanguageClientCompletionProposal(m_pos, model);
+    LanguageClientCompletionProposal *proposal = new LanguageClientCompletionProposal(m_pos, model);
     proposal->m_document = m_document;
     proposal->m_pos = m_pos;
     proposal->setFragile(true);
     proposal->setSupportsPrefix(false);
     setAsyncProposalAvailable(proposal);
+    m_client->removeAssistProcessor(this);
     qCDebug(LOGLSPCOMPLETION) << QTime::currentTime() << " : "
                               << items.count() << " completions handled";
 }
@@ -411,10 +451,12 @@ bool LanguageClientCompletionAssistProvider::isActivationCharSequence(const QStr
     });
 }
 
-void LanguageClientCompletionAssistProvider::setTriggerCharacters(QList<QString> triggerChars)
+void LanguageClientCompletionAssistProvider::setTriggerCharacters(
+    const Utils::optional<QList<QString>> triggerChars)
 {
-    m_triggerChars = triggerChars;
-    for (const QString &trigger : triggerChars) {
+    m_activationCharSequenceLength = 0;
+    m_triggerChars = triggerChars.value_or(QList<QString>());
+    for (const QString &trigger : qAsConst(m_triggerChars)) {
         if (trigger.length() > m_activationCharSequenceLength)
             m_activationCharSequenceLength = trigger.length();
     }

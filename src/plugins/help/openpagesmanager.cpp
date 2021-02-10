@@ -32,16 +32,19 @@
 #include "openpagesswitcher.h"
 #include "openpageswidget.h"
 
+#include <coreplugin/coreconstants.h>
+#include <coreplugin/modemanager.h>
+
+#include <utils/qtcassert.h>
+#include <utils/stringutils.h>
+#include <utils/styledbar.h>
+
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
 #include <QMenu>
 
 #include <QHelpEngine>
-
-#include <coreplugin/coreconstants.h>
-#include <coreplugin/modemanager.h>
-#include <utils/qtcassert.h>
 
 using namespace Core;
 using namespace Help::Internal;
@@ -110,7 +113,7 @@ QComboBox *OpenPagesManager::openPagesComboBox() const
 QStringList splitString(const QVariant &value)
 {
     using namespace Help::Constants;
-    return value.toString().split(ListSeparator, QString::SkipEmptyParts);
+    return value.toString().split(ListSeparator, Qt::SkipEmptyParts);
 }
 
 void OpenPagesManager::setupInitialPages()
@@ -134,15 +137,11 @@ void OpenPagesManager::setupInitialPages()
         const int pageCount = lastShownPageList.count();
 
         if (pageCount > 0) {
-            QList<float> zoomFactors = LocalHelpManager::lastShownPagesZoom();
-            while (zoomFactors.count() < pageCount)
-                zoomFactors.append(0.);
-
             initialPage = LocalHelpManager::lastSelectedTab();
             for (int curPage = 0; curPage < pageCount; ++curPage) {
                 const QString &curFile = lastShownPageList.at(curPage);
                 if (engine.findFile(curFile).isValid() || curFile == Help::Constants::AboutBlank) {
-                    m_helpWidget->addViewer(curFile, zoomFactors.at(curPage));
+                    m_helpWidget->addViewer(curFile);
                 } else if (curPage <= initialPage && initialPage > 0) {
                     --initialPage;
                 }

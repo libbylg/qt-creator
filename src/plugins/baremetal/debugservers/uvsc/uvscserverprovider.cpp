@@ -39,6 +39,7 @@
 #include <projectexplorer/project.h>
 #include <projectexplorer/runconfigurationaspects.h>
 
+#include <utils/pathchooser.h>
 #include <utils/qtcassert.h>
 
 #include <QComboBox>
@@ -57,12 +58,24 @@ namespace Internal {
 using namespace Uv;
 
 // Whole software package selection keys.
-constexpr char deviceSelectionKeyC[] = "BareMetal.UvscServerProvider.DeviceSelection";
-constexpr char driverSelectionKeyC[] = "BareMetal.UvscServerProvider.DriverSelection";
+constexpr char toolsIniKeyC[] = "ToolsIni";
+constexpr char deviceSelectionKeyC[] = "DeviceSelection";
+constexpr char driverSelectionKeyC[] = "DriverSelection";
 
 constexpr int defaultPortNumber = 5101;
 
 // UvscServerProvider
+
+QString UvscServerProvider::buildDllRegistryKey(const DriverSelection &driver)
+{
+    const QFileInfo fi(driver.dll);
+    return fi.baseName();
+}
+
+QString UvscServerProvider::adjustFlashAlgorithmProperty(const QString &property)
+{
+    return property.startsWith("0x") ? property.mid(2) : property;
+}
 
 UvscServerProvider::UvscServerProvider(const QString &id)
     : IDebugServerProvider(id)
@@ -76,6 +89,16 @@ UvscServerProvider::UvscServerProvider(const UvscServerProvider &other)
     : IDebugServerProvider(other.id())
 {
     setEngineType(UvscEngineType);
+}
+
+void UvscServerProvider::setToolsIniFile(const Utils::FilePath &toolsIniFile)
+{
+    m_toolsIniFile = toolsIniFile;
+}
+
+Utils::FilePath UvscServerProvider::toolsIniFile() const
+{
+    return m_toolsIniFile;
 }
 
 void UvscServerProvider::setDeviceSelection(const DeviceSelection &deviceSelection)
@@ -123,7 +146,8 @@ bool UvscServerProvider::operator==(const IDebugServerProvider &other) const
     if (!IDebugServerProvider::operator==(other))
         return false;
     const auto p = static_cast<const UvscServerProvider *>(&other);
-    return m_deviceSelection == p->m_deviceSelection
+    return m_toolsIniFile == p->m_toolsIniFile
+            && m_deviceSelection == p->m_deviceSelection
             && m_driverSelection == p->m_driverSelection
             && m_toolsetNumber == p->m_toolsetNumber;
 }
@@ -147,6 +171,7 @@ FilePath UvscServerProvider::buildOptionsFilePath(DebuggerRunTool *runTool) cons
 QVariantMap UvscServerProvider::toMap() const
 {
     QVariantMap data = IDebugServerProvider::toMap();
+    data.insert(toolsIniKeyC, m_toolsIniFile.toVariant());
     data.insert(deviceSelectionKeyC, m_deviceSelection.toMap());
     data.insert(driverSelectionKeyC, m_driverSelection.toMap());
     return data;
@@ -187,8 +212,12 @@ bool UvscServerProvider::aboutToRun(DebuggerRunTool *runTool, QString &errorMess
     if (!optFilePath.exists())
         return false;
 
+    const FilePath peripheralDescriptionFile = FilePath::fromString(m_deviceSelection.svd);
+
     Runnable inferior;
     inferior.executable = bin;
+    inferior.extraData.insert(Debugger::Constants::kPeripheralDescriptionFile,
+                              peripheralDescriptionFile.toVariant());
     inferior.extraData.insert(Debugger::Constants::kUVisionProjectFilePath, projFilePath.toString());
     inferior.extraData.insert(Debugger::Constants::kUVisionOptionsFilePath, optFilePath.toString());
     inferior.extraData.insert(Debugger::Constants::kUVisionSimulator, isSimulator());
@@ -217,6 +246,7 @@ bool UvscServerProvider::fromMap(const QVariantMap &data)
 {
     if (!IDebugServerProvider::fromMap(data))
         return false;
+    m_toolsIniFile = FilePath::fromVariant(data.value(toolsIniKeyC));
     m_deviceSelection.fromMap(data.value(deviceSelectionKeyC).toMap());
     m_driverSelection.fromMap(data.value(driverSelectionKeyC).toMap());
     return true;
@@ -231,7 +261,7 @@ Utils::FilePath UvscServerProvider::projectFilePath(DebuggerRunTool *runTool,
     const Uv::Project project(this, runTool);
     if (!writer.write(&project)) {
         errorMessage = BareMetalDebugSupport::tr(
-                    "Unable to create an uVision project template");
+                    "Unable to create a uVision project template.");
         return {};
     }
     return projectPath;
@@ -257,6 +287,11 @@ UvscServerProviderConfigWidget::UvscServerProviderConfigWidget(UvscServerProvide
 {
     m_hostWidget = new HostWidget;
     m_mainLayout->addRow(tr("Host:"), m_hostWidget);
+    m_toolsIniChooser = new PathChooser;
+    m_toolsIniChooser->setExpectedKind(PathChooser::File);
+    m_toolsIniChooser->setPromptDialogFilter("tools.ini");
+    m_toolsIniChooser->setPromptDialogTitle(tr("Choose Keil Toolset Configuration File"));
+    m_mainLayout->addRow(tr("Tools file path:"), m_toolsIniChooser);
     m_deviceSelector = new DeviceSelector;
     m_mainLayout->addRow(tr("Target device:"), m_deviceSelector);
     m_driverSelector = new DriverSelector(provider->supportedDrivers());
@@ -266,15 +301,27 @@ UvscServerProviderConfigWidget::UvscServerProviderConfigWidget(UvscServerProvide
 
     connect(m_hostWidget, &HostWidget::dataChanged,
             this, &UvscServerProviderConfigWidget::dirty);
+    connect(m_toolsIniChooser, &PathChooser::pathChanged,
+            this, &UvscServerProviderConfigWidget::dirty);
     connect(m_deviceSelector, &DeviceSelector::selectionChanged,
             this, &UvscServerProviderConfigWidget::dirty);
     connect(m_driverSelector, &DriverSelector::selectionChanged,
             this, &UvscServerProviderConfigWidget::dirty);
+
+    auto updateSelectors = [this]() {
+        const FilePath toolsIniFile = m_toolsIniChooser->filePath();
+        m_deviceSelector->setToolsIniFile(toolsIniFile);
+        m_driverSelector->setToolsIniFile(toolsIniFile);
+    };
+
+    connect(m_toolsIniChooser, &PathChooser::pathChanged, updateSelectors);
+    updateSelectors();
 }
 
 void UvscServerProviderConfigWidget::apply()
 {
     const auto p = static_cast<UvscServerProvider *>(m_provider);
+    p->setToolsIniFile(toolsIniFile());
     p->setDeviceSelection(deviceSelection());
     p->setDriverSelection(driverSelection());
     IDebugServerProviderConfigWidget::apply();
@@ -284,6 +331,16 @@ void UvscServerProviderConfigWidget::discard()
 {
     setFromProvider();
     IDebugServerProviderConfigWidget::discard();
+}
+
+void UvscServerProviderConfigWidget::setToolsIniFile(const Utils::FilePath &toolsIniFile)
+{
+    m_toolsIniChooser->setFilePath(toolsIniFile);
+}
+
+Utils::FilePath UvscServerProviderConfigWidget::toolsIniFile() const
+{
+    return m_toolsIniChooser->filePath();
 }
 
 void UvscServerProviderConfigWidget::setDeviceSelection(const DeviceSelection &deviceSelection)
@@ -310,6 +367,7 @@ void UvscServerProviderConfigWidget::setFromProvider()
 {
     const auto p = static_cast<UvscServerProvider *>(m_provider);
     m_hostWidget->setChannel(p->channel());
+    m_toolsIniChooser->setFilePath(p->toolsIniFile());
     m_deviceSelector->setSelection(p->deviceSelection());
     m_driverSelector->setSelection(p->driverSelection());
 }
@@ -332,13 +390,16 @@ UvscServerProviderRunner::UvscServerProviderRunner(ProjectExplorer::RunControl *
         this->runControl()->setApplicationProcessHandle(pid);
         reportStarted();
     });
-    connect(&m_process, QOverload<int, QProcess::ExitStatus>::of(&QtcProcess::finished),
-            this, [this] (int exitCode, QProcess::ExitStatus status) {
-        const QString msg = (status == QProcess::CrashExit)
-                ? tr("%1 crashed.") : tr("%2 exited with code %1").arg(exitCode);
-        appendMessage(msg.arg(m_process.program()), Utils::NormalMessageFormat);
-        reportStopped();
-    });
+    connect(&m_process,
+            QOverload<int, QProcess::ExitStatus>::of(&QtcProcess::finished),
+            this,
+            [this](int exitCode, QProcess::ExitStatus status) {
+                const QString msg = (status == QProcess::CrashExit)
+                                        ? RunControl::tr("%1 crashed.")
+                                        : RunControl::tr("%2 exited with code %1").arg(exitCode);
+                appendMessage(msg.arg(m_process.program()), Utils::NormalMessageFormat);
+                reportStopped();
+            });
     connect(&m_process, &QtcProcess::errorOccurred, this, [this] (QProcess::ProcessError error) {
         if (error == QProcess::Timedout)
             return; // No actual change on the process side.

@@ -358,7 +358,7 @@ QString ScxmlTag::editorInfo(const QString &key) const
 
 bool ScxmlTag::hasEditorInfo(const QString &key) const
 {
-    return m_editorInfo.keys().contains(key);
+    return m_editorInfo.contains(key);
 }
 
 void ScxmlTag::setAttributeName(int ind, const QString &name)
@@ -485,6 +485,20 @@ bool ScxmlTag::isRootTag() const
     return m_document->rootTag() == this;
 }
 
+ScxmlTag *ScxmlTag::tagForId(const QString &id) const
+{
+    for (ScxmlTag *child : m_childTags) {
+        const TagType type = child->tagType();
+        const bool typeOK = type == State || type == Parallel || type == History || type == Final;
+        if (typeOK && child->attribute("id") == id)
+            return child;
+        ScxmlTag *foundTag = child->tagForId(id);
+        if (foundTag)
+            return foundTag;
+    }
+    return nullptr;
+}
+
 QVector<ScxmlTag*> ScxmlTag::allChildren() const
 {
     return m_childTags;
@@ -579,7 +593,7 @@ void ScxmlTag::readXml(QXmlStreamReader &xml, bool checkCopyId)
     // Read and set attributes
     QXmlStreamAttributes attributes = xml.attributes();
     for (int i = 0; i < attributes.count(); ++i) {
-        if (m_tagType == Scxml && attributes[i].qualifiedName() == "initial")
+        if (m_tagType == Scxml && attributes[i].qualifiedName() == QLatin1String("initial"))
             scxmlInitial = attributes[i].value().toString();
         else {
             QString key = attributes[i].qualifiedName().toString();

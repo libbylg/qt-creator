@@ -30,6 +30,7 @@
 #include <QGraphicsScene>
 #include <QPointer>
 #include <QHash>
+#include <QElapsedTimer>
 
 QT_BEGIN_NAMESPACE
 class QGraphicsSceneMouseEvent;
@@ -55,7 +56,9 @@ public:
         Default,
         Flow,
         FlowAction,
-        FlowTransition
+        FlowTransition,
+        FlowDecision,
+        FlowWildcard
     };
 
     FormEditorScene(FormEditorWidget *widget, FormEditorView *editorView);
@@ -95,6 +98,9 @@ public:
     void setShowBoundingRects(bool show);
     bool showBoundingRects() const;
 
+    bool annotationVisibility() const;
+    void setAnnotationVisibility(bool status);
+
 protected:
     bool event(QEvent *event) override;
     void dropEvent(QGraphicsSceneDragDropEvent * event) override;
@@ -114,6 +120,7 @@ protected:
     void keyReleaseEvent(QKeyEvent *keyEvent) override;
 
     void focusOutEvent(QFocusEvent *focusEvent) override;
+    void focusInEvent(QFocusEvent *focusEvent) override;
 
 private:
     QList<QGraphicsItem *> removeLayerItems(const QList<QGraphicsItem *> &itemList);
@@ -129,6 +136,8 @@ private:
     QPointer<LayerItem> m_manipulatorLayerItem;
     ModelNode m_dragNode;
     bool m_showBoundingRects;
+    bool m_annotationVisibility;
+    QElapsedTimer m_usageTimer;
 };
 
 } // namespace QmlDesigner

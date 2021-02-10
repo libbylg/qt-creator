@@ -54,6 +54,7 @@
 #include <QFont>
 #include <QPen>
 #include <QPainter>
+#include <QPainterPath>
 
 namespace qmt {
 
@@ -67,7 +68,7 @@ public:
     {
     }
 
-    void visitDInheritance(const DInheritance *inheritance)
+    void visitDInheritance(const DInheritance *inheritance) final
     {
         DObject *baseObject = m_diagramSceneModel->diagramController()->findElement<DObject>(inheritance->base(), m_diagramSceneModel->diagram());
         QMT_ASSERT(baseObject, return);
@@ -98,7 +99,7 @@ public:
         m_arrow->setPoints(m_points);
     }
 
-    void visitDDependency(const DDependency *dependency)
+    void visitDDependency(const DDependency *dependency) final
     {
         ArrowItem::Head endAHead = ArrowItem::HeadNone;
         ArrowItem::Head endBHead = ArrowItem::HeadNone;
@@ -125,7 +126,7 @@ public:
         m_arrow->setPoints(m_points);
     }
 
-    void visitDAssociation(const DAssociation *association)
+    void visitDAssociation(const DAssociation *association) final
     {
         m_arrow->setShaft(ArrowItem::ShaftSolid);
         m_arrow->setArrowSize(12.0);
@@ -169,7 +170,7 @@ public:
         m_arrow->setPoints(m_points);
     }
 
-    void visitDConnection(const DConnection *connection)
+    void visitDConnection(const DConnection *connection) final
     {
 
         ArrowItem::Shaft shaft = ArrowItem::ShaftSolid;

@@ -27,13 +27,16 @@
 
 #include "core_global.h"
 
+#include <utils/id.h>
+
 #include <QObject>
 
-namespace Utils { class FilePath; }
+namespace Utils {
+class FilePath;
+class InfoBar;
+} // namespace Utils
 
 namespace Core {
-class Id;
-class InfoBar;
 
 namespace Internal {
 class IDocumentPrivate;
@@ -65,7 +68,6 @@ public:
 
     enum ChangeType {
         TypeContents,
-        TypePermissions,
         TypeRemoved
     };
 
@@ -82,10 +84,9 @@ public:
     IDocument(QObject *parent = nullptr);
     ~IDocument() override;
 
-    void setId(Id id);
-    Id id() const;
+    void setId(Utils::Id id);
+    Utils::Id id() const;
 
-    // required to be re-implemented for documents of IEditors
     virtual OpenResult open(QString *errorString, const QString &fileName, const QString &realFileName);
 
     virtual bool save(QString *errorString, const QString &fileName = QString(), bool autoSave = false);
@@ -102,7 +103,7 @@ public:
     void setUniqueDisplayName(const QString &name);
     QString uniqueDisplayName() const;
 
-    virtual bool isFileReadOnly() const;
+    bool isFileReadOnly() const;
     bool isTemporary() const;
     void setTemporary(bool temporary);
 
@@ -121,7 +122,7 @@ public:
     virtual ReloadBehavior reloadBehavior(ChangeTrigger state, ChangeType type) const;
     virtual bool reload(QString *errorString, ReloadFlag flag, ChangeType type);
 
-    virtual void checkPermissions();
+    void checkPermissions();
 
     bool autoSave(QString *errorString, const QString &filePath);
     void setRestoredFrom(const QString &name);
@@ -130,7 +131,7 @@ public:
     bool hasWriteWarning() const;
     void setWriteWarning(bool has);
 
-    InfoBar *infoBar();
+    Utils::InfoBar *infoBar();
 
 signals:
     // For meta data changes: file name, modified state, ...

@@ -35,6 +35,7 @@
 #include <utils/qrcparser.h>
 
 #include <QDir>
+#include <QDirIterator>
 
 using namespace LanguageUtils;
 using namespace QmlJS::AST;
@@ -92,8 +93,9 @@ public:
 
     bool importLibrary(const Document::Ptr &doc,
                        const QString &libraryPath,
-                       Import *import,
-                       const QString &importPath = QString());
+                       Import *import, ObjectValue *targetObject,
+                       const QString &importPath = QString(),
+                       bool optional = false);
     void loadQmldirComponents(ObjectValue *import,
                               LanguageUtils::ComponentVersion version,
                               const LibraryInfo &libraryInfo,
@@ -101,8 +103,8 @@ public:
     void loadImplicitDirectoryImports(Imports *imports, const Document::Ptr &doc);
     void loadImplicitDefaultImports(Imports *imports);
 
-    void error(const Document::Ptr &doc, const AST::SourceLocation &loc, const QString &message);
-    void warning(const Document::Ptr &doc, const AST::SourceLocation &loc, const QString &message);
+    void error(const Document::Ptr &doc, const SourceLocation &loc, const QString &message);
+    void warning(const Document::Ptr &doc, const SourceLocation &loc, const QString &message);
     void appendDiagnostic(const Document::Ptr &doc, const DiagnosticMessage &message);
 
 private:
@@ -238,6 +240,32 @@ Context::ImportsPerDocument LinkPrivate::linkImports()
     return importsPerDocument;
 }
 
+/**
+ * A workaround for prototype issues with QEasingCurve in Qt 5.15.
+ *
+ * In this Qt version, QEasingCurve is declared in builtins.qmltypes, but its
+ * prototype, QQmlEasingValueType, is only contained in the QtQml module.
+ *
+ * This code attempts to resolve QEasingCurve's prototype if it hasn't been set
+ * already. It's intended to be called after all CppQmlTypes have been loaded.
+ */
+static void workaroundQEasingCurve(CppQmlTypes &cppTypes)
+{
+    const CppComponentValue *easingCurve = cppTypes.objectByCppName("QEasingCurve");
+    if (!easingCurve || easingCurve->prototype())
+        return;
+
+    const QString superclassName = easingCurve->metaObject()->superclassName();
+    if (superclassName.isEmpty())
+        return;
+
+    const CppComponentValue *prototype = cppTypes.objectByCppName(superclassName);
+    if (!prototype)
+        return;
+
+    const_cast<CppComponentValue *>(easingCurve)->setPrototype(prototype);
+}
+
 void LinkPrivate::populateImportedTypes(Imports *imports, const Document::Ptr &doc)
 {
     importableModuleApis.clear();
@@ -286,6 +314,8 @@ void LinkPrivate::populateImportedTypes(Imports *imports, const Document::Ptr &d
         if (import.object)
             imports->append(import);
     }
+
+    workaroundQEasingCurve(m_valueOwner->cppQmlTypes());
 }
 
 /*
@@ -311,7 +341,7 @@ Import LinkPrivate::importFileOrDirectory(const Document::Ptr &doc, const Import
             || importInfo.type() == ImportType::ImplicitDirectory) {
         import.object = new ObjectValue(m_valueOwner);
 
-        importLibrary(doc, path, &import);
+        importLibrary(doc, path, &import, import.object);
 
         const QList<Document::Ptr> documentsInDirectory = m_snapshot.documentsInDirectory(path);
         for (const Document::Ptr &importedDoc : documentsInDirectory) {
@@ -336,7 +366,7 @@ Import LinkPrivate::importFileOrDirectory(const Document::Ptr &doc, const Import
     } else if (importInfo.type() == ImportType::QrcDirectory){
         import.object = new ObjectValue(m_valueOwner);
 
-        importLibrary(doc, path, &import);
+        importLibrary(doc, path, &import, import.object);
 
         const QMap<QString, QStringList> paths
                 = ModelManagerInterface::instance()->filesInQrcPath(path);
@@ -380,14 +410,21 @@ Import LinkPrivate::importNonFile(const Document::Ptr &doc, const ImportInfo &im
     const QString packageName = importInfo.name();
     const ComponentVersion version = importInfo.version();
 
-    QString libraryPath = modulePath(packageName, version.toString(), m_importPaths);
-    bool importFound = !libraryPath.isEmpty() && importLibrary(doc, libraryPath, &import);
+    QStringList libraryPaths = modulePaths(packageName, version.toString(), m_importPaths);
+    bool importFound = false;
+    for (const QString &libPath : libraryPaths) {
+        importFound = !libPath.isEmpty() && importLibrary(doc, libPath, &import, import.object);
+        if (importFound)
+            break;
+    }
 
     if (!importFound) {
         for (const QString &dir : qAsConst(m_applicationDirectories)) {
+            QDirIterator it(dir, QStringList { "*.qmltypes" }, QDir::Files);
+
             // This adds the types to the C++ types, to be found below if applicable.
-            if (QFile::exists(dir + "/app.qmltypes"))
-                importLibrary(doc, dir, &import);
+            if (it.hasNext())
+                importLibrary(doc, dir, &import, import.object);
         }
     }
 
@@ -433,7 +470,10 @@ Import LinkPrivate::importNonFile(const Document::Ptr &doc, const ImportInfo &im
 bool LinkPrivate::importLibrary(const Document::Ptr &doc,
                                 const QString &libraryPath,
                                 Import *import,
-                                const QString &importPath)
+                                ObjectValue *targetObject,
+                                const QString &importPath,
+                                bool optional
+                                )
 {
     const ImportInfo &importInfo = import->info;
 
@@ -448,6 +488,50 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
     if (const UiImport *ast = importInfo.ast())
         errorLoc = locationFromRange(ast->firstSourceLocation(), ast->lastSourceLocation());
 
+    // Load imports that are mentioned by the "import" command in a qmldir
+    // file into the same targetObject, using the same version and "as".
+    //
+    // Note: Since this works on the same targetObject, the ModuleApi setPrototype()
+    // logic will not work. But ModuleApi isn't used in Qt versions that use import
+    // commands in qmldir files, and is pending removal in Qt 6.
+    for (const auto &toImport : libraryInfo.imports()) {
+        QString importName = toImport.module;
+        ComponentVersion vNow = toImport.version;
+        /* There was a period in which no version == auto
+         * Required for QtQuick imports less than 2.15
+         */
+        if ((toImport.flags & QmlDirParser::Import::Auto)
+                || !vNow.isValid())
+            vNow = version;
+        Import subImport;
+        subImport.valid = true;
+        subImport.info = ImportInfo::moduleImport(importName, vNow, importInfo.as(), importInfo.ast());
+
+        const QStringList libraryPaths = modulePaths(importName, vNow.toString(), m_importPaths);
+        subImport.libraryPath = libraryPaths.value(0); // first is the best match
+
+        bool subImportFound = importLibrary(doc, subImport.libraryPath, &subImport, targetObject, importPath, true);
+
+        if (!subImportFound && errorLoc.isValid()) {
+            import->valid = false;
+            if (!(optional || (toImport.flags & QmlDirParser::Import::Optional)))
+                error(doc, errorLoc,
+                      Link::tr(
+                          "Implicit import '%1' of QML module '%2' not found.\n\n"
+                      "Import paths:\n"
+                      "%3\n\n"
+                      "For qmake projects, use the QML_IMPORT_PATH variable to add import paths.\n"
+                      "For Qbs projects, declare and set a qmlImportPaths property in your product "
+                      "to add import paths.\n"
+                      "For qmlproject projects, use the importPaths property to add import paths.\n"
+                      "For CMake projects, make sure QML_IMPORT_PATH variable is in CMakeCache.txt.\n")
+                  .arg(importName, importInfo.name(), m_importPaths.join(QLatin1Char('\n'))));
+        } else if (!subImport.valid) {
+            import->valid = false;
+        }
+    }
+
+    // Load types from qmltypes or plugins
     if (!libraryInfo.plugins().isEmpty() || !libraryInfo.typeInfos().isEmpty()) {
         if (libraryInfo.pluginTypeInfoStatus() == LibraryInfo::NoTypeInfo) {
             ModelManagerInterface *modelManager = ModelManagerInterface::instance();
@@ -465,11 +549,11 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
                                 QString(), version.toString());
                 }
             }
-            if (errorLoc.isValid()) {
+            if (!optional && errorLoc.isValid()) {
                 appendDiagnostic(doc, DiagnosticMessage(
                                      Severity::ReadingTypeInfoWarning, errorLoc,
                                      Link::tr("QML module contains C++ plugins, "
-                                              "currently reading type information...")));
+                                              "currently reading type information... %1").arg(import->info.name())));
                 import->valid = false;
             }
         } else if (libraryInfo.pluginTypeInfoStatus() == LibraryInfo::DumpError
@@ -477,7 +561,7 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
             // Only underline import if package isn't described in .qmltypes anyway
             // and is not a private package
             QString packageName = importInfo.name();
-            if (errorLoc.isValid()
+            if (!optional && errorLoc.isValid()
                     && (packageName.isEmpty()
                         || !m_valueOwner->cppQmlTypes().hasModule(packageName))
                     && !packageName.endsWith(QLatin1String("private"), Qt::CaseInsensitive)) {
@@ -490,7 +574,7 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
             const auto objects = m_valueOwner->cppQmlTypes().createObjectsForImport(packageName,
                                                                                     version);
             for (const CppComponentValue *object : objects)
-                import->object->setMember(object->className(), object);
+                targetObject->setMember(object->className(), object);
 
             // all but no-uri module apis become available for import
             QList<ModuleApiInfo> noUriModuleApis;
@@ -505,24 +589,25 @@ bool LinkPrivate::importLibrary(const Document::Ptr &doc,
             // if a module api has no uri, it shares the same name
             ModuleApiInfo sameUriModuleApi = findBestModuleApi(noUriModuleApis, version);
             if (sameUriModuleApi.version.isValid()) {
-                import->object->setPrototype(m_valueOwner->cppQmlTypes()
+                targetObject->setPrototype(m_valueOwner->cppQmlTypes()
                                              .objectByCppName(sameUriModuleApi.cppName));
             }
         }
     }
 
-    loadQmldirComponents(import->object, version, libraryInfo, libraryPath);
+    // Load types that are mentioned explicitly in the qmldir
+    loadQmldirComponents(targetObject, version, libraryInfo, libraryPath);
 
     return true;
 }
 
-void LinkPrivate::error(const Document::Ptr &doc, const AST::SourceLocation &loc,
+void LinkPrivate::error(const Document::Ptr &doc, const SourceLocation &loc,
                         const QString &message)
 {
     appendDiagnostic(doc, DiagnosticMessage(Severity::Error, loc, message));
 }
 
-void LinkPrivate::warning(const Document::Ptr &doc, const AST::SourceLocation &loc,
+void LinkPrivate::warning(const Document::Ptr &doc, const SourceLocation &loc,
                           const QString &message)
 {
     appendDiagnostic(doc, DiagnosticMessage(Severity::Warning, loc, message));

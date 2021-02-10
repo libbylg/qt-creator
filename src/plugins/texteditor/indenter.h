@@ -85,7 +85,6 @@ public:
         indent(cursor, QChar::Null, tabSettings, cursorPositionInEditor);
     }
 
-    // By default just calls indent with default settings.
     virtual Utils::Text::Replacements format(const RangesInLines & /*rangesInLines*/)
     {
         return Utils::Text::Replacements();
@@ -120,6 +119,8 @@ public:
                           const TabSettings &tabSettings,
                           int cursorPositionInEditor = -1)
         = 0;
+
+    virtual Utils::optional<int> margin() const { return Utils::nullopt; }
 
 protected:
     QTextDocument *m_doc;

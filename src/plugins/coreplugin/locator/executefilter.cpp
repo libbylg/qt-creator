@@ -38,9 +38,9 @@ ExecuteFilter::ExecuteFilter()
 {
     setId("Execute custom commands");
     setDisplayName(tr("Execute Custom Commands"));
-    setShortcutString("!");
+    setDefaultShortcutString("!");
     setPriority(High);
-    setIncludedByDefault(false);
+    setDefaultIncludedByDefault(false);
 
     m_process = new Utils::QtcProcess(this);
     m_process->setEnvironment(Utils::Environment::systemEnvironment());
@@ -69,7 +69,7 @@ QList<LocatorFilterEntry> ExecuteFilter::matchesFor(QFutureInterface<LocatorFilt
         LocatorFilterEntry filterEntry(this, cmd, QVariant());
         const int index = cmd.indexOf(entry, 0, entryCaseSensitivity);
         if (index >= 0) {
-            filterEntry.highlightInfo = {index, entry.length()};
+            filterEntry.highlightInfo = {index, int(entry.length())};
             value.append(filterEntry);
         } else {
             others.append(filterEntry);
@@ -97,7 +97,7 @@ void ExecuteFilter::accept(LocatorFilterEntry selection,
     bool found;
     QString workingDirectory = Utils::globalMacroExpander()->value("CurrentDocument:Path", &found);
     if (!found || workingDirectory.isEmpty())
-        workingDirectory = Utils::globalMacroExpander()->value("CurrentProject:Path", &found);
+        workingDirectory = Utils::globalMacroExpander()->value("CurrentDocument:Project:Path", &found);
 
     ExecuteData d;
     d.workingDirectory = workingDirectory;
@@ -134,7 +134,7 @@ void ExecuteFilter::finished(int exitCode, QProcess::ExitStatus status)
         message = tr("Command \"%1\" finished.").arg(commandName);
     else
         message = tr("Command \"%1\" failed.").arg(commandName);
-    MessageManager::write(message);
+    MessageManager::writeFlashing(message);
 
     m_taskQueue.dequeue();
     if (!m_taskQueue.isEmpty())
@@ -143,17 +143,17 @@ void ExecuteFilter::finished(int exitCode, QProcess::ExitStatus status)
 
 void ExecuteFilter::readStandardOutput()
 {
-    QByteArray data = m_process->readAllStandardOutput();
-    MessageManager::write(QTextCodec::codecForLocale()->toUnicode(data.constData(), data.size(),
-                                                                  &m_stdoutState));
+    const QByteArray data = m_process->readAllStandardOutput();
+    MessageManager::writeSilently(
+        QTextCodec::codecForLocale()->toUnicode(data.constData(), data.size(), &m_stdoutState));
 }
 
 void ExecuteFilter::readStandardError()
 {
     static QTextCodec::ConverterState state;
     QByteArray data = m_process->readAllStandardError();
-    MessageManager::write(QTextCodec::codecForLocale()->toUnicode(data.constData(), data.size(),
-                                                                  &m_stderrState));
+    MessageManager::writeSilently(
+        QTextCodec::codecForLocale()->toUnicode(data.constData(), data.size(), &m_stderrState));
 }
 
 void ExecuteFilter::runHeadCommand()
@@ -162,20 +162,22 @@ void ExecuteFilter::runHeadCommand()
         const ExecuteData &d = m_taskQueue.head();
         const Utils::FilePath fullPath = Utils::Environment::systemEnvironment().searchInPath(d.executable);
         if (fullPath.isEmpty()) {
-            MessageManager::write(tr("Could not find executable for \"%1\".").arg(d.executable));
+            MessageManager::writeDisrupting(
+                tr("Could not find executable for \"%1\".").arg(d.executable));
             m_taskQueue.dequeue();
             runHeadCommand();
             return;
         }
-        MessageManager::write(tr("Starting command \"%1\".").arg(headCommand()));
+        MessageManager::writeDisrupting(tr("Starting command \"%1\".").arg(headCommand()));
         m_process->setWorkingDirectory(d.workingDirectory);
         m_process->setCommand({fullPath, d.arguments, Utils::CommandLine::Raw});
         m_process->start();
         m_process->closeWriteChannel();
         if (!m_process->waitForStarted(1000)) {
-             MessageManager::write(tr("Could not start process: %1.").arg(m_process->errorString()));
-             m_taskQueue.dequeue();
-             runHeadCommand();
+            MessageManager::writeFlashing(
+                tr("Could not start process: %1.").arg(m_process->errorString()));
+            m_taskQueue.dequeue();
+            runHeadCommand();
         }
     }
 }

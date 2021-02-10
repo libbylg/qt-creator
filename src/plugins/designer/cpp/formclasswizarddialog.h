@@ -50,10 +50,8 @@ public:
 
     Designer::FormClassWizardParameters parameters() const;
 
-    bool validateCurrentPage();
-
 protected:
-    void initializePage(int id);
+    void initializePage(int id) final;
 
 private:
     FormTemplateWizardPage *m_formPage = nullptr;

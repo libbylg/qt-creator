@@ -51,13 +51,26 @@ static clang::format::FormatStyle qtcStyle()
     style.Language = FormatStyle::LK_Cpp;
     style.AccessModifierOffset = -4;
     style.AlignAfterOpenBracket = FormatStyle::BAS_Align;
+#if LLVM_VERSION_MAJOR >= 12
+    style.AlignConsecutiveAssignments = FormatStyle::ACS_None;
+    style.AlignConsecutiveDeclarations = FormatStyle::ACS_None;
+#else
     style.AlignConsecutiveAssignments = false;
     style.AlignConsecutiveDeclarations = false;
+#endif
     style.AlignEscapedNewlines = FormatStyle::ENAS_DontAlign;
+#if LLVM_VERSION_MAJOR >= 11
+    style.AlignOperands = FormatStyle::OAS_Align;
+#else
     style.AlignOperands = true;
+#endif
     style.AlignTrailingComments = true;
     style.AllowAllParametersOfDeclarationOnNextLine = true;
+#if LLVM_VERSION_MAJOR >= 10
+    style.AllowShortBlocksOnASingleLine = FormatStyle::SBS_Never;
+#else
     style.AllowShortBlocksOnASingleLine = false;
+#endif
     style.AllowShortCaseLabelsOnASingleLine = false;
     style.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_Inline;
 #if LLVM_VERSION_MAJOR >= 9
@@ -72,7 +85,11 @@ static clang::format::FormatStyle qtcStyle()
     style.BinPackArguments = false;
     style.BinPackParameters = false;
     style.BraceWrapping.AfterClass = true;
+#if LLVM_VERSION_MAJOR >= 10
+    style.BraceWrapping.AfterControlStatement = FormatStyle::BWACS_Never;
+#else
     style.BraceWrapping.AfterControlStatement = false;
+#endif
     style.BraceWrapping.AfterEnum = false;
     style.BraceWrapping.AfterFunction = true;
     style.BraceWrapping.AfterNamespace = false;
@@ -103,7 +120,7 @@ static clang::format::FormatStyle qtcStyle()
     style.ExperimentalAutoDetectBinPacking = false;
     style.FixNamespaceComments = true;
     style.ForEachMacros = {"forever", "foreach", "Q_FOREACH", "BOOST_FOREACH"};
-    style.IncludeStyle.IncludeCategories = {{"^<Q.*", 200}};
+    style.IncludeStyle.IncludeCategories = {{"^<Q.*", 200, 200}};
     style.IncludeStyle.IncludeIsMainRegex = "(Test)?$";
     style.IndentCaseLabels = false;
     style.IndentWidth = 4;

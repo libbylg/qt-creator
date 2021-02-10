@@ -103,6 +103,11 @@ void QbsSettings::setSettingsData(const QbsSettingsData &settings)
     }
 }
 
+QbsSettingsData QbsSettings::rawSettingsData()
+{
+    return instance().m_settings;
+}
+
 QbsSettings::QbsSettings()
 {
     loadSettings();
@@ -112,8 +117,9 @@ void QbsSettings::loadSettings()
 {
     QSettings * const s = Core::ICore::settings();
     m_settings.qbsExecutableFilePath = FilePath::fromString(s->value(QBS_EXE_KEY).toString());
-    m_settings.defaultInstallDirTemplate = s->value(QBS_DEFAULT_INSTALL_DIR_KEY,
-                                                    "%{CurrentBuild:QbsBuildRoot}").toString();
+    m_settings.defaultInstallDirTemplate = s->value(
+                QBS_DEFAULT_INSTALL_DIR_KEY,
+                "%{CurrentBuild:QbsBuildRoot}/install-root").toString();
     m_settings.useCreatorSettings = s->value(USE_CREATOR_SETTINGS_KEY, true).toBool();
 }
 
@@ -132,7 +138,7 @@ public:
     SettingsWidget()
     {
         m_qbsExePathChooser.setExpectedKind(PathChooser::ExistingCommand);
-        m_qbsExePathChooser.setFileName(QbsSettings::qbsExecutableFilePath());
+        m_qbsExePathChooser.setFilePath(QbsSettings::qbsExecutableFilePath());
         m_defaultInstallDirLineEdit.setText(QbsSettings::defaultInstallDirTemplate());
         m_versionLabel.setText(getQbsVersion());
         m_settingsDirCheckBox.setText(tr("Use %1 settings directory for Qbs")
@@ -148,9 +154,9 @@ public:
 
     void apply()
     {
-        QbsSettingsData settings;
-        if (m_qbsExePathChooser.isValid())
-            settings.qbsExecutableFilePath = m_qbsExePathChooser.fileName();
+        QbsSettingsData settings = QbsSettings::rawSettingsData();
+        if (m_qbsExePathChooser.filePath() != QbsSettings::qbsExecutableFilePath())
+            settings.qbsExecutableFilePath = m_qbsExePathChooser.filePath();
         settings.defaultInstallDirTemplate = m_defaultInstallDirLineEdit.text();
         settings.useCreatorSettings = m_settingsDirCheckBox.isChecked();
         QbsSettings::setSettingsData(settings);

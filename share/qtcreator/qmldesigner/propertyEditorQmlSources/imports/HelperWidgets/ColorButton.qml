@@ -41,7 +41,7 @@ Item {
 
     property bool block: false
 
-    signal clicked
+    signal updateColor
     signal rightMouseButtonClicked
 
     onAlphaChanged: invalidateColor();
@@ -201,6 +201,7 @@ Item {
         MouseArea {
             id: mapMouseArea
             anchors.fill: parent
+            preventStealing: true
             onPositionChanged: {
                 if (pressed && mouse.buttons === Qt.LeftButton) {
                     var xx = Math.max(0, Math.min(mouse.x, parent.width))
@@ -216,7 +217,7 @@ Item {
             }
             onReleased: {
                 if (mouse.button === Qt.LeftButton)
-                    colorButton.clicked()
+                    colorButton.updateColor()
             }
 
             acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -245,7 +246,7 @@ Item {
             if (colorButton.hue !== value)
                 colorButton.hue = value
         }
-        onClicked: colorButton.clicked()
+        onClicked: colorButton.updateColor()
     }
 
     Row {
@@ -278,7 +279,7 @@ Item {
                         var tmp = redSlider.value / 255.0
                         if (colorButton.color.r !== tmp && !colorButton.block) {
                             colorButton.color.r = tmp
-                            colorButton.clicked()
+                            colorButton.updateColor()
                         }
                     }
                 }
@@ -307,7 +308,7 @@ Item {
                         var tmp = greenSlider.value / 255.0
                         if (colorButton.color.g !== tmp && !colorButton.block) {
                             colorButton.color.g = tmp
-                            colorButton.clicked()
+                            colorButton.updateColor()
                         }
                     }
                 }
@@ -336,7 +337,7 @@ Item {
                         var tmp = blueSlider.value / 255.0
                         if (colorButton.color.b !== tmp && !colorButton.block) {
                             colorButton.color.b = tmp
-                            colorButton.clicked()
+                            colorButton.updateColor()
                         }
                     }
                 }
@@ -359,7 +360,7 @@ Item {
                     onValueModified: {
                         if (colorButton.alpha !== alphaSlider.value && !colorButton.block) {
                             colorButton.alpha = alphaSlider.value
-                            colorButton.clicked()
+                            colorButton.updateColor()
                         }
                     }
                 }
@@ -384,7 +385,7 @@ Item {
                     onValueModified: {
                         if (colorButton.hue !== hueSlider2.value && !colorButton.block) {
                             colorButton.hue = hueSlider2.value
-                            colorButton.clicked()
+                            colorButton.updateColor()
                         }
                     }
                 }
@@ -406,7 +407,7 @@ Item {
                     onValueModified: {
                         if (colorButton.saturation !== saturationSlider.value && !colorButton.block) {
                             colorButton.saturation = saturationSlider.value
-                            colorButton.clicked()
+                            colorButton.updateColor()
                         }
                     }
                 }
@@ -428,7 +429,7 @@ Item {
                     onValueModified: {
                         if (colorButton.lightness !== lightnessSlider.value && !colorButton.block) {
                             colorButton.lightness = lightnessSlider.value
-                            colorButton.clicked()
+                            colorButton.updateColor()
                         }
                     }
                 }

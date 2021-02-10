@@ -41,13 +41,13 @@
 //TESTED_COMPONENT=src/libs/cplusplus
 using namespace CPlusPlus;
 
-template <template <typename, typename> class _Map, typename _T1, typename _T2>
-_Map<_T2, _T1> invert(const _Map<_T1, _T2> &m)
+template<typename _T1, typename _T2>
+QMultiMap<_T2, _T1> invert(const QMap<_T1, _T2> &m)
 {
-    _Map<_T2, _T1> i;
-    typename _Map<_T1, _T2>::const_iterator it = m.constBegin();
+    QMultiMap<_T2, _T1> i;
+    typename QMap<_T1, _T2>::const_iterator it = m.constBegin();
     for (; it != m.constEnd(); ++it) {
-        i.insertMulti(it.value(), it.key());
+        i.insert(it.value(), it.key());
     }
     return i;
 }
@@ -149,11 +149,10 @@ void tst_Lookup::base_class_defined_1()
 
     QCOMPARE(classSymbols.size(), 2);
 
-    const QMap<Class *, ClassSpecifierAST *> classToAST =
-            invert(classSymbols.asMap());
+    const QMultiMap<Class *, ClassSpecifierAST *> classToAST = invert(classSymbols.asMap());
 
-    QVERIFY(classToAST.value(baseClass) != 0);
-    QVERIFY(classToAST.value(derivedClass) != 0);
+    QVERIFY(!classToAST.values(baseClass).isEmpty());
+    QVERIFY(!classToAST.values(derivedClass).isEmpty());
 }
 
 void tst_Lookup::document_functionAt_data()
@@ -199,6 +198,18 @@ void tst_Lookup::document_functionAt_data()
             "}\n"; // line 3
     expectedFunction = QString::fromLatin1("f");
     QTest::newRow("inlineWithLambdaArg1") << source << 2 << 1 << expectedFunction << 1 << 3;
+
+    source = "\n"
+             "int g_global = 456;\n" // line 1
+             "int foo()\n"  // line 2
+             "{\n"
+             "  g_global = 89;\n" // line 4
+             "  std::function<int(int)> cb = [](int) { return 1; };\n"
+             "  g_global = 222;\n"
+             "}\n"; // line 7
+    expectedFunction = QString::fromLatin1("foo");
+    QTest::newRow("inlineWithLambda1") << source << 4 << 1 << expectedFunction << 2 << 7;
+    QTest::newRow("inlineWithLambda2") << source << 6 << 1 << expectedFunction << 2 << 7;
 }
 
 void tst_Lookup::document_functionAt()

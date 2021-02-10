@@ -24,7 +24,9 @@
 ****************************************************************************/
 
 #include "checkablemessagebox.h"
+
 #include "qtcassert.h"
+#include "qtcsettings.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -33,6 +35,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QStyle>
+#include <QTextEdit>
 
 /*!
     \class Utils::CheckableMessageBox
@@ -73,14 +76,22 @@ public:
         messageLabel->setOpenExternalLinks(true);
         messageLabel->setTextInteractionFlags(Qt::LinksAccessibleByKeyboard|Qt::LinksAccessibleByMouse);
         messageLabel->setFocusPolicy(Qt::NoFocus);
-
-        auto checkBoxRightSpacer =
-            new QSpacerItem(1, 1, QSizePolicy::Expanding, QSizePolicy::Minimum);
-        auto buttonSpacer =
-            new QSpacerItem(0, 1, QSizePolicy::Minimum, QSizePolicy::Minimum);
+        messageLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
 
         checkBox = new QCheckBox(q);
         checkBox->setText(CheckableMessageBox::tr("Do not ask again"));
+
+        const QString showText = CheckableMessageBox::tr("Show Details...");
+        detailsButton = new QPushButton(showText, q);
+        detailsButton->setAutoDefault(false);
+        detailsButton->hide();
+        detailsText = new QTextEdit(q);
+        detailsText->hide();
+        QObject::connect(detailsButton, &QPushButton::clicked, detailsText, [this, showText] {
+            detailsText->setVisible(!detailsText->isVisible());
+            detailsButton->setText(
+                detailsText->isVisible() ? CheckableMessageBox::tr("Hide Details...") : showText);
+        });
 
         buttonBox = new QDialogButtonBox(q);
         buttonBox->setOrientation(Qt::Horizontal);
@@ -92,16 +103,22 @@ public:
 
         auto horizontalLayout_2 = new QHBoxLayout();
         horizontalLayout_2->addLayout(verticalLayout);
-        horizontalLayout_2->addWidget(messageLabel);
+        horizontalLayout_2->addWidget(messageLabel, 10);
 
         auto horizontalLayout = new QHBoxLayout();
         horizontalLayout->addWidget(checkBox);
-        horizontalLayout->addItem(checkBoxRightSpacer);
+        horizontalLayout->addStretch(10);
+
+        auto detailsButtonLayout = new QHBoxLayout;
+        detailsButtonLayout->addWidget(detailsButton);
+        detailsButtonLayout->addStretch(10);
 
         auto verticalLayout_2 = new QVBoxLayout(q);
         verticalLayout_2->addLayout(horizontalLayout_2);
         verticalLayout_2->addLayout(horizontalLayout);
-        verticalLayout_2->addItem(buttonSpacer);
+        verticalLayout_2->addLayout(detailsButtonLayout);
+        verticalLayout_2->addWidget(detailsText, 10);
+        verticalLayout_2->addStretch(1);
         verticalLayout_2->addWidget(buttonBox);
     }
 
@@ -110,6 +127,8 @@ public:
     QCheckBox *checkBox = nullptr;
     QDialogButtonBox *buttonBox = nullptr;
     QAbstractButton *clickedButton = nullptr;
+    QPushButton *detailsButton = nullptr;
+    QTextEdit *detailsText = nullptr;
     QMessageBox::Icon icon = QMessageBox::NoIcon;
 };
 
@@ -118,7 +137,6 @@ CheckableMessageBox::CheckableMessageBox(QWidget *parent) :
     d(new CheckableMessageBoxPrivate(this))
 {
     setModal(true);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     connect(d->buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(d->buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(d->buttonBox, &QDialogButtonBox::clicked,
@@ -231,6 +249,18 @@ void CheckableMessageBox::setCheckBoxVisible(bool v)
     d->checkBox->setVisible(v);
 }
 
+QString CheckableMessageBox::detailedText() const
+{
+    return d->detailsText->toPlainText();
+}
+
+void CheckableMessageBox::setDetailedText(const QString &text)
+{
+    d->detailsText->setText(text);
+    if (!text.isEmpty())
+        d->detailsButton->setVisible(true);
+}
+
 QDialogButtonBox::StandardButtons CheckableMessageBox::standardButtons() const
 {
     return d->buttonBox->standardButtons();
@@ -253,7 +283,8 @@ QPushButton *CheckableMessageBox::addButton(const QString &text, QDialogButtonBo
 
 QDialogButtonBox::StandardButton CheckableMessageBox::defaultButton() const
 {
-    foreach (QAbstractButton *b, d->buttonBox->buttons())
+    const QList<QAbstractButton *> buttons = d->buttonBox->buttons();
+    for (QAbstractButton *b : buttons)
         if (auto *pb = qobject_cast<QPushButton *>(b))
             if (pb->isDefault())
                return d->buttonBox->standardButton(pb);
@@ -436,7 +467,8 @@ bool CheckableMessageBox::hasSuppressedQuestions(QSettings *settings)
     QTC_ASSERT(settings, return false);
     bool hasSuppressed = false;
     settings->beginGroup(QLatin1String(kDoNotAskAgainKey));
-    foreach (const QString &subKey, settings->childKeys()) {
+    const QStringList childKeys = settings->childKeys();
+    for (const QString &subKey : childKeys) {
         if (settings->value(subKey, false).toBool()) {
             hasSuppressed = true;
             break;

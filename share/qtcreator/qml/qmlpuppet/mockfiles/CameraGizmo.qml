@@ -24,37 +24,34 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
-import CameraGeometry 1.0
+import QtQuick3D 1.15
 
 IconGizmo {
     id: cameraGizmo
 
+    property Model frustumModel: null
+
     iconSource: "qrc:///qtquickplugin/mockfiles/images/editor_camera.png"
-    property alias geometryName: cameraGeometry.name // Name must be unique for each geometry
-    property alias viewPortRect: cameraGeometry.viewPortRect
+
+    function connectFrustum(frustum)
+    {
+        frustumModel = frustum;
+
+        frustum.selected = selected;
+        frustum.selected = Qt.binding(function() {return selected;});
+
+        frustum.scene = scene;
+        frustum.scene = Qt.binding(function() {return scene;});
+
+        frustum.targetNode = targetNode;
+        frustum.targetNode = Qt.binding(function() {return targetNode;});
+
+        frustum.visible = visible || (targetNode && selected && activeScene === scene);
+        frustum.visible = Qt.binding(function() {return visible || (targetNode && selected && activeScene === scene);});
+    }
 
     onActiveSceneChanged: {
-        if (activeScene == scene)
-            cameraGeometry.update();
-    }
-
-    Model {
-        id: gizmoModel
-        geometry: cameraGeometry
-        visible: cameraGizmo.visible
-        materials: [
-            DefaultMaterial {
-                id: defaultMaterial
-                emissiveColor: cameraGizmo.selected ? "#FF0000" : "#555555"
-                lighting: DefaultMaterial.NoLighting
-                cullingMode: Material.DisableCulling
-            }
-        ]
-    }
-
-    CameraGeometry {
-        id: cameraGeometry
-        camera: cameraGizmo.scene && cameraGizmo.targetNode ? cameraGizmo.targetNode : null
+        if (frustumModel && activeScene == scene)
+            frustumModel.updateGeometry();
     }
 }

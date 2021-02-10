@@ -24,106 +24,130 @@
 ****************************************************************************/
 
 #include "zoomaction.h"
+#include "formeditorwidget.h"
+#include <algorithm>
+#include <iterator>
+#include <utility>
 
-#include <QComboBox>
 #include <QAbstractItemView>
+#include <QComboBox>
+#include <QToolBar>
+
+#include <cmath>
 
 namespace QmlDesigner {
 
+// Order matters!
+std::array<double, 27> ZoomAction::m_zooms = {
+    0.01, 0.02, 0.05, 0.0625, 0.1, 0.125, 0.2, 0.25, 0.33, 0.5,  0.66, 0.75, 0.9,
+    1.0, 1.1, 1.25, 1.33, 1.5, 1.66, 1.75, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 16.0
+};
+
+bool isValidIndex(int index)
+{
+    if (index >= 0 && index < static_cast<int>(ZoomAction::zoomLevels().size()))
+        return true;
+
+    return false;
+}
+
 ZoomAction::ZoomAction(QObject *parent)
-    :  QWidgetAction(parent),
-    m_zoomLevel(1.0),
-    m_currentComboBoxIndex(8)
-{
+    : QWidgetAction(parent)
+    , m_combo(nullptr)
+{}
 
+std::array<double, 27> ZoomAction::zoomLevels()
+{
+    return m_zooms;
 }
 
-float ZoomAction::zoomLevel() const
+int ZoomAction::indexOf(double zoom)
 {
-    return m_zoomLevel;
+    auto finder = [zoom](double val) { return qFuzzyCompare(val, zoom); };
+    if (auto iter = std::find_if(m_zooms.begin(), m_zooms.end(), finder); iter != m_zooms.end())
+        return static_cast<int>(std::distance(m_zooms.begin(), iter));
+
+    return -1;
 }
 
-void ZoomAction::zoomIn()
+void ZoomAction::setZoomFactor(double zoom)
 {
-    if (m_currentComboBoxIndex > 0)
-        emit indexChanged(m_currentComboBoxIndex - 1);
+    if (int index = indexOf(zoom); index >= 0) {
+        m_combo->setCurrentIndex(index);
+        m_combo->setToolTip(m_combo->currentText());
+        return;
+    }
+    int rounded = static_cast<int>(std::round(zoom * 100));
+    m_combo->setEditable(true);
+    m_combo->setEditText(QString::number(rounded) + " %");
+    m_combo->setToolTip(m_combo->currentText());
 }
 
-void ZoomAction::zoomOut()
+double ZoomAction::setNextZoomFactor(double zoom)
 {
-    if (m_currentComboBoxIndex < (m_comboBoxModel->rowCount() - 1))
-        emit indexChanged(m_currentComboBoxIndex + 1);
+    if (zoom >= m_zooms.back())
+        return zoom;
+
+    auto greater = [zoom](double val) { return val > zoom; };
+    if (auto iter = std::find_if(m_zooms.begin(), m_zooms.end(), greater); iter != m_zooms.end()) {
+        auto index = std::distance(m_zooms.begin(), iter);
+        m_combo->setCurrentIndex(static_cast<int>(index));
+        m_combo->setToolTip(m_combo->currentText());
+        return *iter;
+    }
+    return zoom;
 }
 
-void ZoomAction::resetZoomLevel()
+double ZoomAction::setPreviousZoomFactor(double zoom)
 {
-    m_zoomLevel = 1.0;
-    m_currentComboBoxIndex = 8;
-    emit reseted();
+    if (zoom <= m_zooms.front())
+        return zoom;
+
+    auto smaller = [zoom](double val) { return val < zoom; };
+    if (auto iter = std::find_if(m_zooms.rbegin(), m_zooms.rend(), smaller); iter != m_zooms.rend()) {
+        auto index = std::distance(iter, m_zooms.rend() - 1);
+        m_combo->setCurrentIndex(static_cast<int>(index));
+        m_combo->setToolTip(m_combo->currentText());
+        return *iter;
+    }
+    return zoom;
 }
 
-void ZoomAction::setZoomLevel(float zoomLevel)
+bool parentIsToolBar(QWidget *parent)
 {
-    m_zoomLevel = qBound(0.1f, zoomLevel, 16.0f);
-    emit zoomLevelChanged(m_zoomLevel);
+    return qobject_cast<QToolBar *>(parent) != nullptr;
+}
+
+QComboBox *createZoomComboBox(QWidget *parent)
+{
+    auto *combo = new QComboBox(parent);
+    for (double z : ZoomAction::zoomLevels()) {
+        const QString name = QString::number(z * 100., 'g', 4) + " %";
+        combo->addItem(name, z);
+    }
+    return combo;
 }
 
 QWidget *ZoomAction::createWidget(QWidget *parent)
 {
-    auto comboBox = new QComboBox(parent);
+    if (!m_combo && parentIsToolBar(parent)) {
+        m_combo = createZoomComboBox(parent);
+        m_combo->setProperty("hideborder", true);
+        m_combo->setCurrentIndex(indexOf(1.0));
+        m_combo->setToolTip(m_combo->currentText());
 
-    if (m_comboBoxModel.isNull()) {
-        m_comboBoxModel = comboBox->model();
-        comboBox->addItem(QLatin1String("1 %"), 0.01);
-        comboBox->addItem(QLatin1String("2 %"), 0.02);
-        comboBox->addItem(QLatin1String("5 %"), 0.05);
-        comboBox->addItem(QLatin1String("6.25 %"), 0.0625);
-        comboBox->addItem(QLatin1String("12.5 %"), 0.125);
-        comboBox->addItem(QLatin1String("25 %"), 0.25);
-        comboBox->addItem(QLatin1String("33 %"), 0.33);
-        comboBox->addItem(QLatin1String("50 %"), 0.5);
-        comboBox->addItem(QLatin1String("66 %"), 0.66);
-        comboBox->addItem(QLatin1String("75 %"), 0.75);
-        comboBox->addItem(QLatin1String("90 %"), 0.90);
-        comboBox->addItem(QLatin1String("100 %"), 1.0); // initial m_zoomLevel and m_currentComboBoxIndex
-        comboBox->addItem(QLatin1String("125 %"), 1.25);
-        comboBox->addItem(QLatin1String("150 %"), 1.5);
-        comboBox->addItem(QLatin1String("175 %"), 1.75);
-        comboBox->addItem(QLatin1String("200 %"), 2.0);
-        comboBox->addItem(QLatin1String("300 %"), 3.0);
-        comboBox->addItem(QLatin1String("400 %"), 4.0);
-        comboBox->addItem(QLatin1String("600 %"), 6.0);
-        comboBox->addItem(QLatin1String("800 %"), 8.0);
-        comboBox->addItem(QLatin1String("1000 %"), 10.0);
-        comboBox->addItem(QLatin1String("1600 %"), 16.0);
-    } else {
-        comboBox->setModel(m_comboBoxModel.data());
+        auto currentChanged = QOverload<int>::of(&QComboBox::currentIndexChanged);
+        connect(m_combo, currentChanged, this, &ZoomAction::emitZoomLevelChanged);
+
+        return m_combo.data();
     }
+    return nullptr;
+}
 
-    comboBox->setCurrentIndex(m_currentComboBoxIndex);
-    comboBox->setToolTip(comboBox->currentText());
-    connect(this, &ZoomAction::reseted, comboBox, [this, comboBox]() {
-        blockSignals(true);
-        comboBox->setCurrentIndex(m_currentComboBoxIndex);
-        blockSignals(false);
-    });
-    connect(comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            [this, comboBox](int index) {
-        m_currentComboBoxIndex = index;
-
-        if (index == -1)
-            return;
-
-        const QModelIndex modelIndex(m_comboBoxModel.data()->index(index, 0));
-        setZoomLevel(m_comboBoxModel.data()->data(modelIndex, Qt::UserRole).toFloat());
-        comboBox->setToolTip(modelIndex.data().toString());
-    });
-
-    connect(this, &ZoomAction::indexChanged, comboBox, &QComboBox::setCurrentIndex);
-
-    comboBox->setProperty("hideborder", true);
-    comboBox->setMaximumWidth(qMax(comboBox->view()->sizeHintForColumn(0) / 2, 16));
-    return comboBox;
+void ZoomAction::emitZoomLevelChanged(int index)
+{
+    if (index >= 0 && index < static_cast<int>(m_zooms.size()))
+        emit zoomLevelChanged(m_zooms[static_cast<size_t>(index)]);
 }
 
 } // namespace QmlDesigner

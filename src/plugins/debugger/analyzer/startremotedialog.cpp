@@ -58,7 +58,6 @@ StartRemoteDialog::StartRemoteDialog(QWidget *parent)
     : QDialog(parent)
     , d(new Internal::StartRemoteDialogPrivate)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setWindowTitle(tr("Start Remote Analysis"));
 
     d->kitChooser = new KitChooser(this);
@@ -88,7 +87,7 @@ StartRemoteDialog::StartRemoteDialog(QWidget *parent)
     QSettings *settings = Core::ICore::settings();
     settings->beginGroup("AnalyzerStartRemoteDialog");
     d->kitChooser->populate();
-    d->kitChooser->setCurrentKitId(Core::Id::fromSetting(settings->value("profile")));
+    d->kitChooser->setCurrentKitId(Utils::Id::fromSetting(settings->value("profile")));
     d->executable->setText(settings->value("executable").toString());
     d->workingDirectory->setText(settings->value("workingDirectory").toString());
     d->arguments->setText(settings->value("arguments").toString());

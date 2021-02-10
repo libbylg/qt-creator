@@ -23,17 +23,18 @@
 **
 ****************************************************************************/
 
-#include "autotestplugin.h"
-#include "autotesticons.h"
 #include "testresultspane.h"
-#include "testresultmodel.h"
+
+#include "autotesticons.h"
+#include "autotestplugin.h"
+#include "itestframework.h"
+#include "testeditormark.h"
 #include "testresultdelegate.h"
+#include "testresultmodel.h"
+#include "testresultmodel.h"
 #include "testrunner.h"
 #include "testsettings.h"
 #include "testtreemodel.h"
-#include "testcodeparser.h"
-#include "testeditormark.h"
-#include "testoutputreader.h"
 
 #include <aggregation/aggregate.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -48,6 +49,7 @@
 #include <texteditor/fontsettings.h>
 #include <texteditor/texteditor.h>
 #include <texteditor/texteditorsettings.h>
+#include <utils/proxyaction.h>
 #include <utils/qtcassert.h>
 #include <utils/stylehelper.h>
 #include <utils/theme/theme.h>
@@ -152,7 +154,7 @@ TestResultsPane::TestResultsPane(QObject *parent) :
     connect(m_treeView, &ResultsTreeView::copyShortcutTriggered, [this] () {
         onCopyItemTriggered(getTestResult(m_treeView->currentIndex()));
     });
-    connect(m_model, &TestResultModel::requestExpansion, [this] (QModelIndex idx) {
+    connect(m_model, &TestResultModel::requestExpansion, [this] (const QModelIndex &idx) {
         m_treeView->expand(m_filterModel->mapFromSource(idx));
     });
     connect(TestRunner::instance(), &TestRunner::testRunStarted,
@@ -180,13 +182,27 @@ void TestResultsPane::createToolButtons()
     });
 
     m_runAll = new QToolButton(m_treeView);
-    m_runAll->setDefaultAction(ActionManager::command(Constants::ACTION_RUN_ALL_ID)->action());
+    m_runAll->setDefaultAction(
+                Utils::ProxyAction::proxyActionWithIcon(
+                    ActionManager::command(Constants::ACTION_RUN_ALL_ID)->action(),
+                    Utils::Icons::RUN_SMALL_TOOLBAR.icon()));
 
     m_runSelected = new QToolButton(m_treeView);
-    m_runSelected->setDefaultAction(ActionManager::command(Constants::ACTION_RUN_SELECTED_ID)->action());
+    m_runSelected->setDefaultAction(
+                Utils::ProxyAction::proxyActionWithIcon(
+                    ActionManager::command(Constants::ACTION_RUN_SELECTED_ID)->action(),
+                    Utils::Icons::RUN_SELECTED_TOOLBAR.icon()));
 
+    m_runFailed = new QToolButton(m_treeView);
+    m_runFailed->setDefaultAction(
+                Utils::ProxyAction::proxyActionWithIcon(
+                    ActionManager::command(Constants::ACTION_RUN_FAILED_ID)->action(),
+                    Icons::RUN_FAILED_TOOLBAR.icon()));
     m_runFile = new QToolButton(m_treeView);
-    m_runFile->setDefaultAction(ActionManager::command(Constants::ACTION_RUN_FILE_ID)->action());
+    m_runFile->setDefaultAction(
+                Utils::ProxyAction::proxyActionWithIcon(
+                    ActionManager::command(Constants::ACTION_RUN_FILE_ID)->action(),
+                    Utils::Icons::RUN_FILE_TOOLBAR.icon()));
 
     m_stopTestRun = new QToolButton(m_treeView);
     m_stopTestRun->setIcon(Utils::Icons::STOP_SMALL_TOOLBAR.icon());
@@ -271,7 +287,7 @@ static void checkAndFineTuneColors(QTextCharFormat *format)
 void TestResultsPane::addOutputLine(const QByteArray &outputLine, OutputChannel channel)
 {
     if (!QTC_GUARD(!outputLine.contains('\n'))) {
-        for (auto line : outputLine.split('\n'))
+        for (const auto &line : outputLine.split('\n'))
             addOutputLine(line, channel);
         return;
     }
@@ -304,7 +320,7 @@ QWidget *TestResultsPane::outputWidget(QWidget *parent)
 
 QList<QWidget *> TestResultsPane::toolBarWidgets() const
 {
-    return {m_expandCollapse, m_runAll, m_runSelected, m_runFile, m_stopTestRun,
+    return {m_expandCollapse, m_runAll, m_runSelected, m_runFailed, m_runFile, m_stopTestRun,
             m_outputToggleButton, m_filterButton};
 }
 
@@ -339,10 +355,6 @@ void TestResultsPane::clearContents()
     m_stdErrHandler.endFormatScope();
     m_stdOutHandler.endFormatScope();
     clearMarks();
-}
-
-void TestResultsPane::visibilityChanged(bool /*visible*/)
-{
 }
 
 void TestResultsPane::setFocus()
@@ -495,9 +507,10 @@ void TestResultsPane::initializeFilterMenu()
     textAndType.insert(ResultType::MessageDebug, tr("Debug Messages"));
     textAndType.insert(ResultType::MessageWarn, tr("Warning Messages"));
     textAndType.insert(ResultType::MessageInternal, tr("Internal Messages"));
-    for (ResultType result : textAndType.keys()) {
+    for (auto it = textAndType.cbegin(); it != textAndType.cend(); ++it) {
+        const ResultType &result = it.key();
         QAction *action = new QAction(m_filterMenu);
-        action->setText(textAndType.value(result));
+        action->setText(it.value());
         action->setCheckable(true);
         action->setChecked(result != ResultType::MessageInternal || !omitIntern);
         action->setData(int(result));
@@ -634,7 +647,14 @@ void TestResultsPane::onCustomContextMenuRequested(const QPoint &pos)
     menu.addAction(action);
 
     action = new QAction(tr("Debug This Test"), &menu);
-    action->setEnabled(correlatingItem && correlatingItem->canProvideDebugConfiguration());
+    bool debugEnabled = false;
+    if (correlatingItem) {
+        if (correlatingItem->testBase()->type() == ITestBase::Framework) {
+            auto testTreeItem = static_cast<const TestTreeItem *>(correlatingItem);
+            debugEnabled = testTreeItem && testTreeItem->canProvideDebugConfiguration();
+        }
+    }
+    action->setEnabled(debugEnabled);
     connect(action, &QAction::triggered, this, [this, clicked] {
         onRunThisTestTriggered(TestRunMode::Debug, clicked);
     });
@@ -684,7 +704,7 @@ void TestResultsPane::onRunThisTestTriggered(TestRunMode runMode, const TestResu
 {
     QTC_ASSERT(result, return);
 
-    const TestTreeItem *item = result->findTestTreeItem();
+    const ITestTreeItem *item = result->findTestTreeItem();
 
     if (item)
         TestRunner::instance()->runTest(runMode, item);

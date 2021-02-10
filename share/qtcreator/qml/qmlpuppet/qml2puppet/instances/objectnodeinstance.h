@@ -65,7 +65,7 @@ public:
 
     virtual ~ObjectNodeInstance();
     void destroy();
-    //void setModelNode(const ModelNode &node);
+    virtual void handleObjectDeletion(QObject *object);
 
     static Pointer create(QObject *objectToBeWrapped);
     static QObject *createPrimitive(const QString &typeName, int majorNumber, int minorNumber, QQmlContext *context);
@@ -83,6 +83,8 @@ public:
     virtual void initialize(const Pointer &objectNodeInstance, InstanceContainer::NodeFlags flags);
     virtual QImage renderImage() const;
     virtual QImage renderPreviewImage(const QSize &previewImageSize) const;
+
+    virtual QSharedPointer<QQuickItemGrabResult> createGrabResult() const;
 
     virtual QObject *parent() const;
 
@@ -148,6 +150,7 @@ public:
 
     virtual void activateState();
     virtual void deactivateState();
+    virtual QStringList allStates() const;
 
     void populateResetHashes();
     bool hasValidResetBinding(const PropertyName &propertyName) const;
@@ -193,7 +196,11 @@ public:
 
     virtual PropertyNameList ignoredProperties() const;
 
-    void virtual setHideInEditor(bool b);
+    virtual void setHiddenInEditor(bool b);
+    bool isHiddenInEditor() const;
+
+    virtual void setLockedInEditor(bool b);
+    bool isLockedInEditor() const;
 
     void setModifiedFlag(bool b);
 
@@ -210,6 +217,7 @@ protected:
 
     void initializePropertyWatcher(const ObjectNodeInstance::Pointer &objectNodeInstance);
     void ensureVector3DDotProperties(PropertyNameList &list) const;
+
 private:
     QString m_id;
 
@@ -224,6 +232,8 @@ private:
     bool m_deleteHeldInstance;
     bool m_isInLayoutable;
     bool m_isModified = false;
+    bool m_isLockedInEditor = false;
+    bool m_isHiddenInEditor = false;
     static QHash<EnumerationName, QVariant> m_enumationValueHash;
 };
 

@@ -12,6 +12,7 @@
     "options":
     [
         { "key": "MainQmlFile", "value": "%{ProjectName}.qml" },
+        { "key": "RootItemName", "value": "%{ProjectName}" },
         { "key": "CMakeFile", "value": "%{ProjectDirectory}/CMakeLists.txt" }
     ],
 
@@ -46,6 +47,11 @@
                 {
                     "source": "CMakeLists.txt",
                     "openAsProject": true
+                },
+                {
+                    "source": "project.qmlproject.tpl",
+                    "target": "%{ProjectDirectory}/%{ProjectName}.qmlproject",
+                    "openInEditor": false
                 },
                 {
                     "source": "main.qml.tpl",

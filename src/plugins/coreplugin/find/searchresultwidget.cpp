@@ -134,6 +134,10 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
     m_searchResultTreeView = new SearchResultTreeView(this);
     m_searchResultTreeView->setFrameStyle(QFrame::NoFrame);
     m_searchResultTreeView->setAttribute(Qt::WA_MacShowFocusRect, false);
+    connect(m_searchResultTreeView, &SearchResultTreeView::filterInvalidated,
+            this, &SearchResultWidget::filterInvalidated);
+    connect(m_searchResultTreeView, &SearchResultTreeView::filterChanged,
+            this, &SearchResultWidget::filterChanged);
     auto  agg = new Aggregation::Aggregate;
     agg->add(m_searchResultTreeView);
     agg->add(new ItemViewFind(m_searchResultTreeView,
@@ -172,12 +176,12 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
     m_replaceLabel->setBuddy(m_replaceTextEdit);
     m_replaceTextEdit->setMinimumWidth(120);
     m_replaceTextEdit->setEnabled(false);
-    m_replaceTextEdit->setTabOrder(m_replaceTextEdit, m_searchResultTreeView);
+    setTabOrder(m_replaceTextEdit, m_searchResultTreeView);
     m_preserveCaseCheck = new QCheckBox(m_topReplaceWidget);
     m_preserveCaseCheck->setText(tr("Preser&ve case"));
     m_preserveCaseCheck->setEnabled(false);
-    m_renameFilesCheckBox = new QCheckBox(m_topReplaceWidget);
-    m_renameFilesCheckBox->setVisible(false);
+    m_additionalReplaceWidget = new QWidget(m_topReplaceWidget);
+    m_additionalReplaceWidget->setVisible(false);
     m_replaceButton = new QToolButton(m_topReplaceWidget);
     m_replaceButton->setToolTip(tr("Replace all occurrences."));
     m_replaceButton->setText(tr("&Replace"));
@@ -198,7 +202,7 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
     topReplaceLayout->addWidget(m_replaceLabel);
     topReplaceLayout->addWidget(m_replaceTextEdit);
     topReplaceLayout->addWidget(m_preserveCaseCheck);
-    topReplaceLayout->addWidget(m_renameFilesCheckBox);
+    topReplaceLayout->addWidget(m_additionalReplaceWidget);
     topReplaceLayout->addWidget(m_replaceButton);
     topReplaceLayout->addStretch(2);
     setShowReplaceUI(m_replaceSupported);
@@ -208,6 +212,8 @@ SearchResultWidget::SearchResultWidget(QWidget *parent) :
             this, &SearchResultWidget::handleJumpToSearchResult);
     connect(m_replaceTextEdit, &QLineEdit::returnPressed,
             this, &SearchResultWidget::handleReplaceButton);
+    connect(m_replaceTextEdit, &QLineEdit::textChanged,
+            this, &SearchResultWidget::replaceTextChanged);
     connect(m_replaceButton, &QAbstractButton::clicked,
             this, &SearchResultWidget::handleReplaceButton);
 }
@@ -229,13 +235,23 @@ void SearchResultWidget::setInfo(const QString &label, const QString &toolTip, c
 
 QWidget *SearchResultWidget::additionalReplaceWidget() const
 {
-    return m_renameFilesCheckBox;
+    return m_additionalReplaceWidget;
+}
+
+void SearchResultWidget::setAdditionalReplaceWidget(QWidget *widget)
+{
+    if (QLayoutItem *item = m_topReplaceWidget->layout()->replaceWidget(m_additionalReplaceWidget,
+                                                                        widget))
+        delete item;
+    delete m_additionalReplaceWidget;
+    m_additionalReplaceWidget = widget;
 }
 
 void SearchResultWidget::addResult(const QString &fileName,
                                    const QString &rowText,
                                    Search::TextRange mainRange,
-                                   const QVariant &userData)
+                                   const QVariant &userData,
+                                   SearchResultColor::Style style)
 {
     SearchResultItem item;
     item.path = QStringList({QDir::toNativeSeparators(fileName)});
@@ -243,6 +259,7 @@ void SearchResultWidget::addResult(const QString &fileName,
     item.text = rowText;
     item.useTextEditorFont = true;
     item.userData = userData;
+    item.style = style;
     addResults(QList<SearchResultItem>() << item, SearchResult::AddOrdered);
 }
 
@@ -356,9 +373,9 @@ void SearchResultWidget::notifyVisibilityChanged(bool visible)
     emit visibilityChanged(visible);
 }
 
-void SearchResultWidget::setTextEditorFont(const QFont &font, const SearchResultColor &color)
+void SearchResultWidget::setTextEditorFont(const QFont &font, const SearchResultColors &colors)
 {
-    m_searchResultTreeView->setTextEditorFont(font, color);
+    m_searchResultTreeView->setTextEditorFont(font, colors);
 }
 
 void SearchResultWidget::setTabWidth(int tabWidth)
@@ -430,6 +447,26 @@ void SearchResultWidget::setSearchAgainEnabled(bool enabled)
     m_searchAgainButton->setEnabled(enabled);
 }
 
+void SearchResultWidget::setFilter(SearchResultFilter *filter)
+{
+    m_searchResultTreeView->setFilter(filter);
+}
+
+bool SearchResultWidget::hasFilter() const
+{
+    return m_searchResultTreeView->hasFilter();
+}
+
+void SearchResultWidget::showFilterWidget(QWidget *parent)
+{
+    m_searchResultTreeView->showFilterWidget(parent);
+}
+
+void SearchResultWidget::setReplaceEnabled(bool enabled)
+{
+    m_replaceButton->setEnabled(enabled);
+}
+
 void SearchResultWidget::finishSearch(bool canceled)
 {
     Id sizeWarningId(SIZE_WARNING_ID);
@@ -495,15 +532,14 @@ void SearchResultWidget::searchAgain()
 QList<SearchResultItem> SearchResultWidget::checkedItems() const
 {
     QList<SearchResultItem> result;
-    SearchResultTreeModel *model = m_searchResultTreeView->model();
+    SearchResultFilterModel *model = m_searchResultTreeView->model();
     const int fileCount = model->rowCount();
     for (int i = 0; i < fileCount; ++i) {
-        QModelIndex fileIndex = model->index(i, 0);
-        auto fileItem = static_cast<SearchResultTreeItem *>(fileIndex.internalPointer());
-        QTC_ASSERT(fileItem != nullptr, continue);
-        for (int rowIndex = 0; rowIndex < fileItem->childrenCount(); ++rowIndex) {
-            QModelIndex textIndex = model->index(rowIndex, 0, fileIndex);
-            auto rowItem = static_cast<SearchResultTreeItem *>(textIndex.internalPointer());
+        const QModelIndex fileIndex = model->index(i, 0);
+        const int itemCount = model->rowCount(fileIndex);
+        for (int rowIndex = 0; rowIndex < itemCount; ++rowIndex) {
+            const QModelIndex textIndex = model->index(rowIndex, 0, fileIndex);
+            const SearchResultTreeItem * const rowItem = model->itemForIndex(textIndex);
             QTC_ASSERT(rowItem != nullptr, continue);
             if (rowItem->checkState())
                 result << rowItem->item;

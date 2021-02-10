@@ -28,13 +28,12 @@
 
 #include <rewritingexception.h>
 #include <qmldesignerplugin.h>
+#include <qmldesignerconstants.h>
 
 namespace QmlDesigner {
 
-ImportManagerView::ImportManagerView(QObject *parent) :
-    AbstractView(parent),
-    m_importsWidget(nullptr)
-
+ImportManagerView::ImportManagerView(QObject *parent)
+    : AbstractView(parent)
 {
 }
 
@@ -56,7 +55,7 @@ WidgetInfo ImportManagerView::widgetInfo()
             m_importsWidget->setImports(model()->imports());
     }
 
-    return createWidgetInfo(m_importsWidget, nullptr, QLatin1String("ImportManager"), WidgetInfo::LeftPane, 1);
+    return createWidgetInfo(m_importsWidget, nullptr, QLatin1String("ImportManager"), WidgetInfo::LeftPane, 1, tr("Import Manager"));
 }
 
 void ImportManagerView::modelAttached(Model *model)
@@ -81,25 +80,32 @@ void ImportManagerView::modelAboutToBeDetached(Model *model)
     AbstractView::modelAboutToBeDetached(model);
 }
 
-void ImportManagerView::nodeCreated(const ModelNode &/*createdNode*/)
+void ImportManagerView::importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports)
 {
-    if (m_importsWidget)
-        m_importsWidget->setUsedImports(model()->usedImports());
-}
-
-void ImportManagerView::nodeAboutToBeRemoved(const ModelNode &/*removedNode*/)
-{
-    if (m_importsWidget)
-        m_importsWidget->setUsedImports(model()->usedImports());
-}
-
-void ImportManagerView::importsChanged(const QList<Import> &/*addedImports*/, const QList<Import> &/*removedImports*/)
-{
+    Q_UNUSED(addedImports);
+    Q_UNUSED(removedImports);
     if (m_importsWidget) {
         m_importsWidget->setImports(model()->imports());
-        m_importsWidget->setPossibleImports(model()->possibleImports());
+        // setImports recreates labels, so we need to update used imports, as it is not guaranteed
+        // usedImportsChanged notification will come after this.
         m_importsWidget->setUsedImports(model()->usedImports());
+        // setPossibleImports done in response to possibleImportsChanged comes before importsChanged,
+        // which causes incorrect "already used" filtering to be applied to possible imports list,
+        // so update the possible imports list here, too.
+        m_importsWidget->setPossibleImports(model()->possibleImports());
     }
+}
+
+void ImportManagerView::possibleImportsChanged(const QList<Import> &/*possibleImports*/)
+{
+    if (m_importsWidget)
+        m_importsWidget->setPossibleImports(model()->possibleImports());
+}
+
+void ImportManagerView::usedImportsChanged(const QList<Import> &/*usedImports*/)
+{
+    if (m_importsWidget)
+        m_importsWidget->setUsedImports(model()->usedImports());
 }
 
 void ImportManagerView::removeImport(const Import &import)
@@ -115,6 +121,13 @@ void ImportManagerView::removeImport(const Import &import)
 
 void ImportManagerView::addImport(const Import &import)
 {
+    if (import.isLibraryImport()
+        && (import.url().startsWith("QtQuick")
+            || import.url().startsWith("SimulinkConnector"))) {
+        QmlDesignerPlugin::emitUsageStatistics(Constants::EVENT_IMPORT_ADDED
+                                               + import.toImportString());
+    }
+
     try {
         if (model())
             model()->changeImports({import}, {});

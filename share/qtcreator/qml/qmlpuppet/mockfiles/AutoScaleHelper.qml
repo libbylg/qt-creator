@@ -24,33 +24,32 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import MouseArea3D 1.0
 
 Node {
     id: overlayNode
 
     property View3D view3D
-    property Node target: parent
-    property bool autoScale: true
     property Camera camera: view3D.camera
+    property bool active: true
 
     // Read-only
     property real relativeScale: 1
 
+    onActiveChanged: updateScale()
     onSceneTransformChanged: updateScale()
-    onAutoScaleChanged: updateScale()
     // Trigger delayed update on camera change to ensure camera values are correct
     onCameraChanged: _generalHelper.requestOverlayUpdate();
 
     Connections {
         target: camera
-        onSceneTransformChanged: updateScale()
+        function onSceneTransformChanged() { updateScale() }
     }
 
     Connections {
         target: _generalHelper
-        onOverlayUpdateNeeded: updateScale()
+        function onOverlayUpdateNeeded() { updateScale() }
     }
 
     function getScale(baseScale)
@@ -61,11 +60,10 @@ Node {
 
     function updateScale()
     {
-        if (!autoScale) {
-            target.scale = Qt.vector3d(1, 1, 1);
-        } else {
+        if (active)
             relativeScale = helper.getRelativeScale(overlayNode);
-        }
+        else
+            relativeScale = 1;
     }
 
     MouseArea3D {

@@ -40,6 +40,12 @@ namespace TextEditor { class TextDocument; }
 namespace Python {
 namespace Internal {
 
+enum class ReplType { Unmodified, Import, ImportToplevel };
+
+void openPythonRepl(const Utils::FilePath &file, ReplType type);
+
+struct PythonLanguageServerState;
+
 class PyLSConfigureAssistant : public QObject
 {
     Q_OBJECT
@@ -56,6 +62,9 @@ public:
 private:
     explicit PyLSConfigureAssistant(QObject *parent);
 
+    void handlePyLSState(const Utils::FilePath &python,
+                         const PythonLanguageServerState &state,
+                         TextEditor::TextDocument *document);
     void resetEditorInfoBar(TextEditor::TextDocument *document);
     void installPythonLanguageServer(const Utils::FilePath &python,
                                      QPointer<TextEditor::TextDocument> document);

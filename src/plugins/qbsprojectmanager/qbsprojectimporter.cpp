@@ -134,8 +134,10 @@ QStringList QbsProjectImporter::importCandidates()
     return candidates;
 }
 
-QList<void *> QbsProjectImporter::examineDirectory(const FilePath &importPath) const
+QList<void *> QbsProjectImporter::examineDirectory(const FilePath &importPath,
+                                                   QString *warningMessage) const
 {
+    Q_UNUSED(warningMessage)
     qCDebug(qbsPmLog) << "examining build directory" << importPath.toUserOutput();
     QList<void *> data;
     const FilePath bgFilePath = importPath.pathAppended(importPath.fileName() + ".bg");
@@ -165,10 +167,8 @@ bool QbsProjectImporter::matchKit(void *directoryData, const Kit *k) const
             && bgData->cxxCompilerPath.isEmpty()) {
         return true;
     }
-    const ToolChain * const cToolchain
-            = ToolChainKitAspect::toolChain(k, Constants::C_LANGUAGE_ID);
-    const ToolChain * const cxxToolchain
-            = ToolChainKitAspect::toolChain(k, Constants::CXX_LANGUAGE_ID);
+    const ToolChain * const cToolchain = ToolChainKitAspect::cToolChain(k);
+    const ToolChain * const cxxToolchain = ToolChainKitAspect::cxxToolChain(k);
     if (!bgData->cCompilerPath.isEmpty()) {
         if (!cToolchain)
             return false;

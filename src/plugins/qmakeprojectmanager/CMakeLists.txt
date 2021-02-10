@@ -32,7 +32,6 @@ add_qtc_plugin(QmakeProjectManager
     qmakeparsernodes.cpp qmakeparsernodes.h
     qmakeproject.cpp qmakeproject.h
     qmakeprojectimporter.cpp qmakeprojectimporter.h
-    qmakeprojectmanager.cpp qmakeprojectmanager.h
     qmakeprojectmanager.qrc
     qmakeprojectmanager_global.h
     qmakeprojectmanagerconstants.h
@@ -41,7 +40,6 @@ add_qtc_plugin(QmakeProjectManager
     qmakestep.cpp qmakestep.h
     wizards/qtprojectparameters.cpp wizards/qtprojectparameters.h
     wizards/qtwizard.cpp wizards/qtwizard.h
-    wizards/simpleprojectwizard.cpp wizards/simpleprojectwizard.h
     wizards/subdirsprojectwizard.cpp wizards/subdirsprojectwizard.h
     wizards/subdirsprojectwizarddialog.cpp wizards/subdirsprojectwizarddialog.h
     wizards/wizards.qrc

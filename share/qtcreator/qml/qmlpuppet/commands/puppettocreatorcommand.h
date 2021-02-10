@@ -34,7 +34,13 @@ namespace QmlDesigner {
 class PuppetToCreatorCommand
 {
 public:
-    enum Type { KeyPressed, Edit3DToolState, None };
+    enum Type {
+        Edit3DToolState,
+        Render3DView,
+        ActiveSceneChanged,
+        RenderModelNodePreviewImage,
+        Import3DSupport,
+        None };
 
     PuppetToCreatorCommand(Type type, const QVariant &data);
     PuppetToCreatorCommand() = default;

@@ -110,6 +110,9 @@ public:
     QString qmakespec, xqmakespec;
     QString user_template, user_template_prefix;
     QString extra_cmds[4];
+    bool runSystemFunction = false;
+
+    void killProcesses();
 
 #ifdef PROEVALUATOR_DEBUG
     int debugLevel;
@@ -156,6 +159,8 @@ private:
 
 #ifdef PROEVALUATOR_THREAD_SAFE
     QMutex mutex;
+    bool canceled = false;
+    QList<QProcess *> runningProcs;
 #endif
     QHash<QMakeBaseKey, QMakeBaseEnv *> baseEnvs;
 

@@ -119,7 +119,7 @@ Utils::EnvironmentItems QnxUtils::qnxEnvironmentFromEnvFile(const QString &fileN
 
     // waiting for finish
     QApplication::setOverrideCursor(Qt::BusyCursor);
-    bool waitResult = process.waitForFinished(10000) || process.state() == QProcess::NotRunning;
+    bool waitResult = process.waitForFinished(10000);
     QApplication::restoreOverrideCursor();
     if (!waitResult) {
         Utils::SynchronousProcess::stopProcess(process);
@@ -237,7 +237,7 @@ QList<QnxTarget> QnxUtils::findTargets(const Utils::FilePath &basePath)
                 qWarning() << libc << "has more than one ABI ... processing all";
 
             FilePath path = FilePath::fromString(iterator.filePath());
-            for (Abi abi : abis)
+            for (const Abi &abi : abis)
                 result.append(QnxTarget(path, QnxUtils::convertAbi(abi)));
         }
     }

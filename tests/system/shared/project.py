@@ -278,7 +278,7 @@ def createProject_Qt_Console(path, projectName, checks = True, buildSystem = Non
         __verifyFileCreation__(path, expectedFiles)
 
 def createNewQtQuickApplication(workingDir, projectName=None,
-                                targets=Targets.desktopTargetClasses(), minimumQtVersion="5.6",
+                                targets=Targets.desktopTargetClasses(), minimumQtVersion="5.10",
                                 template="Qt Quick Application - Empty", fromWelcome=False,
                                 buildSystem=None):
     available = __createProjectOrFileSelectType__("  Application (Qt Quick)", template, fromWelcome)
@@ -298,7 +298,7 @@ def createNewQtQuickApplication(workingDir, projectName=None,
 
     return checkedTargets, projectName
 
-def createNewQtQuickUI(workingDir, qtVersion = "5.6"):
+def createNewQtQuickUI(workingDir, qtVersion = "5.10"):
     available = __createProjectOrFileSelectType__("  Other Project", 'Qt Quick UI Prototype')
     if workingDir == None:
         workingDir = tempDir()
@@ -316,7 +316,7 @@ def createNewQtQuickUI(workingDir, qtVersion = "5.6"):
 
     return checkedTargets, projectName
 
-def createNewQmlExtension(workingDir, targets=[Targets.DESKTOP_5_6_1_DEFAULT]):
+def createNewQmlExtension(workingDir, targets=[Targets.DESKTOP_5_14_1_DEFAULT]):
     available = __createProjectOrFileSelectType__("  Library", "Qt Quick 2 Extension Plugin")
     if workingDir == None:
         workingDir = tempDir()
@@ -419,7 +419,7 @@ def __chooseTargets__(targets, availableTargets=None, additionalFunc=None):
                 if additionalFunc:
                     detailsWidget = waitForObject("{type='Utils::DetailsWidget' unnamed='1' "
                                                   "window=':Qt Creator_Core::Internal::MainWindow' "
-                                                  "toolTip?='<html><body><h3>%s</h3>*' visible='1'}"
+                                                  "summaryText='%s' visible='1'}"
                                                   % Targets.getStringForTarget(current))
                     detailsButton = getChildByClass(detailsWidget, "Utils::DetailsButton")
                     clickButton(detailsButton)
@@ -505,19 +505,16 @@ def __getSupportedPlatforms__(text, templateName, getAsStrings=False):
     else:
         version = None
     if templateName.startswith("Qt Quick Application - "):
-        if templateName == "Qt Quick Application - Empty":
-            result = set([Targets.DESKTOP_5_6_1_DEFAULT, Targets.DESKTOP_5_10_1_DEFAULT])
-        else:
-            result = set([Targets.DESKTOP_5_10_1_DEFAULT])
+        result = set([Targets.DESKTOP_5_10_1_DEFAULT, Targets.DESKTOP_5_14_1_DEFAULT])
     elif 'Supported Platforms' in text:
-        supports = text[text.find('Supported Platforms'):].split(":")[1].strip().split(" ")
+        supports = text[text.find('Supported Platforms'):].split(":")[1].strip().split("\n")
         result = set()
         if 'Desktop' in supports:
             if (version == None or version < "5.0") and not templateName.startswith("Qt Quick 2"):
                 result.add(Targets.DESKTOP_4_8_7_DEFAULT)
                 if platform.system() in ("Linux", "Darwin"):
                     result.add(Targets.EMBEDDED_LINUX)
-            result = result.union(set([Targets.DESKTOP_5_6_1_DEFAULT, Targets.DESKTOP_5_10_1_DEFAULT]))
+            result = result.union(set([Targets.DESKTOP_5_10_1_DEFAULT, Targets.DESKTOP_5_14_1_DEFAULT]))
             if platform.system() != 'Darwin':
                 result.add(Targets.DESKTOP_5_4_1_GCC)
     elif 'Platform independent' in text:
@@ -620,7 +617,7 @@ def addCPlusPlusFile(name, template, projectName, forceOverwrite=False, addToVCS
     if name == None:
         test.fatal("File must have a name - got None.")
         return
-    __createProjectOrFileSelectType__("  C++", template, isProject=False)
+    __createProjectOrFileSelectType__("  C/C++", template, isProject=False)
     window = "{type='ProjectExplorer::JsonWizard' unnamed='1' visible='1'}"
     basePathEdit = waitForObject("{type='Utils::FancyLineEdit' unnamed='1' visible='1' "
                                  "window=%s}" % window)

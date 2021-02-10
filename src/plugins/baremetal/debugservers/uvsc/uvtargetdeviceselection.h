@@ -46,7 +46,8 @@ public:
         QString file;
         QString name;
         QString url;
-        QString vendor;
+        QString vendorId;
+        QString vendorName;
         QString version;
 
         bool operator==(const Package &other) const;
@@ -72,8 +73,10 @@ public:
 
     struct Algorithm {
         QString path;
-        QString size;
-        QString start;
+        QString flashSize;
+        QString flashStart;
+        QString ramSize;
+        QString ramStart;
 
         bool operator==(const Algorithm &other) const;
     };
@@ -84,7 +87,8 @@ public:
     QString desc;
     QString family;
     QString subfamily;
-    QString vendor;
+    QString vendorId;
+    QString vendorName;
     QString svd;
     Cpu cpu;
     Memories memories;

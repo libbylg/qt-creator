@@ -146,6 +146,7 @@ public:
     static void TearDownTestCase();
 
     SourceRange sourceRange(uint line, uint columnEnd) const;
+    SourceRange sourceRangeMultiLine(uint firstLine, uint lastLine, uint columnEnd) const;
 
 protected:
     static Data *d;
@@ -869,16 +870,18 @@ TEST_F(TokenProcessor, LessThanOperator)
 
 TEST_F(TokenProcessor, LessThanPunctuation)
 {
-    const auto infos = translationUnit.tokenInfosInRange(sourceRange(247, 19));
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(247, 10));
 
-    ASSERT_THAT(infos[1], HasOnlyType(HighlightingType::Punctuation));
+    ASSERT_THAT(infos[1], HasTwoTypes(HighlightingType::Punctuation,
+                                      HighlightingType::AngleBracketOpen));
 }
 
 TEST_F(TokenProcessor, GreaterThanPunctuation)
 {
     const auto infos = translationUnit.tokenInfosInRange(sourceRange(247, 19));
 
-    ASSERT_THAT(infos[4], HasOnlyType(HighlightingType::Punctuation));
+    ASSERT_THAT(infos[4], HasTwoTypes(HighlightingType::Punctuation,
+                                      HighlightingType::AngleBracketClose));
 }
 
 TEST_F(TokenProcessor, Comment)
@@ -927,7 +930,8 @@ TEST_F(TokenProcessor, PreprocessorInclusionDirective)
 {
     const auto infos = translationUnit.tokenInfosInRange(sourceRange(239, 18));
 
-    ASSERT_THAT(infos[1], HasOnlyType(HighlightingType::StringLiteral));
+    ASSERT_THAT(infos[1], HasOnlyType(HighlightingType::Preprocessor));
+    ASSERT_THAT(infos[2], HasOnlyType(HighlightingType::StringLiteral));
 }
 
 TEST_F(TokenProcessor, GotoLabelStatement)
@@ -1079,6 +1083,7 @@ TEST_F(TokenProcessor, PreprocessorInclusionDirectiveWithAngleBrackets )
 {
     const auto infos = translationUnit.tokenInfosInRange(sourceRange(289, 38));
 
+    ASSERT_THAT(infos[1], HasOnlyType(HighlightingType::Preprocessor));
     ASSERT_THAT(infos[3], HasOnlyType(HighlightingType::StringLiteral));
 }
 
@@ -1136,7 +1141,8 @@ TEST_F(TokenProcessor, StaticCastPunctation)
 {
     const auto infos = translationUnit.tokenInfosInRange(sourceRange(328, 64));
 
-    ASSERT_THAT(infos[1], HasOnlyType(HighlightingType::Punctuation));
+    ASSERT_THAT(infos[1], HasTwoTypes(HighlightingType::Punctuation,
+                                      HighlightingType::AngleBracketOpen));
     ASSERT_THAT(infos[3], HasOnlyType(HighlightingType::Punctuation));
     ASSERT_THAT(infos[5], HasOnlyType(HighlightingType::Punctuation));
 }
@@ -1325,7 +1331,7 @@ TEST_F(TokenProcessor, NonConstPointerArgument)
     infos[1];
 
     ASSERT_THAT(infos[2],
-                HasOnlyType(HighlightingType::LocalVariable));
+                HasTwoTypes(HighlightingType::LocalVariable, HighlightingType::OutputArgument));
 }
 
 TEST_F(TokenProcessor, PointerToConstArgument)
@@ -1345,7 +1351,7 @@ TEST_F(TokenProcessor, ConstPointerArgument)
     infos[1];
 
     ASSERT_THAT(infos[2],
-                HasOnlyType(HighlightingType::LocalVariable));
+                HasTwoTypes(HighlightingType::LocalVariable, HighlightingType::OutputArgument));
 }
 
 TEST_F(TokenProcessor, NonConstPointerGetterAsArgument)
@@ -1399,7 +1405,7 @@ TEST_F(TokenProcessor, NonConstPointerArgumentAsExpression)
     infos[1];
 
     ASSERT_THAT(infos[3],
-                HasOnlyType(HighlightingType::LocalVariable));
+                HasTwoTypes(HighlightingType::LocalVariable, HighlightingType::OutputArgument));
 }
 
 TEST_F(TokenProcessor, NonConstPointerArgumentAsInstanceWithMember)
@@ -1574,9 +1580,24 @@ TEST_F(TokenProcessor, QtPropertyName)
     ASSERT_THAT(infos[8], HasOnlyType(HighlightingType::QtProperty));
 }
 
+TEST_F(TokenProcessor, QtPropertyNameMultiLine)
+{
+    const auto infos = translationUnit.fullTokenInfosInRange(sourceRangeMultiLine(704, 732, 14));
+
+    ASSERT_THAT(infos[0], HasOnlyType(HighlightingType::PreprocessorExpansion));
+    ASSERT_THAT(infos[8], HasOnlyType(HighlightingType::QtProperty));
+}
+
 TEST_F(TokenProcessor, QtPropertyFunction)
 {
     const auto infos = translationUnit.fullTokenInfosInRange(sourceRange(599, 103));
+
+    ASSERT_THAT(infos[10], HasOnlyType(HighlightingType::Function));
+}
+
+TEST_F(TokenProcessor, QtPropertyFunctionMultiLine)
+{
+    const auto infos = translationUnit.fullTokenInfosInRange(sourceRangeMultiLine(704, 732, 14));
 
     ASSERT_THAT(infos[10], HasOnlyType(HighlightingType::Function));
 }
@@ -1588,9 +1609,23 @@ TEST_F(TokenProcessor, QtPropertyInternalKeyword)
     ASSERT_THAT(infos[9], HasOnlyType(HighlightingType::Invalid));
 }
 
+TEST_F(TokenProcessor, QtPropertyInternalKeywordMultiLine)
+{
+    const auto infos = translationUnit.fullTokenInfosInRange(sourceRangeMultiLine(704, 732, 14));
+
+    ASSERT_THAT(infos[9], HasOnlyType(HighlightingType::Invalid));
+}
+
 TEST_F(TokenProcessor, QtPropertyLastToken)
 {
     const auto infos = translationUnit.fullTokenInfosInRange(sourceRange(599, 103));
+
+    ASSERT_THAT(infos[14], HasOnlyType(HighlightingType::Function));
+}
+
+TEST_F(TokenProcessor, QtPropertyLastTokenMultiLine)
+{
+    const auto infos = translationUnit.fullTokenInfosInRange(sourceRangeMultiLine(704, 732, 14));
 
     ASSERT_THAT(infos[14], HasOnlyType(HighlightingType::Function));
 }
@@ -1722,6 +1757,42 @@ TEST_F(TokenProcessor, StaticPrivateMember)
     ASSERT_THAT(container.extraInfo.accessSpecifier, ClangBackEnd::AccessSpecifier::Private);
 }
 
+TEST_F(TokenProcessor, TemplateAlias)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(701, 8));
+
+    ASSERT_THAT(infos[0], HasTwoTypes(HighlightingType::Type, HighlightingType::TypeAlias));
+}
+
+TEST_F(TokenProcessor, StructuredBinding)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(737, 23));
+
+    ASSERT_THAT(infos[3], IsHighlightingMark(737u, 17u, 1u, HighlightingType::LocalVariable));
+    ASSERT_THAT(infos[5], IsHighlightingMark(737u, 20u, 1u, HighlightingType::LocalVariable));
+}
+
+TEST_F(TokenProcessor, IndirectMacro)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(746, 32));
+
+    ASSERT_THAT(infos[5], IsHighlightingMark(746u, 20u, 10u, HighlightingType::LocalVariable));
+}
+
+TEST_F(TokenProcessor, MultiDimArray)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(752, 28));
+
+    ASSERT_THAT(infos[3], IsHighlightingMark(752u, 13u, 10u, HighlightingType::GlobalVariable));
+}
+
+TEST_F(TokenProcessor, TemplateSeparateDeclDef)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRangeMultiLine(755, 771, 1));
+    ASSERT_THAT(infos[11], IsHighlightingMark(757u, 17u, 10u, HighlightingType::Invalid));
+    ASSERT_THAT(infos[37], IsHighlightingMark(764u, 5u, 9u, HighlightingType::GlobalVariable));
+}
+
 Data *TokenProcessor::d;
 
 void TokenProcessor::SetUpTestCase()
@@ -1738,6 +1809,12 @@ void TokenProcessor::TearDownTestCase()
 ClangBackEnd::SourceRange TokenProcessor::sourceRange(uint line, uint columnEnd) const
 {
     return translationUnit.sourceRange(line, 1, line, columnEnd);
+}
+
+ClangBackEnd::SourceRange TokenProcessor::sourceRangeMultiLine(uint firstLine, uint lastLine,
+                                                               uint columnEnd) const
+{
+    return translationUnit.sourceRange(firstLine, 1, lastLine, columnEnd);
 }
 
 }

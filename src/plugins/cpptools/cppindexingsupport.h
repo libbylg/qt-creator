@@ -47,7 +47,8 @@ public:
         Classes      = 0x1,
         Functions    = 0x2,
         Enums        = 0x4,
-        Declarations = 0x8
+        Declarations = 0x8,
+        TypeAliases  = 0x16,
     };
 
     Q_DECLARE_FLAGS(SymbolTypes, SymbolType)
@@ -78,9 +79,9 @@ class CPPTOOLS_EXPORT CppIndexingSupport
 public:
     virtual ~CppIndexingSupport() = 0;
 
-    virtual QFuture<void> refreshSourceFiles(const QFutureInterface<void> &superFuture,
-                                             const QSet<QString> &sourceFiles,
-                                             CppModelManager::ProgressNotificationMode mode) = 0;
+    virtual QFuture<void> refreshSourceFiles(const QSet<QString> &sourceFiles,
+                                             CppModelManager::ProgressNotificationMode mode)
+        = 0;
     virtual SymbolSearcher *createSymbolSearcher(const SymbolSearcher::Parameters &parameters,
                                                  const QSet<QString> &fileNames) = 0;
 };

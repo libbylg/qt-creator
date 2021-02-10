@@ -30,7 +30,7 @@ outline = ":Qt Creator_QmlJSEditor::Internal::QmlJSOutlineTreeView"
 treebase = "keyinteraction.Resources.keyinteraction\\.qrc./keyinteraction.focus."
 
 def main():
-    sourceExample = os.path.join(Qt5Path.examplesPath(Targets.DESKTOP_5_6_1_DEFAULT),
+    sourceExample = os.path.join(Qt5Path.examplesPath(Targets.DESKTOP_5_14_1_DEFAULT),
                                  "quick", "keyinteraction")
     proFile = "keyinteraction.pro"
     if not neededFilePresent(os.path.join(sourceExample, proFile)):
@@ -39,7 +39,7 @@ def main():
     startQC()
     if not startedWithoutPluginError():
         return
-    openQmakeProject(os.path.join(templateDir, proFile), [Targets.DESKTOP_5_6_1_DEFAULT])
+    openQmakeProject(os.path.join(templateDir, proFile), [Targets.DESKTOP_5_14_1_DEFAULT])
     qmlFiles = [treebase + "focus\\.qml", treebase + "Core.ListMenu\\.qml"]
     checkOutlineFor(qmlFiles)
     testModify()
@@ -140,12 +140,8 @@ def verifyOutline(outlinePseudoTree, datasetFileName):
         return
     for counter, (expectedItem, foundItem) in enumerate(zip(expected, outlinePseudoTree)):
         if expectedItem != foundItem:
-            if JIRA.isBugStillOpen(21335) and expectedItem[:-1] == foundItem[:-1]:
-                test.xfail("Mismatch in element number %d for '%s'" % (counter + 1, fileName),
-                           "%s != %s" % (str(expectedItem), str(foundItem)))
-            else:
-                test.fail("Mismatch in element number %d for '%s'" % (counter + 1, fileName),
-                          "%s != %s" % (str(expectedItem), str(foundItem)))
+            test.fail("Mismatch in element number %d for '%s'" % (counter + 1, fileName),
+                      "%s != %s" % (str(expectedItem), str(foundItem)))
             return
     test.passes("All nodes (%d) inside outline match expected nodes for '%s'."
                 % (len(expected), fileName))

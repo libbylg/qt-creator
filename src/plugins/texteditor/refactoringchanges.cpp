@@ -31,8 +31,9 @@
 #include <coreplugin/dialogs/readonlyfilesdialog.h>
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/editormanager/editormanager.h>
-#include <utils/qtcassert.h>
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
+#include <utils/qtcassert.h>
 
 #include <QFile>
 #include <QFileInfo>
@@ -105,7 +106,7 @@ bool RefactoringChanges::createFile(const QString &fileName, const QString &cont
     m_data->fileChanged(fileName);
 
     if (openEditor)
-        this->openEditor(fileName, /*bool activate =*/ false, -1, -1);
+        RefactoringChanges::openEditor(fileName, /*bool activate =*/ false, -1, -1);
 
     return true;
 }
@@ -123,7 +124,9 @@ bool RefactoringChanges::removeFile(const QString &fileName) const
 TextEditorWidget *RefactoringChanges::openEditor(const QString &fileName, bool activate, int line, int column)
 {
     EditorManager::OpenEditorFlags flags = EditorManager::IgnoreNavigationHistory;
-    if (!activate)
+    if (activate)
+        flags |= EditorManager::SwitchSplitIfAlreadyVisible;
+    else
         flags |= EditorManager::DoNotChangeCurrentEditor;
     if (line != -1) {
         // openEditorAt uses a 1-based line and a 0-based column!
@@ -161,7 +164,7 @@ RefactoringFile::RefactoringFile(const QString &fileName, const QSharedPointer<R
     : m_fileName(fileName)
     , m_data(data)
 {
-    QList<IEditor *> editors = DocumentModel::editorsForFilePath(fileName);
+    QList<IEditor *> editors = DocumentModel::editorsForFilePath(Utils::FilePath::fromString(fileName));
     if (!editors.isEmpty()) {
         auto editorWidget = TextEditorWidget::fromEditor(editors.first());
         if (editorWidget && !editorWidget->isReadOnly())
@@ -312,7 +315,7 @@ bool RefactoringFile::apply()
 {
     // test file permissions
     if (!QFileInfo(fileName()).isWritable()) {
-        ReadOnlyFilesDialog roDialog(FilePath::fromString(fileName()), ICore::mainWindow());
+        ReadOnlyFilesDialog roDialog(FilePath::fromString(fileName()), ICore::dialogParent());
         const QString &failDetailText = QApplication::translate("RefactoringFile::apply",
                                                                 "Refactoring cannot be applied.");
         roDialog.setShowFailWarning(true, failDetailText);
@@ -343,6 +346,9 @@ bool RefactoringFile::apply()
             else
                 c.beginEditBlock();
 
+            sort(m_indentRanges);
+            sort(m_reindentRanges);
+
             // build indent selections now, applying the changeset will change locations
             const RefactoringSelections &indentSelections =
                     RefactoringChanges::rangesToSelections(doc, m_indentRanges);
@@ -355,8 +361,8 @@ bool RefactoringFile::apply()
             m_changes.apply(&c);
             m_changes.clear();
 
-            indentOrReindent(&RefactoringChangesData::indentSelection, indentSelections);
-            indentOrReindent(&RefactoringChangesData::reindentSelection, reindentSelections);
+            indentOrReindent(indentSelections, Indent);
+            indentOrReindent(reindentSelections, Reindent);
 
             c.endEditBlock();
 
@@ -380,18 +386,17 @@ bool RefactoringFile::apply()
     return result;
 }
 
-void RefactoringFile::indentOrReindent(void (RefactoringChangesData::*mf)(const QTextCursor &,
-                                                                          const QString &,
-                                                                          const TextDocument *) const,
-                                       const RefactoringSelections &ranges)
+void RefactoringFile::indentOrReindent(const RefactoringSelections &ranges,
+                                       RefactoringFile::IndentType indent)
 {
-    using CursorPair = QPair<QTextCursor, QTextCursor>;
-
-    foreach (const CursorPair &p, ranges) {
-        QTextCursor selection(p.first.document());
-        selection.setPosition(p.first.position());
-        selection.setPosition(p.second.position(), QTextCursor::KeepAnchor);
-        ((*m_data).*(mf))(selection, m_fileName, m_editor ? m_editor->textDocument() : nullptr);
+    TextDocument * document = m_editor ? m_editor->textDocument() : nullptr;
+    for (const auto &[position, anchor]: ranges) {
+        QTextCursor selection(anchor);
+        selection.setPosition(position.position(), QTextCursor::KeepAnchor);
+        if (indent == Indent)
+            m_data->indentSelection(selection, m_fileName, document);
+        else
+            m_data->reindentSelection(selection, m_fileName, document);
     }
 }
 

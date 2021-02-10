@@ -25,10 +25,8 @@
 
 #include "fileapidataextractor.h"
 
-#include "cmakeprojectnodes.h"
+#include "fileapiparser.h"
 #include "projecttreehelper.h"
-
-#include <projectexplorer/projectnodes.h>
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
@@ -78,7 +76,7 @@ CMakeFileResult extractCMakeFilesData(const std::vector<FileApiDetails::CMakeFil
         if (oldCount < result.cmakeFiles.count()) {
             if (info.isCMake && !info.isCMakeListsDotTxt) {
                 // Skip files that cmake considers to be part of the installation -- but include
-                // CMakeLists.txt files. This unbreaks cmake binaries running from their own
+                // CMakeLists.txt files. This fixes cmake binaries running from their own
                 // build directory.
                 continue;
             }
@@ -104,22 +102,6 @@ CMakeFileResult extractCMakeFilesData(const std::vector<FileApiDetails::CMakeFil
     return result;
 }
 
-Configuration extractConfiguration(std::vector<Configuration> &codemodel, QString &errorMessage)
-{
-    if (codemodel.size() == 0) {
-        qWarning() << "No configuration found!";
-        errorMessage = "No configuration found!";
-        return {};
-    }
-    if (codemodel.size() > 1)
-        qWarning() << "Multi-configuration generator found, ignoring all but first configuration";
-
-    Configuration result = std::move(codemodel[0]);
-    codemodel.clear();
-
-    return result;
-}
-
 class PreprocessedData
 {
 public:
@@ -141,16 +123,13 @@ PreprocessedData preprocess(FileApiData &data,
                             const FilePath &buildDirectory,
                             QString &errorMessage)
 {
+    Q_UNUSED(errorMessage)
+
     PreprocessedData result;
 
     result.cache = std::move(data.cache); // Make sure this is available, even when nothing else is
 
-    // Simplify to only one configuration:
-    result.codemodel = extractConfiguration(data.codemodel, errorMessage);
-
-    if (!errorMessage.isEmpty()) {
-        return result;
-    }
+    result.codemodel = std::move(data.codemodel);
 
     CMakeFileResult cmakeFileResult = extractCMakeFilesData(data.cmakeFiles,
                                                             sourceDirectory,
@@ -260,39 +239,52 @@ QList<CMakeBuildTarget> generateBuildTargets(const PreprocessedData &input,
                     extractBacktraceInformation(t.backtraceGraph, sourceDir, id.backtrace, 500));
             }
 
-            // Is this a terminal application?
-            Utils::FilePaths librarySeachPaths;
-            if (ct.targetType == ExecutableType && t.link && t.link.value().language == "CXX") {
+            if (ct.targetType == ExecutableType) {
+                Utils::FilePaths librarySeachPaths;
+                // Is this a GUI application?
+                ct.linksToQtGui = Utils::contains(t.link.value().fragments,
+                                                  [](const FragmentInfo &f) {
+                                                      return f.role == "libraries"
+                                                             && (f.fragment.contains("QtGui")
+                                                                 || f.fragment.contains("Qt5Gui")
+                                                                 || f.fragment.contains("Qt6Gui"));
+                                                  });
+
+                // Extract library directories for executables:
                 for (const FragmentInfo &f : t.link.value().fragments) {
-                    FilePath tmp;
-                    // Some projects abuse linking to libraries to pass random flags to the linker!
-                    if (f.role != "flags"
-                        && !(f.fragment.startsWith("-") || f.fragment.contains(" -"))) {
-                        tmp = FilePath::fromString(currentBuildDir.absoluteFilePath(
-                            QDir::fromNativeSeparators(f.fragment)));
-                    }
+                    if (f.role == "flags") // ignore all flags fragments
+                        continue;
 
-                    if (f.role == "libraries") {
-                        tmp = tmp.parentDir();
+                    // CMake sometimes mixes several shell-escaped pieces into one fragment. Disentangle that again:
+                    const QStringList parts = QtcProcess::splitArgs(f.fragment);
+                    for (const QString &part : parts) {
+                        // Some projects abuse linking to libraries to pass random flags to the linker, so ignore
+                        // flags mixed into a fragment
+                        if (part.startsWith("-"))
+                            continue;
 
-                        if (f.fragment.contains("QtGui") || f.fragment.contains("Qt5Gui")
-                            || f.fragment.contains("Qt6Gui"))
-                            ct.linksToQtGui = true;
-                    }
+                        FilePath tmp = FilePath::fromString(
+                            currentBuildDir.absoluteFilePath(QDir::fromNativeSeparators(part)));
 
-                    if (!tmp.isEmpty()) {
-                        librarySeachPaths.append(tmp);
-                        // Libraries often have their import libs in ../lib and the
-                        // actual dll files in ../bin on windows. Qt is one example of that.
-                        if (tmp.fileName() == "lib" && HostOsInfo::isWindowsHost()) {
-                            const FilePath path = tmp.parentDir().pathAppended("bin");
+                        if (f.role == "libraries")
+                            tmp = tmp.parentDir();
 
-                            librarySeachPaths.append(path);
+                        if (!tmp.isEmpty()
+                            && tmp.isDir()) { // f.role is libraryPath or frameworkPath
+                            librarySeachPaths.append(tmp);
+                            // Libraries often have their import libs in ../lib and the
+                            // actual dll files in ../bin on windows. Qt is one example of that.
+                            if (tmp.fileName() == "lib" && HostOsInfo::isWindowsHost()) {
+                                const FilePath path = tmp.parentDir().pathAppended("bin");
+
+                                if (path.isDir())
+                                    librarySeachPaths.append(path);
+                            }
                         }
                     }
                 }
+                ct.libraryDirectories = filteredUnique(librarySeachPaths);
             }
-            ct.libraryDirectories = filteredUnique(librarySeachPaths);
 
             return ct;
         });
@@ -309,15 +301,13 @@ static QStringList splitFragments(const QStringList &fragments)
 }
 
 RawProjectParts generateRawProjectParts(const PreprocessedData &input,
-                                        const FilePath &sourceDirectory,
-                                        const FilePath &buildDirectory)
+                                        const FilePath &sourceDirectory)
 {
     RawProjectParts rpps;
 
     int counter = 0;
     for (const TargetDetails &t : input.targetDetails) {
         QDir sourceDir(sourceDirectory.toString());
-        QDir buildDir(buildDirectory.toString());
 
         bool needPostfix = t.compileGroups.size() > 1;
         int count = 1;
@@ -339,10 +329,15 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
             }
 
             QString ending;
-            if (ci.language == "C")
+            QString qtcPchFile;
+            if (ci.language == "C") {
                 ending = "/cmake_pch.h";
-            else if (ci.language == "CXX")
+                qtcPchFile = "qtc_cmake_pch.h";
+            }
+            else if (ci.language == "CXX") {
                 ending = "/cmake_pch.hxx";
+                qtcPchFile = "qtc_cmake_pch.hxx";
+            }
 
             ++counter;
             RawProjectPart rpp;
@@ -353,13 +348,7 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
             rpp.setMacros(transform<QVector>(ci.defines, &DefineInfo::define));
             rpp.setHeaderPaths(transform<QVector>(ci.includes, &IncludeInfo::path));
 
-            RawProjectPartFlags cProjectFlags;
-            cProjectFlags.commandLineFlags = splitFragments(ci.fragments);
-            rpp.setFlagsForC(cProjectFlags);
-
-            RawProjectPartFlags cxxProjectFlags;
-            cxxProjectFlags.commandLineFlags = cProjectFlags.commandLineFlags;
-            rpp.setFlagsForCxx(cxxProjectFlags);
+            QStringList fragments = splitFragments(ci.fragments);
 
             FilePath precompiled_header
                 = FilePath::fromString(findOrDefault(t.sources, [&ending](const SourceInfo &si) {
@@ -371,15 +360,40 @@ RawProjectParts generateRawProjectParts(const PreprocessedData &input,
             }));
             if (!precompiled_header.isEmpty()) {
                 if (precompiled_header.toFileInfo().isRelative()) {
-                    const FilePath parentDir = FilePath::fromString(buildDir.absolutePath());
-                    const QString dirName = buildDir.dirName();
-                    if (precompiled_header.startsWith(dirName))
-                        precompiled_header = FilePath::fromString(
-                            precompiled_header.toString().mid(dirName.length() + 1));
+                    const FilePath parentDir = FilePath::fromString(sourceDir.absolutePath());
                     precompiled_header = parentDir.pathAppended(precompiled_header.toString());
                 }
-                rpp.setPreCompiledHeaders({precompiled_header.toString()});
+
+                // Remove the CMake PCH usage command line options in order to avoid the case
+                // when the build system would produce a .pch/.gch file that would be treated
+                // by the Clang code model as its own and fail.
+                auto remove = [&](const QStringList &args) {
+                    auto foundPos = std::search(fragments.begin(), fragments.end(),
+                                                args.begin(), args.end());
+                    if (foundPos != fragments.end())
+                        fragments.erase(foundPos, std::next(foundPos, args.size()));
+                };
+
+                remove({"-Xclang", "-include-pch", "-Xclang", precompiled_header.toString() + ".gch"});
+                remove({"-Xclang", "-include-pch", "-Xclang", precompiled_header.toString() + ".pch"});
+                remove({"-Xclang", "-include", "-Xclang", precompiled_header.toString()});
+                remove({"-include", precompiled_header.toString()});
+                remove({"/FI", precompiled_header.toString()});
+
+                // Make a copy of the CMake PCH header and use it instead
+                FilePath qtc_precompiled_header = precompiled_header.parentDir().pathAppended(qtcPchFile);
+                FileUtils::copyIfDifferent(precompiled_header, qtc_precompiled_header);
+
+                rpp.setPreCompiledHeaders({qtc_precompiled_header.toString()});
             }
+
+            RawProjectPartFlags cProjectFlags;
+            cProjectFlags.commandLineFlags = fragments;
+            rpp.setFlagsForC(cProjectFlags);
+
+            RawProjectPartFlags cxxProjectFlags;
+            cxxProjectFlags.commandLineFlags = cProjectFlags.commandLineFlags;
+            rpp.setFlagsForCxx(cxxProjectFlags);
 
             const bool isExecutable = t.type == "EXECUTABLE";
             rpp.setBuildTargetType(isExecutable ? ProjectExplorer::BuildTargetType::Executable
@@ -461,7 +475,6 @@ void addCompileGroups(ProjectNode *targetRoot,
                       QSet<FilePath> &knownHeaderNodes)
 {
     const bool inSourceBuild = (sourceDirectory == buildDirectory);
-    const QDir currentSourceDir(sourceDirectory.toString());
 
     std::vector<std::unique_ptr<FileNode>> toList;
     QSet<Utils::FilePath> alreadyListed;
@@ -520,7 +533,7 @@ void addCompileGroups(ProjectNode *targetRoot,
         FolderNode *insertNode = createSourceGroupNode(td.sourceGroups[i],
                                                        baseDirectory,
                                                        targetRoot);
-        insertNode->addNestedNodes(std::move(sourceGroupFileNodes[i]));
+        insertNode->addNestedNodes(std::move(current), baseDirectory);
     }
 
     addCMakeVFolder(targetRoot,
@@ -574,6 +587,8 @@ std::pair<std::unique_ptr<CMakeProjectNode>, QSet<FilePath>> generateRootProject
         = findOrDefault(data.codemodel.projects, equal(&FileApiDetails::Project::parent, -1));
     if (!topLevelProject.name.isEmpty())
         result.first->setDisplayName(topLevelProject.name);
+    else
+        result.first->setDisplayName(sourceDirectory.fileName());
 
     QHash<FilePath, ProjectNode *> cmakeListsNodes = addCMakeLists(result.first.get(),
                                                                    std::move(data.cmakeListNodes));
@@ -674,13 +689,44 @@ FileApiQtcData extractData(FileApiData &input,
 
     result.buildTargets = generateBuildTargets(data, sourceDirectory, buildDirectory);
     result.cmakeFiles = std::move(data.cmakeFiles);
-    result.projectParts = generateRawProjectParts(data, sourceDirectory, buildDirectory);
+    result.projectParts = generateRawProjectParts(data, sourceDirectory);
 
     auto pair = generateRootProjectNode(data, sourceDirectory, buildDirectory);
     result.rootProjectNode = std::move(pair.first);
     result.knownHeaders = std::move(pair.second);
 
     setupLocationInfoForTargets(result.rootProjectNode.get(), result.buildTargets);
+
+    result.ctestPath = input.replyFile.ctestExecutable;
+    result.isMultiConfig = input.replyFile.isMultiConfig;
+    if (input.replyFile.isMultiConfig && input.replyFile.generator != "Ninja Multi-Config")
+        result.usesAllCapsTargets = true;
+
+    return result;
+}
+
+FileApiQtcData generateFallbackData(const FilePath &topCmakeFile,
+                                    const FilePath &sourceDirectory,
+                                    const FilePath &buildDirectory,
+                                    QString errorMessage)
+{
+    Q_UNUSED(buildDirectory)
+
+    FileApiQtcData result;
+
+    result.rootProjectNode.reset(new CMakeProjectNode{sourceDirectory});
+    result.rootProjectNode->setDisplayName(sourceDirectory.fileName());
+    result.errorMessage = errorMessage;
+
+    if (!topCmakeFile.isEmpty()) {
+        auto node = std::make_unique<FileNode>(topCmakeFile, FileType::Project);
+        node->setIsGenerated(false);
+
+        std::vector<std::unique_ptr<FileNode>> fileNodes;
+        fileNodes.emplace_back(std::move(node));
+
+        addCMakeLists(result.rootProjectNode.get(), std::move(fileNodes));
+    }
 
     return result;
 }

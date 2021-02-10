@@ -42,9 +42,9 @@ OpenDocumentsFilter::OpenDocumentsFilter()
 {
     setId("Open documents");
     setDisplayName(tr("Open Documents"));
-    setShortcutString("o");
+    setDefaultShortcutString("o");
     setPriority(High);
-    setIncludedByDefault(true);
+    setDefaultIncludedByDefault(true);
 
     connect(DocumentModel::model(), &QAbstractItemModel::dataChanged,
             this, &OpenDocumentsFilter::refreshInternally);
@@ -113,7 +113,8 @@ QList<OpenDocumentsFilter::Entry> OpenDocumentsFilter::editors() const
 void OpenDocumentsFilter::refresh(QFutureInterface<void> &future)
 {
     Q_UNUSED(future)
-    QMetaObject::invokeMethod(this, "refreshInternally", Qt::BlockingQueuedConnection);
+    QMetaObject::invokeMethod(this, &OpenDocumentsFilter::refreshInternally,
+                              Qt::BlockingQueuedConnection);
 }
 
 void OpenDocumentsFilter::accept(LocatorFilterEntry selection,

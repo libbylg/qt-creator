@@ -33,6 +33,9 @@ T.AbstractButton {
     property alias buttonIcon: buttonIcon.text
     property alias iconColor: buttonIcon.color
     property alias iconFont: buttonIcon.font.family
+    property alias iconSize: buttonIcon.font.pixelSize
+    property alias iconItalic: buttonIcon.font.italic
+    property alias iconBold: buttonIcon.font.bold
     property alias backgroundVisible: buttonBackground.visible
     property alias backgroundRadius: buttonBackground.radius
 
@@ -44,6 +47,11 @@ T.AbstractButton {
     width: StudioTheme.Values.height
     z: myButton.checked ? 10 : 3
     activeFocusOnTab: false
+
+    onHoveredChanged: {
+        if (parent !== undefined && parent.hover !== undefined)
+            parent.hover = hovered
+    }
 
     background: Rectangle {
         id: buttonBackground

@@ -42,9 +42,11 @@ public:
     using WeakPointer = QWeakPointer<QuickItemNodeInstance>;
 
     ~QuickItemNodeInstance() override;
+    void handleObjectDeletion(QObject *object) override;
 
     static Pointer create(QObject *objectToBeWrapped);
     static void createEffectItem(bool createEffectItem);
+    static void enableUnifiedRenderPath(bool createEffectItem);
 
     void initialize(const ObjectNodeInstance::Pointer &objectNodeInstance,
                     InstanceContainer::NodeFlags flags) override;
@@ -69,6 +71,8 @@ public:
 
     QImage renderImage() const override;
     QImage renderPreviewImage(const QSize &previewImageSize) const override;
+
+    QSharedPointer<QQuickItemGrabResult> createGrabResult() const override;
 
     void updateAllDirtyNodesRecursive() override;
 
@@ -96,6 +100,10 @@ public:
     void doComponentComplete() override;
 
     QList<QQuickItem*> allItemsRecursive() const override;
+    QStringList allStates() const override;
+
+    static void updateDirtyNode(QQuickItem *item);
+    static bool unifiedRenderPath();
 
 protected:
     explicit QuickItemNodeInstance(QQuickItem*);
@@ -117,6 +125,7 @@ protected:
 
     double x() const;
     double y() const;
+    bool checkIfRefFromEffect(qint32 id);
 
 private: //variables
     QPointer<QQuickItem> m_contentItem;
@@ -130,6 +139,7 @@ private: //variables
     double m_width;
     double m_height;
     static bool s_createEffectItem;
+    static bool s_unifiedRenderPath;
 };
 
 } // namespace Internal

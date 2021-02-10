@@ -56,6 +56,7 @@
 #include <QDir>
 
 using namespace Core;
+using namespace Utils;
 
 namespace TextEditor {
 namespace Internal {
@@ -66,6 +67,7 @@ static const char kCurrentDocumentColumn[] = "CurrentDocument:Column";
 static const char kCurrentDocumentRowCount[] = "CurrentDocument:RowCount";
 static const char kCurrentDocumentColumnCount[] = "CurrentDocument:ColumnCount";
 static const char kCurrentDocumentFontSize[] = "CurrentDocument:FontSize";
+static const char kCurrentDocumentWordUnderCursor[] = "CurrentDocument:WordUnderCursor";
 
 class TextEditorPluginPrivate : public QObject
 {
@@ -130,6 +132,16 @@ bool TextEditorPlugin::initialize(const QStringList &arguments, QString *errorMe
     });
     Utils::FancyLineEdit::setCompletionShortcut(command->keySequence());
 
+    // Add shortcut for invoking function hint completion
+    QAction *functionHintAction = new QAction(tr("Display Function Hint"), this);
+    command = ActionManager::registerAction(functionHintAction, Constants::FUNCTION_HINT, context);
+    command->setDefaultKeySequence(QKeySequence(useMacShortcuts ? tr("Meta+Shift+D")
+                                                                : tr("Ctrl+Shift+D")));
+    connect(functionHintAction, &QAction::triggered, []() {
+        if (BaseTextEditor *editor = BaseTextEditor::currentTextEditor())
+            editor->editorWidget()->invokeAssist(FunctionHint);
+    });
+
     // Add shortcut for invoking quick fix options
     QAction *quickFixAction = new QAction(tr("Trigger Refactoring Action"), this);
     Command *quickFixCommand = ActionManager::registerAction(quickFixAction, Constants::QUICKFIX_THIS, context);
@@ -161,12 +173,12 @@ void TextEditorPluginPrivate::extensionsInitialized()
     connect(&settings, &TextEditorSettings::fontSettingsChanged,
             this, &TextEditorPluginPrivate::updateSearchResultsFont);
 
-    updateSearchResultsFont(settings.fontSettings());
+    updateSearchResultsFont(TextEditorSettings::fontSettings());
 
-    connect(settings.codeStyle(), &ICodeStylePreferences::currentTabSettingsChanged,
+    connect(TextEditorSettings::codeStyle(), &ICodeStylePreferences::currentTabSettingsChanged,
             this, &TextEditorPluginPrivate::updateSearchResultsTabWidth);
 
-    updateSearchResultsTabWidth(settings.codeStyle()->currentTabSettings());
+    updateSearchResultsTabWidth(TextEditorSettings::codeStyle()->currentTabSettings());
 
     connect(ExternalToolManager::instance(), &ExternalToolManager::replaceSelectionRequested,
             this, &TextEditorPluginPrivate::updateCurrentSelection);
@@ -223,6 +235,15 @@ void TextEditorPlugin::extensionsInitialized()
             BaseTextEditor *editor = BaseTextEditor::currentTextEditor();
             return editor ? editor->widget()->font().pointSize() : 0;
         });
+
+    expander->registerVariable(kCurrentDocumentWordUnderCursor,
+                               tr("Word under the current document's text cursor."),
+                               []() {
+                                   BaseTextEditor *editor = BaseTextEditor::currentTextEditor();
+                                   if (!editor)
+                                       return QString();
+                                   return Text::wordUnderCursor(editor->editorWidget()->textCursor());
+                               });
 }
 
 LineNumberFilter *TextEditorPlugin::lineNumberFilter()
@@ -239,11 +260,20 @@ ExtensionSystem::IPlugin::ShutdownFlag TextEditorPlugin::aboutToShutdown()
 void TextEditorPluginPrivate::updateSearchResultsFont(const FontSettings &settings)
 {
     if (auto window = SearchResultWindow::instance()) {
+        const Format textFormat = settings.formatFor(C_TEXT);
+        const Format defaultResultFormat = settings.formatFor(C_SEARCH_RESULT);
+        const Format alt1ResultFormat = settings.formatFor(C_SEARCH_RESULT_ALT1);
+        const Format alt2ResultFormat = settings.formatFor(C_SEARCH_RESULT_ALT2);
         window->setTextEditorFont(QFont(settings.family(), settings.fontSize() * settings.fontZoom() / 100),
-                                  settings.formatFor(C_TEXT).foreground(),
-                                  settings.formatFor(C_TEXT).background(),
-                                  settings.formatFor(C_SEARCH_RESULT).foreground(),
-                                  settings.formatFor(C_SEARCH_RESULT).background());
+            {std::make_pair(SearchResultColor::Style::Default,
+             SearchResultColor(textFormat.background(), textFormat.foreground(),
+             defaultResultFormat.background(), defaultResultFormat.foreground())),
+             std::make_pair(SearchResultColor::Style::Alt1,
+                          SearchResultColor(textFormat.background(), textFormat.foreground(),
+                          alt1ResultFormat.background(), alt1ResultFormat.foreground())),
+             std::make_pair(SearchResultColor::Style::Alt2,
+                          SearchResultColor(textFormat.background(), textFormat.foreground(),
+                          alt2ResultFormat.background(), alt2ResultFormat.foreground()))});
     }
 }
 

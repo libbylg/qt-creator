@@ -35,17 +35,17 @@
 #include <utils/stringutils.h>
 
 #include <coreplugin/icore.h>
-#include <texteditor/texteditorsettings.h>
-#include <texteditor/icodestylepreferences.h>
-#include <texteditor/icodestylepreferencesfactory.h>
-#include <texteditor/normalindenter.h>
-#include <texteditor/tabsettings.h>
-#include <texteditor/storagesettings.h>
+#include <projectexplorer/editorconfiguration.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projecttree.h>
-#include <projectexplorer/editorconfiguration.h>
+#include <texteditor/icodestylepreferences.h>
+#include <texteditor/icodestylepreferencesfactory.h>
+#include <texteditor/storagesettings.h>
+#include <texteditor/tabsettings.h>
+#include <texteditor/texteditorsettings.h>
+#include <texteditor/textindenter.h>
 #include <utils/mimetypes/mimedatabase.h>
-#
+
 #include <QPointer>
 #include <QDebug>
 #include <QFileInfo>
@@ -55,6 +55,7 @@
 
 using namespace TextEditor;
 using namespace Core;
+using namespace Utils;
 
 /*!
     \class ProjectExplorer::Internal::ProjectFileWizardExtension
@@ -189,7 +190,7 @@ bool ProjectFileWizardExtension::processFiles(
             errorMessage->clear();
         }
         message.append(tr("Open project anyway?"));
-        if (QMessageBox::question(ICore::mainWindow(), tr("Version Control Failure"), message,
+        if (QMessageBox::question(ICore::dialogParent(), tr("Version Control Failure"), message,
                                   QMessageBox::Yes, QMessageBox::No) == QMessageBox::No)
             return false;
     }
@@ -259,7 +260,7 @@ void ProjectFileWizardExtension::applyCodeStyle(GeneratedFile *file) const
         indenter->setFileName(Utils::FilePath::fromString(file->path()));
     }
     if (!indenter)
-        indenter = new NormalIndenter(&doc);
+        indenter = new TextIndenter(&doc);
 
     ICodeStylePreferences *codeStylePrefs = codeStylePreferences(baseProject, languageId);
     indenter->setCodeStylePreferences(codeStylePrefs);
@@ -273,7 +274,7 @@ void ProjectFileWizardExtension::applyCodeStyle(GeneratedFile *file) const
     if (TextEditorSettings::storageSettings().m_cleanWhitespace) {
         QTextBlock block = doc.firstBlock();
         while (block.isValid()) {
-            codeStylePrefs->currentTabSettings().removeTrailingWhitespace(cursor, block);
+            TabSettings::removeTrailingWhitespace(cursor, block);
             block = block.next();
         }
     }

@@ -36,8 +36,8 @@
 // We mean it.
 //
 
-#include "qmljsglobal_p.h"
-#include "qmljsgrammar_p.h"
+#include "qmljs/parser/qmljsglobal_p.h"
+#include "qmljs/parser/qmljsgrammar_p.h"
 
 #include <QtCore/qstring.h>
 #include <QtCore/qstack.h>
@@ -150,8 +150,8 @@ public:
     int tokenStartLine() const { return _tokenLine; }
     int tokenStartColumn() const { return _tokenColumn; }
 
-    inline QStringRef tokenSpell() const { return _tokenSpell; }
-    inline QStringRef rawString() const { return _rawString; }
+    inline QStringView tokenSpell() const { return _tokenSpell; }
+    inline QStringView rawString() const { return _rawString; }
     double tokenValue() const { return _tokenValue; }
     QString tokenText() const;
 
@@ -204,8 +204,8 @@ private:
     QString _code;
     QString _tokenText;
     QString _errorMessage;
-    QStringRef _tokenSpell;
-    QStringRef _rawString;
+    QStringView _tokenSpell;
+    QStringView _rawString;
 
     const QChar *_codePtr;
     const QChar *_endPtr;

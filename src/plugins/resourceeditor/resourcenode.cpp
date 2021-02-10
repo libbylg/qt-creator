@@ -70,8 +70,7 @@ public:
 
     bool reload(QString *, ReloadFlag, ChangeType type) final
     {
-        if (type == TypePermissions)
-            return true;
+        Q_UNUSED(type)
         FolderNode *parent = m_node->parentFolderNode();
         QTC_ASSERT(parent, return false);
         parent->replaceSubtree(m_node, std::make_unique<ResourceTopLevelNode>(
@@ -244,7 +243,7 @@ ResourceTopLevelNode::ResourceTopLevelNode(const FilePath &filePath,
                                            const QString &contents)
     : FolderNode(filePath)
 {
-    setIcon(FileIconProvider::icon(filePath.toString()));
+    setIcon(FileIconProvider::icon(filePath.toFileInfo()));
     setPriority(Node::DefaultFilePriority);
     setListInProject(true);
     setAddFileFilter("*.png; *.jpg; *.gif; *.svg; *.ico; *.qml; *.qml.ui");

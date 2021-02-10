@@ -49,7 +49,6 @@ SaveItemsDialog::SaveItemsDialog(QWidget *parent,
     : QDialog(parent)
 {
     m_ui.setupUi(this);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     // QDialogButtonBox's behavior for "destructive" is wrong, the "do not save" should be left-aligned
     const QDialogButtonBox::ButtonRole discardButtonRole = Utils::HostOsInfo::isMacHost()
@@ -80,7 +79,7 @@ SaveItemsDialog::SaveItemsDialog(QWidget *parent,
         QTreeWidgetItem *item = new QTreeWidgetItem(m_ui.treeWidget, QStringList()
                                                     << visibleName << QDir::toNativeSeparators(directory));
         if (!fileName.isEmpty())
-            item->setIcon(0, FileIconProvider::icon(fileName));
+            item->setIcon(0, FileIconProvider::icon(QFileInfo(fileName)));
         item->setData(0, Qt::UserRole, QVariant::fromValue(document));
     }
 

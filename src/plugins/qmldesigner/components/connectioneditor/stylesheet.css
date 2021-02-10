@@ -38,10 +38,9 @@ QTableView::item:selected
 
 QHeaderView::section {
     background-color: #494949;
-    padding: 4px;
-    border: 1px solid black;
-    color: #cacaca;
-    margin: 2px
+    border: 0px;
+    color: creatorTheme.DStextColor;
+    margin-right: 1px
 }
 
 QTableView {
@@ -54,7 +53,7 @@ QWidget#widgetSpacer {
 
 QStackedWidget {
     border: 0px;
-    background-color: #4f4f4f;
+    background-color: creatorTheme.QmlDesigner_TabLight;
 }
 
 QTabBar::tab:selected {

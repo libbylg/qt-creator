@@ -29,6 +29,7 @@
 #include "qbsprojectmanagerconstants.h"
 #include "qbssettings.h"
 
+#include <app/app_version.h>
 #include <coreplugin/messagemanager.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/taskhub.h>
@@ -263,13 +264,14 @@ QString QbsSession::errorString(QbsSession::Error error)
 {
     switch (error) {
     case Error::QbsQuit:
-        return tr("The qbs process quit unexpectedly");
+        return tr("The qbs process quit unexpectedly.");
     case Error::QbsFailedToStart:
         return tr("The qbs process failed to start.");
     case Error::ProtocolError:
-        return tr("The qbs process sent invalid data.");
+        return tr("The qbs process sent unexpected data.");
     case Error::VersionMismatch:
-        return tr("The qbs API level is not compatible with what Qt Creator expects.");
+        return tr("The qbs API level is not compatible with "
+                  "what %1 expects.").arg(Core::Constants::IDE_DISPLAY_NAME);
     }
     return QString(); // For dumb compilers.
 }
@@ -374,6 +376,8 @@ RunEnvironmentResult QbsSession::getRunEnvironment(
 void QbsSession::insertRequestedModuleProperties(QJsonObject &request)
 {
     request.insert("module-properties", QJsonArray::fromStringList({
+        "qbs.architecture",
+        "qbs.architectures",
         "cpp.commonCompilerFlags",
         "cpp.compilerVersionMajor",
         "cpp.compilerVersionMinor",
@@ -381,6 +385,7 @@ void QbsSession::insertRequestedModuleProperties(QJsonObject &request)
         "cpp.cxxLanguageVersion",
         "cpp.cxxStandardLibrary",
         "cpp.defines",
+        "cpp.distributionIncludePaths",
         "cpp.driverFlags",
         "cpp.enableExceptions",
         "cpp.enableRtti",
@@ -392,6 +397,7 @@ void QbsSession::insertRequestedModuleProperties(QJsonObject &request)
         "cpp.minimumDarwinVersionCompilerFlag",
         "cpp.platformCommonCompilerFlags",
         "cpp.platformDriverFlags",
+        "cpp.platformDefines",
         "cpp.positionIndependentCode",
         "cpp.systemFrameworkPaths",
         "cpp.systemIncludePaths",
@@ -487,8 +493,7 @@ void QbsSession::handlePacket(const QJsonObject &packet)
     } else if (type == "install-done") {
         emit projectInstalled(getErrorInfo(packet));
     } else if (type == "log-data") {
-        Core::MessageManager::write("[qbs] " + packet.value("message").toString(),
-                                    Core::MessageManager::Silent);
+        Core::MessageManager::writeSilently("[qbs] " + packet.value("message").toString());
     } else if (type == "warning") {
         const ErrorInfo errorInfo = ErrorInfo(packet.value("warning").toObject());
 
@@ -532,6 +537,15 @@ void QbsSession::handlePacket(const QJsonObject &packet)
     } else if (type == "run-environment") {
         d->reply = packet;
         d->eventLoop.quit();
+    } else if (type == "protocol-error") {
+        const ErrorInfo errorInfo = ErrorInfo(packet.value("error").toObject());
+
+        // TODO: This loop occurs a lot. Factor it out.
+        for (const ErrorInfoItem &item : errorInfo.items) {
+            TaskHub::addTask(BuildSystemTask(Task::Error, item.description,
+                                             item.filePath, item.line));
+        }
+        setError(Error::ProtocolError);
     }
 }
 
@@ -605,11 +619,10 @@ void QbsSession::handleFileListUpdated(const QJsonObject &reply)
     setProjectDataFromReply(reply, false);
     const QStringList failedFiles = arrayToStringList(reply.value("failed-files"));
     if (!failedFiles.isEmpty()) {
-        Core::MessageManager::write(tr("Failed to update files in Qbs project: %1.\n"
-                                       "The affected files are: \n\t%2")
-                                    .arg(getErrorInfo(reply).toString(),
-                                         failedFiles.join("\n\t")),
-                                    Core::MessageManager::ModeSwitch);
+        Core::MessageManager::writeFlashing(
+            tr("Failed to update files in Qbs project: %1.\n"
+               "The affected files are: \n\t%2")
+                .arg(getErrorInfo(reply).toString(), failedFiles.join("\n\t")));
     }
     emit fileListUpdated();
 }

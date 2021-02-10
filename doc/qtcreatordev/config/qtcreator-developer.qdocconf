@@ -1,17 +1,31 @@
-project     = "Qt Creator"
+project     = qtcreator-dev
 description = "Extending Qt Creator Manual"
 
 language                = Cpp
 
+#Words to ignore for auto-linking
+ignorewords += \
+    macOS \
+    WebChannel \
+    WebSocket \
+    WebSockets \
+    OpenGL \
+    MinGW
+
 headerdirs              = . \
                           ../src \
                           ../../../src/libs/aggregation \
-                          ../../../src/libs/extensionsystem
+                          ../../../src/libs/extensionsystem \
+                          ../../../src/plugins/coreplugin
 
 sourcedirs              = . \
                           ../src \
                           ../../../src/libs/aggregation \
-                          ../../../src/libs/extensionsystem
+                          ../../../src/libs/extensionsystem \
+                          ../../../src/plugins/coreplugin
+
+
+excludedirs             = ../../../src/libs/aggregation/examples
 
 # -- Uncomment following option to generate complete documentation
 #    instead of public API documentation only.

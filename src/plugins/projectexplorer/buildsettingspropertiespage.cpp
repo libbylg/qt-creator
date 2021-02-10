@@ -31,7 +31,9 @@
 #include "projectconfigurationmodel.h"
 #include "session.h"
 
+#include <utils/algorithm.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 #include <coreplugin/icore.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/buildmanager.h>
@@ -49,6 +51,7 @@
 
 using namespace ProjectExplorer;
 using namespace ProjectExplorer::Internal;
+using namespace Utils;
 
 ///
 // BuildSettingsWidget
@@ -222,11 +225,13 @@ void BuildSettingsWidget::createConfiguration(const BuildInfo &info_)
     BuildInfo info = info_;
     if (info.displayName.isEmpty()) {
         bool ok = false;
-        info.displayName = QInputDialog::getText(Core::ICore::mainWindow(),
-                                                  tr("New Configuration"),
-                                                  tr("New configuration name:"),
-                                                  QLineEdit::Normal,
-                                                  QString(), &ok).trimmed();
+        info.displayName = QInputDialog::getText(Core::ICore::dialogParent(),
+                                                 tr("New Configuration"),
+                                                 tr("New configuration name:"),
+                                                 QLineEdit::Normal,
+                                                 QString(),
+                                                 &ok)
+                               .trimmed();
         if (!ok || info.displayName.isEmpty())
             return;
     }
@@ -244,12 +249,12 @@ QString BuildSettingsWidget::uniqueName(const QString & name)
     QString result = name.trimmed();
     if (!result.isEmpty()) {
         QStringList bcNames;
-        foreach (BuildConfiguration *bc, m_target->buildConfigurations()) {
+        for (BuildConfiguration *bc : m_target->buildConfigurations()) {
             if (bc == m_buildConfiguration)
                 continue;
             bcNames.append(bc->displayName());
         }
-        result = Utils::makeUniquelyNumbered(result, bcNames);
+        result = makeUniquelyNumbered(result, bcNames);
     }
     return result;
 }
@@ -290,11 +295,21 @@ void BuildSettingsWidget::cloneConfiguration()
     if (name.isEmpty())
         return;
 
-    BuildConfiguration *bc = factory->clone(m_target, m_buildConfiguration);
+    BuildConfiguration *bc = BuildConfigurationFactory::clone(m_target, m_buildConfiguration);
     if (!bc)
         return;
 
     bc->setDisplayName(name);
+    const std::function<bool(const QString &)> isBuildDirOk = [this](const QString &candidate) {
+        const auto fp = FilePath::fromString(candidate);
+        if (fp.exists())
+            return false;
+        return !anyOf(m_target->buildConfigurations(), [&fp](const BuildConfiguration *bc) {
+            return bc->buildDirectory() == fp; });
+    };
+    bc->setBuildDirectory(FilePath::fromString(makeUniquelyNumbered(
+                                                   bc->buildDirectory().toString(),
+                                                   isBuildDirOk)));
     m_target->addBuildConfiguration(bc);
     SessionManager::setActiveBuildConfiguration(m_target, bc, SetActive::Cascade);
 }

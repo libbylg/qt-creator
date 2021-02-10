@@ -74,7 +74,7 @@ std::unique_ptr<clang::tooling::FrontendActionFactory> newFrontendActionFactory(
             : m_action(consumerFactory)
         {}
 
-        clang::FrontendAction *create() override { return new AdaptorAction(m_action); }
+        std::unique_ptr<clang::FrontendAction> create() override { return std::make_unique<AdaptorAction>(m_action); }
 
     private:
         class AdaptorAction : public clang::ASTFrontendAction

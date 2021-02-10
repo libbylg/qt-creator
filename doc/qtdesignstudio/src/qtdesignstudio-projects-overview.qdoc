@@ -24,8 +24,7 @@
 ****************************************************************************/
 
 /*!
-    \contentspage {Qt Design Studio Manual}
-    \previouspage {Tutorials}
+    \previouspage studio-optimized-3d-scenes.html
     \page studio-projects-managing.html
     \nextpage studio-projects.html
 
@@ -47,8 +46,7 @@
 
             You can use wizards to create projects for the desktop or embedded
             Linux and Android devices. In addition, you can add individual QML
-            files, components, font loaders, and JavaScript files to your
-            projects.
+            files, components, and JavaScript files to your projects.
 
         \li \l{Using Git}
 
@@ -68,6 +66,12 @@
             for application development in Qt Creator, you have to convert them
             to Qt Quick Application projects that contain .pro, .cpp, and .qrc
             files.
+
+        \li \l {Exporting QML}
+
+            You can export UI forms (ui.qml files) to JSON metadata format
+            and PNG assets to generate native file formats in content creation
+            tools, such as Adobe Photoshop, using \QB.
 
     \endlist
 */

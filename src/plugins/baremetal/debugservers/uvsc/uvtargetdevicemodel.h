@@ -28,6 +28,7 @@
 #include "uvtargetdeviceselection.h"
 
 #include <utils/basetreeview.h>
+#include <utils/fileutils.h>
 #include <utils/treemodel.h>
 
 QT_BEGIN_NAMESPACE
@@ -47,19 +48,17 @@ class DeviceSelectionModel final : public Utils::TreeModel<DeviceSelectionItem>
 
 public:
     explicit DeviceSelectionModel(QObject *parent = nullptr);
-    void fillAllPacks(const QString &uVisionFilePath);
+    void fillAllPacks(const Utils::FilePath &toolsIniFile);
 
 private:
     void parsePackage(const QString &packageFile);
-    void parsePackage(QXmlStreamReader &in, const QString &file);
+    void parsePackage(QXmlStreamReader &in, const QString &packageFile);
     void parseFamily(QXmlStreamReader &in, DeviceSelectionItem *parent);
-    void parseSubFamily(QXmlStreamReader &in, DeviceSelectionItem *parent,
-                        DeviceSelection::Cpu &cpu);
-    void parseDevice(QXmlStreamReader &in, DeviceSelectionItem *parent,
-                     DeviceSelection::Cpu &cpu, DeviceSelection::Memories &memories);
+    void parseSubFamily(QXmlStreamReader &in, DeviceSelectionItem *parent);
+    void parseDevice(QXmlStreamReader &in, DeviceSelectionItem *parent);
     void parseDeviceVariant(QXmlStreamReader &in, DeviceSelectionItem *parent);
 
-    QString m_uVisionFilePath;
+    Utils::FilePath m_toolsIniFile;
 };
 
 // DeviceSelectionView
@@ -76,7 +75,6 @@ signals:
 private:
     void currentChanged(const QModelIndex &current, const QModelIndex &previous) final;
 
-    bool isValidItem(const DeviceSelectionItem *item) const;
     DeviceSelection buildSelection(const DeviceSelectionItem *item) const;
 };
 

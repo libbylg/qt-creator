@@ -61,6 +61,11 @@
 #include <QStatusBar>
 #include <QToolButton>
 
+#ifdef HELP_NEW_FILTER_ENGINE
+#include <QtHelp/QHelpEngine>
+#include <QtHelp/QHelpFilterEngine>
+#endif
+
 static const char kWindowSideBarSettingsKey[] = "Help/WindowSideBar";
 static const char kModeSideBarSettingsKey[] = "Help/ModeSideBar";
 
@@ -233,7 +238,7 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     if (style == ExternalWindow) {
         static int windowId = 0;
         Core::ICore::registerWindow(this,
-                                    Core::Context(Core::Id("Help.Window.").withSuffix(++windowId)));
+                                    Core::Context(Utils::Id("Help.Window.").withSuffix(++windowId)));
         setAttribute(Qt::WA_QuitOnClose, false); // don't prevent Qt Creator from closing
     }
     if (style != SideBarWidget) {
@@ -359,15 +364,24 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
 
         m_filterComboBox = new QComboBox;
         m_filterComboBox->setMinimumContentsLength(15);
+        layout->addWidget(m_filterComboBox);
+#ifndef HELP_NEW_FILTER_ENGINE
         m_filterComboBox->setModel(LocalHelpManager::filterModel());
         m_filterComboBox->setCurrentIndex(LocalHelpManager::filterIndex());
-        layout->addWidget(m_filterComboBox);
         connect(m_filterComboBox, QOverload<int>::of(&QComboBox::activated),
                 LocalHelpManager::instance(), &LocalHelpManager::setFilterIndex);
         connect(LocalHelpManager::instance(),
                 &LocalHelpManager::filterIndexChanged,
                 m_filterComboBox,
                 &QComboBox::setCurrentIndex);
+#else
+        connect(&LocalHelpManager::helpEngine(), &QHelpEngine::setupFinished,
+                this, &HelpWidget::setupFilterCombo, Qt::QueuedConnection);
+        connect(m_filterComboBox, QOverload<int>::of(&QComboBox::activated),
+                this, &HelpWidget::filterDocumentation);
+        connect(LocalHelpManager::filterEngine(), &QHelpFilterEngine::filterActivated,
+                this, &HelpWidget::currentFilterChanged);
+#endif
 
         Core::ActionContainer *windowMenu = Core::ActionManager::actionContainer(
             Core::Constants::M_WINDOW);
@@ -476,7 +490,7 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
     connect(reload, &QAction::triggered, this, [this]() {
         const int index = m_viewerStack->currentIndex();
         HelpViewer *previous = currentViewer();
-        insertViewer(index, previous->source(), previous->scale());
+        insertViewer(index, previous->source());
         removeViewerAt(index + 1);
         setCurrentIndex(index);
     });
@@ -486,6 +500,41 @@ HelpWidget::HelpWidget(const Core::Context &context, WidgetStyle style, QWidget 
         setCurrentIndex(0);
     }
 }
+
+#ifdef HELP_NEW_FILTER_ENGINE
+
+void HelpWidget::setupFilterCombo()
+{
+    const QString currentFilter = LocalHelpManager::filterEngine()->activeFilter();
+    m_filterComboBox->clear();
+    m_filterComboBox->addItem(tr("Unfiltered"));
+    const QStringList allFilters = LocalHelpManager::filterEngine()->filters();
+    if (!allFilters.isEmpty())
+        m_filterComboBox->insertSeparator(1);
+    for (const QString &filter : allFilters)
+        m_filterComboBox->addItem(filter, filter);
+
+    int idx = m_filterComboBox->findData(currentFilter);
+    if (idx < 0)
+        idx = 0;
+    m_filterComboBox->setCurrentIndex(idx);
+}
+
+void HelpWidget::filterDocumentation(int filterIndex)
+{
+    const QString filter = m_filterComboBox->itemData(filterIndex).toString();
+    LocalHelpManager::filterEngine()->setActiveFilter(filter);
+}
+
+void HelpWidget::currentFilterChanged(const QString &filter)
+{
+    int index = m_filterComboBox->findData(filter);
+    if (index < 0)
+        index = 0;
+    m_filterComboBox->setCurrentIndex(index);
+}
+
+#endif
 
 HelpWidget::~HelpWidget()
 {
@@ -499,7 +548,6 @@ HelpWidget::~HelpWidget()
         if (m_openPagesAction)
             Core::ActionManager::unregisterAction(m_openPagesAction, Constants::HELP_OPENPAGES);
     }
-    Core::ICore::removeContextObject(m_context);
     Core::ActionManager::unregisterAction(m_copy, Core::Constants::COPY);
     Core::ActionManager::unregisterAction(m_printAction, Core::Constants::PRINT);
     if (m_toggleSideBarAction)
@@ -663,15 +711,15 @@ void HelpWidget::setCurrentIndex(int index)
     emit currentIndexChanged(index);
 }
 
-HelpViewer *HelpWidget::addViewer(const QUrl &url, qreal zoom)
+HelpViewer *HelpWidget::addViewer(const QUrl &url)
 {
-    return insertViewer(m_viewerStack->count(), url, zoom);
+    return insertViewer(m_viewerStack->count(), url);
 }
 
-HelpViewer *HelpWidget::insertViewer(int index, const QUrl &url, qreal zoom)
+HelpViewer *HelpWidget::insertViewer(int index, const QUrl &url)
 {
     m_model.beginInsertRows({}, index, index);
-    HelpViewer *viewer = HelpPlugin::createHelpViewer(zoom);
+    HelpViewer *viewer = HelpPlugin::createHelpViewer();
     m_viewerStack->insertWidget(index, viewer);
     viewer->setFocus(Qt::OtherFocusReason);
     viewer->setActionVisible(HelpViewer::Action::NewPage, supportsPages());
@@ -753,7 +801,7 @@ HelpViewer *HelpWidget::openNewPage(const QUrl &url)
     return page;
 }
 
-void HelpWidget::showLinks(const QMap<QString, QUrl> &links,
+void HelpWidget::showLinks(const QMultiMap<QString, QUrl> &links,
     const QString &keyword, bool newPage)
 {
     if (links.size() < 1)
@@ -852,19 +900,16 @@ void HelpWidget::saveState() const
 {
     // TODO generalize
     if (m_style == ModeWidget) {
-        QList<qreal> zoomFactors;
         QStringList currentPages;
         for (int i = 0; i < viewerCount(); ++i) {
             const HelpViewer *const viewer = viewerAt(i);
             const QUrl &source = viewer->source();
             if (source.isValid()) {
                 currentPages.append(source.toString());
-                zoomFactors.append(viewer->scale());
             }
         }
 
         LocalHelpManager::setLastShownPages(currentPages);
-        LocalHelpManager::setLastShownPagesZoom(zoomFactors);
         LocalHelpManager::setLastSelectedTab(currentIndex());
     }
 }
@@ -960,9 +1005,9 @@ void HelpWidget::print(HelpViewer *viewer)
     QPrintDialog dlg(m_printer, this);
     dlg.setWindowTitle(tr("Print Documentation"));
     if (!viewer->selectedText().isEmpty())
-        dlg.addEnabledOption(QAbstractPrintDialog::PrintSelection);
-    dlg.addEnabledOption(QAbstractPrintDialog::PrintPageRange);
-    dlg.addEnabledOption(QAbstractPrintDialog::PrintCollateCopies);
+        dlg.setOption(QAbstractPrintDialog::PrintSelection, true);
+    dlg.setOption(QAbstractPrintDialog::PrintPageRange, true);
+    dlg.setOption(QAbstractPrintDialog::PrintCollateCopies, true);
 
     if (dlg.exec() == QDialog::Accepted)
         viewer->print(m_printer);

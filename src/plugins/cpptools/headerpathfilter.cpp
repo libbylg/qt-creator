@@ -51,7 +51,7 @@ void HeaderPathFilter::process()
     for (const HeaderPath &headerPath : headerPaths)
         filterHeaderPath(headerPath);
 
-    if (useTweakedHeaderPaths == UseTweakedHeaderPaths::Yes)
+    if (useTweakedHeaderPaths != UseTweakedHeaderPaths::No)
         tweakHeaderPaths();
 }
 
@@ -104,14 +104,14 @@ void HeaderPathFilter::filterHeaderPath(const ProjectExplorer::HeaderPath &heade
 
 namespace {
 
-QString clangIncludeDirectory(const QString &clangVersion, const QString &clangResourceDirectory)
+QString clangIncludeDirectory(const QString &clangVersion, const QString &clangFallbackIncludeDir)
 {
 #ifndef UNIT_TESTS
-    return Core::ICore::clangIncludeDirectory(clangVersion, clangResourceDirectory);
+    return Core::ICore::clangIncludeDirectory(clangVersion, clangFallbackIncludeDir);
 #else
     Q_UNUSED(clangVersion)
-    Q_UNUSED(clangResourceDirectory)
-    return {CLANG_RESOURCE_DIR};
+    Q_UNUSED(clangFallbackIncludeDir)
+    return {CLANG_INCLUDE_DIR};
 #endif
 }
 
@@ -158,7 +158,8 @@ void HeaderPathFilter::tweakHeaderPaths()
     auto split = resourceIterator(builtInHeaderPaths);
 
     if (!clangVersion.isEmpty()) {
-        const QString clangIncludePath = clangIncludeDirectory(clangVersion, clangResourceDirectory);
+        const QString clangIncludePath
+                = clangIncludeDirectory(clangVersion, clangFallbackIncludeDirectory);
         builtInHeaderPaths.insert(split, HeaderPath{clangIncludePath, HeaderPathType::BuiltIn});
     }
 }

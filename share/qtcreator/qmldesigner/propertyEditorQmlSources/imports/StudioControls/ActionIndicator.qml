@@ -37,6 +37,7 @@ Rectangle {
 
     property bool hover: false
     property bool pressed: false
+    property bool forceVisible: false
 
     color: actionIndicator.showBackground ? StudioTheme.Values.themeControlBackground : "transparent"
     border.color: actionIndicator.showBackground ? StudioTheme.Values.themeControlOutline : "transparent"
@@ -45,11 +46,17 @@ Rectangle {
     implicitHeight: StudioTheme.Values.height
 
     signal clicked
+    z: 10
 
     T.Label {
         id: actionIndicatorIcon
         anchors.fill: parent
         text: StudioTheme.Constants.actionIcon
+        visible: text !== StudioTheme.Constants.actionIcon || actionIndicator.forceVisible
+                 || (myControl !== undefined &&
+                     ((myControl.edit !== undefined && myControl.edit)
+                      || (myControl.hover !== undefined && myControl.hover)
+                      || (myControl.drag !== undefined && myControl.drag)))
         color: StudioTheme.Values.themeTextColor
         font.family: StudioTheme.Constants.iconFont.family
         font.pixelSize: StudioTheme.Values.myIconFontSize
@@ -65,6 +72,7 @@ Rectangle {
                 PropertyChanges {
                     target: actionIndicatorIcon
                     scale: 1.2
+                    visible: true
                 }
             },
             State {
@@ -89,7 +97,7 @@ Rectangle {
     states: [
         State {
             name: "default"
-            when: myControl.enabled && !actionIndicator.hover
+            when: myControl !== undefined && myControl.enabled && !actionIndicator.hover
                   && !actionIndicator.pressed && !myControl.hover
                   && !myControl.edit && !myControl.drag && actionIndicator.showBackground
             PropertyChanges {
@@ -100,8 +108,9 @@ Rectangle {
         },
         State {
             name: "globalHover"
-            when: myControl.hover && !actionIndicator.hover
-                  && !actionIndicator.pressed && !myControl.edit
+            when: myControl !== undefined && myControl.hover !== undefined
+                  && myControl.hover && !actionIndicator.hover && !actionIndicator.pressed
+                  && myControl.edit !== undefined && !myControl.edit && myControl.drag !== undefined
                   && !myControl.drag && actionIndicator.showBackground
             PropertyChanges {
                 target: actionIndicator
@@ -111,7 +120,8 @@ Rectangle {
         },
         State {
             name: "edit"
-            when: myControl.edit && actionIndicator.showBackground
+            when: myControl !== undefined && myControl.edit !== undefined
+                  && myControl.edit && actionIndicator.showBackground
             PropertyChanges {
                 target: actionIndicator
                 color: StudioTheme.Values.themeFocusEdit
@@ -120,7 +130,8 @@ Rectangle {
         },
         State {
             name: "drag"
-            when: myControl.drag && actionIndicator.showBackground
+            when: myControl !== undefined && myControl.drag !== undefined
+                  && myControl.drag && actionIndicator.showBackground
             PropertyChanges {
                 target: actionIndicator
                 color: StudioTheme.Values.themeFocusDrag
@@ -129,7 +140,7 @@ Rectangle {
         },
         State {
             name: "disabled"
-            when: !myControl.enabled && actionIndicator.showBackground
+            when: myControl !== undefined && !myControl.enabled && actionIndicator.showBackground
             PropertyChanges {
                 target: actionIndicator
                 color: StudioTheme.Values.themeControlBackgroundDisabled

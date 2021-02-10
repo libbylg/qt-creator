@@ -42,7 +42,8 @@ public:
         ContextMenuAction,
         ToolBarAction,
         Action,
-        FormEditorAction
+        FormEditorAction,
+        Edit3DAction
     };
 
     enum Priorities {
@@ -50,6 +51,11 @@ public:
         CustomActionsPriority = ComponentCoreConstants::priorityCustomActions,
         RefactoringActionsPriority = ComponentCoreConstants::priorityRefactoring,
         LowestPriority = ComponentCoreConstants::priorityLast
+    };
+
+    enum class TargetView {
+        Undefined,
+        ConnectionEditor
     };
 
     virtual ~ActionInterface() = default;
@@ -60,6 +66,7 @@ public:
     virtual int priority() const = 0;
     virtual Type type() const = 0;
     virtual void currentContextChanged(const SelectionContext &selectionState) = 0;
+    virtual TargetView targetView() const { return TargetView::Undefined; }
 
 };
 

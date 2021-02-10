@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com)
+** Copyright (C) 2020 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
 **
@@ -25,22 +25,29 @@
 
 #pragma once
 
+#include <utils/id.h>
+
 #include <QObject>
 #include <QVector>
+#include <QVersionNumber>
 
 QT_FORWARD_DECLARE_CLASS(QWidget)
 
 namespace Utils {
+class FilePath;
 class PathChooser;
 class InfoLabel;
 }
 
 namespace ProjectExplorer {
 class Kit;
+class ToolChain;
 }
 
 namespace McuSupport {
 namespace Internal {
+
+void printMessage(const QString &message, bool important);
 
 class McuPackage : public QObject
 {
@@ -48,6 +55,7 @@ class McuPackage : public QObject
 
 public:
     enum Status {
+        EmptyPath,
         InvalidPath,
         ValidPathInvalidPackage,
         ValidPackage
@@ -55,17 +63,27 @@ public:
 
     McuPackage(const QString &label, const QString &defaultPath, const QString &detectionPath,
                const QString &settingsKey);
+    virtual ~McuPackage() = default;
 
+    QString basePath() const;
     QString path() const;
     QString label() const;
+    QString defaultPath() const;
     QString detectionPath() const;
+    QString statusText() const;
+    void updateStatus();
+
     Status status() const;
     void setDownloadUrl(const QString &url);
     void setEnvironmentVariableName(const QString &name);
     void setAddToPath(bool addToPath);
     bool addToPath() const;
+    void writeGeneralSettings() const;
     void writeToSettings() const;
     void setRelativePathModifier(const QString &path);
+
+    bool automaticKitCreationEnabled() const;
+    void setAutomaticKitCreationEnabled(const bool enabled);
 
     QWidget *widget();
 
@@ -73,9 +91,11 @@ public:
 
 signals:
     void changed();
+    void statusChanged();
 
 private:
-    void updateStatus();
+    void updatePath();
+    void updateStatusUi();
 
     QWidget *m_widget = nullptr;
     Utils::PathChooser *m_fileChooser = nullptr;
@@ -91,8 +111,39 @@ private:
     QString m_downloadUrl;
     QString m_environmentVariableName;
     bool m_addToPath = false;
+    bool m_automaticKitCreation = true;
 
     Status m_status = InvalidPath;
+};
+
+class McuToolChainPackage : public McuPackage
+{
+public:
+    enum Type {
+        TypeArmGcc,
+        TypeIAR,
+        TypeKEIL,
+        TypeGHS,
+        TypeMSVC,
+        TypeGCC,
+        TypeUnsupported
+    };
+
+    McuToolChainPackage(const QString &label,
+                        const QString &defaultPath,
+                        const QString &detectionPath,
+                        const QString &settingsKey,
+                        Type type);
+
+    Type type() const;
+    bool isDesktopToolchain() const;
+    ProjectExplorer::ToolChain *toolChain(Utils::Id language) const;
+    QString toolChainName() const;
+    QString cmakeToolChainFileName() const;
+    QVariant debuggerId() const;
+
+private:
+    const Type m_type;
 };
 
 class McuTarget : public QObject
@@ -100,22 +151,38 @@ class McuTarget : public QObject
     Q_OBJECT
 
 public:
-    McuTarget(const QString &vendor, const QString &platform, const QVector<McuPackage *> &packages);
+    enum class OS {
+        Desktop,
+        BareMetal,
+        FreeRTOS
+    };
 
-    QString vendor() const;
+    struct Platform {
+        QString name;
+        QString displayName;
+        QString vendor;
+    };
+
+    McuTarget(const QVersionNumber &qulVersion, const Platform &platform, OS os,
+              const QVector<McuPackage *> &packages,
+              const McuToolChainPackage *toolChainPackage);
+
+    QVersionNumber qulVersion() const;
     QVector<McuPackage *> packages() const;
-    void setToolChainFile(const QString &toolChainFile);
-    QString toolChainFile() const;
-    QString qulPlatform() const;
+    const McuToolChainPackage *toolChainPackage() const;
+    Platform platform() const;
+    OS os() const;
     void setColorDepth(int colorDepth);
     int colorDepth() const;
     bool isValid() const;
+    void printPackageProblems() const;
 
 private:
-    const QString m_vendor;
-    const QString m_qulPlatform;
+    const QVersionNumber m_qulVersion;
+    const Platform m_platform;
+    const OS m_os = OS::BareMetal;
     const QVector<McuPackage*> m_packages;
-    QString m_toolChainFile;
+    const McuToolChainPackage *m_toolChainPackage;
     int m_colorDepth = -1;
 };
 
@@ -129,13 +196,26 @@ public:
 
     QVector<McuPackage*> packages;
     QVector<McuTarget*> mcuTargets;
-    McuPackage *armGccPackage = nullptr;
     McuPackage *qtForMCUsSdkPackage = nullptr;
 
-    QString kitName(const McuTarget* mcuTarget) const;
+    void setQulDir(const Utils::FilePath &dir);
+    static Utils::FilePath qulDirFromSettings();
 
-    QList<ProjectExplorer::Kit *> existingKits(const McuTarget *mcuTargt);
-    ProjectExplorer::Kit *newKit(const McuTarget *mcuTarget);
+    static QString kitName(const McuTarget* mcuTarget);
+
+    static QList<ProjectExplorer::Kit *> existingKits(const McuTarget *mcuTarget);
+    static QList<ProjectExplorer::Kit *> outdatedKits();
+    static void removeOutdatedKits();
+    static ProjectExplorer::Kit *newKit(const McuTarget *mcuTarget, const McuPackage *qtForMCUsSdk);
+    static void createAutomaticKits();
+    void populatePackagesAndTargets();
+    static void registerQchFiles();
+    static void registerExamples();
+
+    static const QVersionNumber &minimalQulVersion();
+
+private:
+    void deletePackagesAndTargets();
 
 signals:
     void changed();

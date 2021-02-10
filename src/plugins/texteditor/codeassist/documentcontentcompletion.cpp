@@ -31,6 +31,8 @@
 #include "genericproposalmodel.h"
 #include "iassistprocessor.h"
 #include "../snippets/snippetassistcollector.h"
+#include "../completionsettings.h"
+#include "../texteditorsettings.h"
 
 #include <utils/algorithm.h>
 #include <utils/runextensions.h>
@@ -43,14 +45,15 @@
 
 using namespace TextEditor;
 
-class DocumentContentCompletionProcessor : public IAssistProcessor
+class DocumentContentCompletionProcessor final : public IAssistProcessor
 {
 public:
     DocumentContentCompletionProcessor(const QString &snippetGroupId);
-    ~DocumentContentCompletionProcessor() override;
+    ~DocumentContentCompletionProcessor() final;
 
     IAssistProposal *perform(const AssistInterface *interface) override;
     bool running() final { return m_watcher.isRunning(); }
+    void cancel() final;
 
 private:
     QString m_snippetGroup;
@@ -77,8 +80,7 @@ DocumentContentCompletionProcessor::DocumentContentCompletionProcessor(const QSt
 
 DocumentContentCompletionProcessor::~DocumentContentCompletionProcessor()
 {
-    if (m_watcher.isRunning())
-        m_watcher.cancel();
+    cancel();
 }
 
 static void createProposal(QFutureInterface<QStringList> &future, const QString &text,
@@ -127,8 +129,10 @@ IAssistProposal *DocumentContentCompletionProcessor::perform(const AssistInterfa
 
     if (interface->reason() == IdleEditor) {
         QChar characterUnderCursor = interface->characterAt(interface->position());
-        if (characterUnderCursor.isLetterOrNumber() || length < 3)
+        if (characterUnderCursor.isLetterOrNumber()
+                || length < TextEditorSettings::completionSettings().m_characterThreshold) {
             return nullptr;
+        }
     }
 
     const QString wordUnderCursor = interface->textAt(pos, length);
@@ -148,4 +152,10 @@ IAssistProposal *DocumentContentCompletionProcessor::perform(const AssistInterfa
         setAsyncProposalAvailable(new GenericProposal(pos, items));
     });
     return nullptr;
+}
+
+void DocumentContentCompletionProcessor::cancel()
+{
+    if (running())
+        m_watcher.cancel();
 }

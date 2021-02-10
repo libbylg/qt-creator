@@ -75,13 +75,20 @@ void NamePrettyPrinter::visit(const TemplateNameId *name)
         _name = QString::fromUtf8(id->chars(), id->size());
     else
         _name = QLatin1String("anonymous");
+    if (!_overview->showTemplateParameters)
+        return;
     _name += QLatin1Char('<');
     for (int index = 0; index < name->templateArgumentCount(); ++index) {
         if (index != 0)
             _name += QLatin1String(", ");
 
-        FullySpecifiedType argTy = name->templateArgumentAt(index);
-        QString arg = overview()->prettyType(argTy);
+        TemplateArgument templArg = name->templateArgumentAt(index);
+        QString arg;
+        if (templArg.type().isValid())
+            arg = overview()->prettyType(templArg.type());
+        else if (const NumericLiteral *num = templArg.numericLiteral())
+            arg = QString::fromLatin1(num->chars(), num->size());
+
         if (arg.isEmpty())
             _name += QString::fromLatin1("_Tp%1").arg(index + 1);
         else

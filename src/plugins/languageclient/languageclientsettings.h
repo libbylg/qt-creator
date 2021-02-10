@@ -32,6 +32,7 @@
 #include <utils/fileutils.h>
 
 #include <QAbstractItemModel>
+#include <QJsonObject>
 #include <QLabel>
 #include <QPointer>
 #include <QUuid>
@@ -45,6 +46,7 @@ QT_END_NAMESPACE
 namespace Utils {
 class FilePath;
 class PathChooser;
+class FancyLineEdit;
 } // namespace Utils
 
 namespace Core { class IDocument; }
@@ -61,6 +63,8 @@ struct LANGUAGECLIENT_EXPORT LanguageFilter
     QStringList filePattern;
     bool isSupported(const Utils::FilePath &filePath, const QString &mimeType) const;
     bool isSupported(const Core::IDocument *document) const;
+    bool operator==(const LanguageFilter &other) const;
+    bool operator!=(const LanguageFilter &other) const;
 };
 
 class LANGUAGECLIENT_EXPORT BaseSettings
@@ -82,11 +86,13 @@ public:
     bool m_enabled = true;
     StartBehavior m_startBehavior = RequiresFile;
     LanguageFilter m_languageFilter;
+    QString m_initializationOptions;
 
-    virtual void applyFromSettingsWidget(QWidget *widget);
+    QJsonObject initializationOptions() const;
+
+    virtual bool applyFromSettingsWidget(QWidget *widget);
     virtual QWidget *createSettingsWidget(QWidget *parent = nullptr) const;
     virtual BaseSettings *copy() const { return new BaseSettings(*this); }
-    virtual bool needsRestart() const;
     virtual bool isValid() const;
     Client *createClient();
     virtual QVariantMap toMap() const;
@@ -113,10 +119,9 @@ public:
     QString m_executable;
     QString m_arguments;
 
-    void applyFromSettingsWidget(QWidget *widget) override;
+    bool applyFromSettingsWidget(QWidget *widget) override;
     QWidget *createSettingsWidget(QWidget *parent = nullptr) const override;
     BaseSettings *copy() const override { return new StdIOSettings(*this); }
-    bool needsRestart() const override;
     bool isValid() const override;
     QVariantMap toMap() const override;
     void fromMap(const QVariantMap &map) override;
@@ -137,7 +142,8 @@ class LanguageClientSettings
 public:
     static void init();
     static QList<BaseSettings *> fromSettings(QSettings *settings);
-    static QList<BaseSettings *> currentPageSettings();
+    static QList<BaseSettings *> pageSettings();
+    static QList<BaseSettings *> changedSettings();
     static void addSettings(BaseSettings *settings);
     static void enableSettings(const QString &id);
     static void toSettings(QSettings *settings, const QList<BaseSettings *> &languageClientSettings);
@@ -155,6 +161,7 @@ public:
     BaseSettings::StartBehavior startupBehavior() const;
     bool alwaysOn() const;
     bool requiresProject() const;
+    QString initializationOptions() const;
 
 private:
     void showAddMimeTypeDialog();
@@ -163,6 +170,7 @@ private:
     QLabel *m_mimeTypes = nullptr;
     QLineEdit *m_filePattern = nullptr;
     QComboBox *m_startupBehavior = nullptr;
+    Utils::FancyLineEdit *m_initializationOptions = nullptr;
 
     static constexpr char filterSeparator = ';';
 };

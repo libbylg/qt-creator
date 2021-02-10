@@ -24,145 +24,88 @@
 ****************************************************************************/
 
 #include "nimblebuildstep.h"
-#include "nimblebuildstepwidget.h"
-#include "nimbletaskstepwidget.h"
+
 #include "nimconstants.h"
 #include "nimbleproject.h"
+#include "nimbuildsystem.h"
+#include "nimoutputtaskparser.h"
+#include "nimtoolchain.h"
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/ioutputparser.h>
 #include <projectexplorer/processparameters.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/runconfigurationaspects.h>
+#include <projectexplorer/target.h>
 
 #include <QRegularExpression>
-#include <QStandardPaths>
 
-using namespace Nim;
 using namespace ProjectExplorer;
 using namespace Utils;
 
-namespace {
+namespace Nim {
 
-class NimParser : public IOutputParser
+class NimbleBuildStep : public AbstractProcessStep
 {
+    Q_DECLARE_TR_FUNCTIONS(Nim::NimbleBuilStep)
 public:
-    void stdOutput(const QString &line) final
-    {
-        parseLine(line.trimmed());
-        IOutputParser::stdOutput(line);
-    }
+    NimbleBuildStep(BuildStepList *parentList, Id id);
 
-    void stdError(const QString &line) final
-    {
-        parseLine(line.trimmed());
-        IOutputParser::stdError(line);
-    }
+    void setupOutputFormatter(OutputFormatter *formatter) final;
 
 private:
-    void parseLine(const QString &line)
-    {
-        static QRegularExpression regex("(.+.nim)\\((\\d+), (\\d+)\\) (.+)",
-                                        QRegularExpression::OptimizeOnFirstUsageOption);
-        static QRegularExpression warning("(Warning):(.*)",
-                                          QRegularExpression::OptimizeOnFirstUsageOption);
-        static QRegularExpression error("(Error):(.*)",
-                                        QRegularExpression::OptimizeOnFirstUsageOption);
+    QString defaultArguments() const;
+    void onArgumentsChanged();
 
-        QRegularExpressionMatch match = regex.match(line);
-        if (!match.hasMatch())
-            return;
-        const QString filename = match.captured(1);
-        bool lineOk = false;
-        const int lineNumber = match.captured(2).toInt(&lineOk);
-        const QString message = match.captured(4);
-        if (!lineOk)
-            return;
-
-        Task::TaskType type = Task::Unknown;
-
-        if (warning.match(message).hasMatch())
-            type = Task::Warning;
-        else if (error.match(message).hasMatch())
-            type = Task::Error;
-        else
-            return;
-
-        emit addTask(CompileTask(type, message, FilePath::fromUserInput(filename), lineNumber));
-    }
+    ArgumentsAspect *m_arguments;
 };
 
-}
-
-NimbleBuildStep::NimbleBuildStep(BuildStepList *parentList, Core::Id id)
+NimbleBuildStep::NimbleBuildStep(BuildStepList *parentList, Id id)
     : AbstractProcessStep(parentList, id)
 {
-    setDefaultDisplayName(tr(Constants::C_NIMBLEBUILDSTEP_DISPLAY));
-    setDisplayName(tr(Constants::C_NIMBLEBUILDSTEP_DISPLAY));
+    m_arguments = addAspect<ArgumentsAspect>();
+    m_arguments->setSettingsKey(Constants::C_NIMBLEBUILDSTEP_ARGUMENTS);
+    m_arguments->setResetter([this] { return defaultArguments(); });
+    m_arguments->setArguments(defaultArguments());
+
+    setCommandLineProvider([this] {
+        return CommandLine(Nim::nimblePathFromKit(kit()),
+                           {"build", m_arguments->arguments(macroExpander())});
+    });
+    setWorkingDirectoryProvider([this] { return project()->projectDirectory(); });
+    setEnvironmentModifier([this](Environment &env) {
+        env.appendOrSetPath(Nim::nimPathFromKit(kit()).toUserOutput());
+    });
+
+    setSummaryUpdater([this] {
+        ProcessParameters param;
+        setupProcessParameters(&param);
+        return param.summary(displayName());
+    });
+
     QTC_ASSERT(buildConfiguration(), return);
-    QObject::connect(buildConfiguration(), &BuildConfiguration::buildTypeChanged, this, &NimbleBuildStep::resetArguments);
-    QObject::connect(this, &NimbleBuildStep::argumentsChanged, this, &NimbleBuildStep::onArgumentsChanged);
-    resetArguments();
+    QObject::connect(buildConfiguration(), &BuildConfiguration::buildTypeChanged,
+                     m_arguments, &ArgumentsAspect::resetArguments);
+    QObject::connect(m_arguments, &ArgumentsAspect::changed,
+                     this, &NimbleBuildStep::onArgumentsChanged);
 }
 
-bool NimbleBuildStep::init()
+void NimbleBuildStep::setupOutputFormatter(OutputFormatter *formatter)
 {
-    auto parser = new NimParser();
-    parser->setWorkingDirectory(project()->projectDirectory());
-    setOutputParser(parser);
-
-    ProcessParameters* params = processParameters();
-    params->setEnvironment(buildConfiguration()->environment());
-    params->setMacroExpander(buildConfiguration()->macroExpander());
-    params->setWorkingDirectory(project()->projectDirectory());
-    params->setCommandLine({QStandardPaths::findExecutable("nimble"), {"build", m_arguments}});
-    return AbstractProcessStep::init();
-}
-
-BuildStepConfigWidget *NimbleBuildStep::createConfigWidget()
-{
-    return new NimbleBuildStepWidget(this);
-}
-
-QString NimbleBuildStep::arguments() const
-{
-    return m_arguments;
-}
-
-void NimbleBuildStep::setArguments(const QString &args)
-{
-    if (m_arguments == args)
-        return;
-    m_arguments = args;
-    emit argumentsChanged(args);
-}
-
-void NimbleBuildStep::resetArguments()
-{
-    setArguments(defaultArguments());
-}
-
-bool NimbleBuildStep::fromMap(const QVariantMap &map)
-{
-    m_arguments = map.value(Constants::C_NIMBLEBUILDSTEP_ARGUMENTS, defaultArguments()).toString();
-    return AbstractProcessStep::fromMap(map);
-}
-
-QVariantMap NimbleBuildStep::toMap() const
-{
-    auto map = AbstractProcessStep::toMap();
-    map[Constants::C_NIMBLEBUILDSTEP_ARGUMENTS] = m_arguments;
-    return map;
+    const auto parser = new NimParser();
+    parser->addSearchDir(project()->projectDirectory());
+    formatter->addLineParser(parser);
+    AbstractProcessStep::setupOutputFormatter(formatter);
 }
 
 QString NimbleBuildStep::defaultArguments() const
 {
-    QTC_ASSERT(buildConfiguration(), return {}; );
-    switch (buildConfiguration()->buildType()) {
-    case ProjectExplorer::BuildConfiguration::Debug:
+    switch (buildType()) {
+    case BuildConfiguration::Debug:
         return {"--debugger:native"};
-    case ProjectExplorer::BuildConfiguration::Unknown:
-    case ProjectExplorer::BuildConfiguration::Profile:
-    case ProjectExplorer::BuildConfiguration::Release:
+    case BuildConfiguration::Unknown:
+    case BuildConfiguration::Profile:
+    case BuildConfiguration::Release:
     default:
         return {};
     }
@@ -170,8 +113,9 @@ QString NimbleBuildStep::defaultArguments() const
 
 void NimbleBuildStep::onArgumentsChanged()
 {
-    ProcessParameters* params = processParameters();
-    params->setCommandLine({QStandardPaths::findExecutable("nimble"), {"build", m_arguments}});
+    ProcessParameters *params = processParameters();
+    params->setCommandLine({Nim::nimblePathFromKit(kit()),
+                            {"build", m_arguments->arguments(macroExpander())}});
 }
 
 NimbleBuildStepFactory::NimbleBuildStepFactory()
@@ -182,3 +126,5 @@ NimbleBuildStepFactory::NimbleBuildStepFactory()
     setSupportedConfiguration(Constants::C_NIMBLEBUILDCONFIGURATION_ID);
     setRepeatable(true);
 }
+
+} // Nim

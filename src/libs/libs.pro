@@ -23,6 +23,13 @@ qtHaveModule(quick) {
         tracing
 }
 
+QTC_DO_NOT_BUILD_QMLDESIGNER = $$(QTC_DO_NOT_BUILD_QMLDESIGNER)
+isEmpty(QTC_DO_NOT_BUILD_QMLDESIGNER):qtHaveModule(quick-private) {
+    exists($$[QT_INSTALL_QML]/QtQuick/Controls/qmldir) {
+        SUBDIRS += advanceddockingsystem
+    }
+}
+
 for(l, SUBDIRS) {
     QTC_LIB_DEPENDS =
     include($$l/$${l}_dependencies.pri)
@@ -58,16 +65,8 @@ isEmpty(KSYNTAXHIGHLIGHTING_LIB_DIR) {
 
 win32:SUBDIRS += utils/process_ctrlc_stub.pro
 
-# Windows: Compile Qt Creator CDB extension if Debugging tools can be detected.
-win32: isEmpty(QTC_SKIP_CDBEXT) {
-    include(qtcreatorcdbext/cdb_detect.pri)
-    exists($$CDB_PATH) {
-        SUBDIRS += qtcreatorcdbext
-    } else {
-        message("Compiling Qt Creator without a CDB extension.")
-        message("If CDB is installed in a none default path define a CDB_PATH")
-        message("environment variable pointing to your CDB installation.")
-    }
+msvc: isEmpty(QTC_SKIP_CDBEXT) {
+    SUBDIRS += qtcreatorcdbext
 }
 
 QMAKE_EXTRA_TARGETS += deployqt # dummy

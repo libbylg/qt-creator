@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import MouseArea3D 1.0
 
 Node {
@@ -39,15 +39,16 @@ Node {
     property MouseArea3D dragHelper: null
     property real currentAngle
     property point currentMousePos
+    property alias freeDraggerArea: mouseAreaFree
 
     position: dragHelper.pivotScenePosition(targetNode)
-    orientation: targetNode ? targetNode.orientation : Node.LeftHanded
 
     onTargetNodeChanged: position = dragHelper.pivotScenePosition(targetNode)
 
     Connections {
         target: rotateGizmo.targetNode
-        onSceneTransformChanged: {
+        function onSceneTransformChanged()
+        {
             rotateGizmo.position = rotateGizmo.dragHelper.pivotScenePosition(rotateGizmo.targetNode);
         }
     }
@@ -70,44 +71,16 @@ Node {
             copyRingProperties(rotRingZ)
     }
 
-    Rectangle {
-        id: angleLabel
-        color: "white"
-        x: rotateGizmo.currentMousePos.x - (10 + width)
-        y: rotateGizmo.currentMousePos.y - (10 + height)
-        width: gizmoLabelText.width + 4
-        height: gizmoLabelText.height + 4
-        border.width: 1
-        visible: rotateGizmo.dragging
-        parent: rotateGizmo.view3D
-
-        Text {
-            id: gizmoLabelText
-            text: {
-                var l = Qt.locale();
-                if (rotateGizmo.targetNode) {
-                    var degrees = currentAngle * (180 / Math.PI);
-                    return qsTr(Number(degrees).toLocaleString(l, 'f', 1));
-                } else {
-                    return "";
-                }
-            }
-            anchors.centerIn: parent
-        }
-    }
-
     Node {
         id: rotNode
-        rotation: globalOrientation || !rotateGizmo.targetNode ? Qt.vector3d(0, 0, 0)
+        rotation: globalOrientation || !rotateGizmo.targetNode ? Qt.quaternion(1, 0, 0, 0)
                                                                : rotateGizmo.targetNode.sceneRotation
-        rotationOrder: rotateGizmo.targetNode ? rotateGizmo.targetNode.rotationOrder : Node.YXZ
-        orientation: rotateGizmo.orientation
         visible: !rotateGizmo.dragging && !freeRotator.dragging
 
         RotateRing {
             id: rotRingX
             objectName: "Rotate Ring X"
-            rotation: Qt.vector3d(0, 90, 0)
+            eulerRotation: Qt.vector3d(0, 90, 0)
             targetNode: rotateGizmo.targetNode
             color: highlightOnHover && (hovering || dragging) ? Qt.lighter(Qt.rgba(1, 0, 0, 1))
                                                               : Qt.rgba(1, 0, 0, 1)
@@ -125,7 +98,7 @@ Node {
         RotateRing {
             id: rotRingY
             objectName: "Rotate Ring Y"
-            rotation: Qt.vector3d(90, 0, 0)
+            eulerRotation: Qt.vector3d(90, 0, 0)
             targetNode: rotateGizmo.targetNode
             color: highlightOnHover && (hovering || dragging) ? Qt.lighter(Qt.rgba(0, 0.6, 0, 1))
                                                               : Qt.rgba(0, 0.6, 0, 1)
@@ -145,7 +118,7 @@ Node {
         RotateRing {
             id: rotRingZ
             objectName: "Rotate Ring Z"
-            rotation: Qt.vector3d(0, 0, 0)
+            eulerRotation: Qt.vector3d(0, 0, 0)
             targetNode: rotateGizmo.targetNode
             color: highlightOnHover && (hovering || dragging) ? Qt.lighter(Qt.rgba(0, 0, 1, 1))
                                                               : Qt.rgba(0, 0, 1, 1)
@@ -174,7 +147,6 @@ Node {
         view3D: rotateGizmo.view3D
         active: false
         visible: rotRingX.dragging || rotRingY.dragging || rotRingZ.dragging
-        orientation: rotateGizmo.orientation
     }
 
     RotateRing {
@@ -203,7 +175,7 @@ Node {
         source: "#Sphere"
         materials: DefaultMaterial {
             id: material
-            emissiveColor: "black"
+            diffuseColor: "black"
             opacity: mouseAreaFree.hovering ? 0.15 : 0
             lighting: DefaultMaterial.NoLighting
         }
@@ -223,16 +195,14 @@ Node {
             // Need to recreate vector as we need to adjust it and we can't do that on reference of
             // scenePosition, which is read-only property
             var scenePos = rotateGizmo.dragHelper.pivotScenePosition(rotateGizmo.targetNode);
-            if (rotateGizmo.targetNode && rotateGizmo.targetNode.orientation === Node.RightHanded)
-                scenePos.z = -scenePos.z
             _targetPosOnScreen = view3D.mapFrom3DScene(scenePos);
             _targetPosOnScreen.z = 0;
             _pointerPosPressed = Qt.vector3d(screenPos.x, screenPos.y, 0);
 
             // Recreate vector so we don't follow the changes in targetNode.rotation
-            _startRotation = Qt.vector3d(rotateGizmo.targetNode.rotation.x,
-                                         rotateGizmo.targetNode.rotation.y,
-                                         rotateGizmo.targetNode.rotation.z);
+            _startRotation = Qt.vector3d(rotateGizmo.targetNode.eulerRotation.x,
+                                         rotateGizmo.targetNode.eulerRotation.y,
+                                         rotateGizmo.targetNode.eulerRotation.z);
             dragging = true;
         }
 

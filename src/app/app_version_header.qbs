@@ -10,6 +10,11 @@ Product {
         fileTags: ["hpp.in"]
     }
 
+    Group {
+        name: "other"
+        files: "app_version.h.cmakein"
+    }
+
     Depends { name: "qtc" }
 
     Rule {
@@ -34,6 +39,8 @@ Product {
                 // replace the magic qmake incantations
                 content = content.replace(/(\n#define IDE_VERSION_DISPLAY_DEF) .+\n/, "$1 "
                         + product.moduleProperty("qtc", "qtcreator_display_version") + "\n");
+                content = content.replace(/(\n#define IDE_VERSION_COMPAT_DEF) .+\n/, "$1 "
+                        + product.moduleProperty("qtc", "qtcreator_compat_version") + "\n");
                 content = content.replace(/(\n#define IDE_VERSION) .+\n/, "$1 "
                         + product.moduleProperty("qtc", "qtcreator_version") + "\n");
                 content = content.replace(/(\n#define IDE_VERSION_MAJOR) .+\n/, "$1 "

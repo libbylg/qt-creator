@@ -29,6 +29,7 @@
 
 #include <utils/detailsbutton.h>
 #include <utils/detailswidget.h>
+#include <utils/fileutils.h>
 
 #include <QDialog>
 
@@ -36,6 +37,8 @@ QT_BEGIN_NAMESPACE
 class QLineEdit;
 class QPlainTextEdit;
 QT_END_NAMESPACE
+
+namespace Utils { class PathChooser; }
 
 namespace BareMetal {
 namespace Internal {
@@ -55,6 +58,9 @@ class DeviceSelector final : public Utils::DetailsWidget
 public:
     explicit DeviceSelector(QWidget *parent = nullptr);
 
+    void setToolsIniFile(const Utils::FilePath &toolsIniFile);
+    Utils::FilePath toolsIniFile() const;
+
     void setSelection(const DeviceSelection &selection);
     DeviceSelection selection() const;
 
@@ -62,6 +68,7 @@ signals:
     void selectionChanged();
 
 private:
+    Utils::FilePath m_toolsIniFile;
     DeviceSelection m_selection;
 };
 
@@ -98,10 +105,11 @@ signals:
 private:
     DeviceSelection &m_selection;
     QLineEdit *m_vendorEdit = nullptr;
-    QLineEdit *m_fimilyEdit = nullptr;
+    QLineEdit *m_packageEdit = nullptr;
     QPlainTextEdit *m_descEdit = nullptr;
     DeviceSelectionMemoryView *m_memoryView = nullptr;
     DeviceSelectionAlgorithmView *m_algorithmView = nullptr;
+    Utils::PathChooser *m_peripheralDescriptionFileChooser = nullptr;
 };
 
 // DeviceSelectionDialog
@@ -111,7 +119,7 @@ class DeviceSelectionDialog final : public QDialog
     Q_OBJECT
 
 public:
-    explicit DeviceSelectionDialog(const QString &uVisionPath, QWidget *parent = nullptr);
+    explicit DeviceSelectionDialog(const Utils::FilePath &toolsIniFile, QWidget *parent = nullptr);
     DeviceSelection selection() const;
 
 private:

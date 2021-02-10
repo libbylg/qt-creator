@@ -89,7 +89,7 @@ public:
         if (url.isValid()) {
             args.append(QStringList{"--host", url.host(), "--port", QString::number(url.port())});
         }
-        appendMessage("PerfParser args: " + args.join(' '), Utils::DebugFormat);
+        appendMessage("PerfParser args: " + args.join(' '), Utils::NormalMessageFormat);
         m_reader.createParser(args);
         m_reader.startParser();
     }
@@ -138,7 +138,7 @@ public:
             // in that. FailedToStart is the only actual failure.
             if (e == QProcess::FailedToStart) {
                 QString msg = tr("Perf Process Failed to Start");
-                QMessageBox::warning(Core::ICore::mainWindow(),
+                QMessageBox::warning(Core::ICore::dialogParent(),
                                      msg, tr("Make sure that you are running a recent Linux kernel and "
                                              "that the \"perf\" utility is available."));
                 reportFailure(msg);

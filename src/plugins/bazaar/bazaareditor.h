@@ -27,7 +27,7 @@
 
 #include <vcsbase/vcsbaseeditor.h>
 
-#include <QRegExp>
+#include <QRegularExpression>
 
 namespace Bazaar {
 namespace Internal {
@@ -40,13 +40,12 @@ public:
     BazaarEditorWidget();
 
 private:
-    QSet<QString> annotationChanges() const override;
     QString changeUnderCursor(const QTextCursor &cursor) const override;
     VcsBase::BaseAnnotationHighlighter *createAnnotationHighlighter(
             const QSet<QString> &changes) const override;
 
-    mutable QRegExp m_changesetId;
-    mutable QRegExp m_exactChangesetId;
+    const QRegularExpression m_changesetId;
+    const QRegularExpression m_exactChangesetId;
 };
 
 } // namespace Internal

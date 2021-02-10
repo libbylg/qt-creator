@@ -51,7 +51,7 @@ FormWindowFile::FormWindowFile(QDesignerFormWindowInterface *form, QObject *pare
 {
     setMimeType(Designer::Constants::FORM_MIMETYPE);
     setParent(parent);
-    setId(Core::Id(Designer::Constants::K_DESIGNER_XML_EDITOR_ID));
+    setId(Utils::Id(Designer::Constants::K_DESIGNER_XML_EDITOR_ID));
     // Designer needs UTF-8 regardless of settings.
     setCodec(QTextCodec::codecForName("UTF-8"));
     connect(m_formWindow->core()->formWindowManager(), &QDesignerFormWindowManagerInterface::formWindowRemoved,
@@ -225,9 +225,6 @@ bool FormWindowFile::reload(QString *errorString, ReloadFlag flag, ChangeType ty
         if (!wasModified)
             updateIsModified();
         return true;
-    }
-    if (type == TypePermissions) {
-        emit changed();
     } else {
         emit aboutToReload();
         const bool success
@@ -235,7 +232,6 @@ bool FormWindowFile::reload(QString *errorString, ReloadFlag flag, ChangeType ty
         emit reloadFinished(success);
         return success;
     }
-    return true;
 }
 
 void FormWindowFile::setFallbackSaveAsFileName(const QString &fn)

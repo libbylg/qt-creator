@@ -39,7 +39,6 @@ QT_BEGIN_NAMESPACE
 class QPlainTextEdit;
 class QTextEdit;
 class QComboBox;
-class QPushButton;
 QT_END_NAMESPACE
 
 namespace Utils { class PathChooser; }
@@ -61,17 +60,13 @@ class PROJECTEXPLORER_EXPORT CustomToolChain : public ToolChain
 public:
     class Parser {
     public:
-        Core::Id parserId;   ///< A unique id identifying a parser
+        Utils::Id parserId;   ///< A unique id identifying a parser
         QString displayName; ///< A translateable name to show in the user interface
     };
-
-    Abi targetAbi() const override;
-    void setTargetAbi(const Abi &);
 
     bool isValid() const override;
 
     MacroInspectionRunner createMacroInspectionRunner() const override;
-    Macros predefinedMacros(const QStringList &cxxflags) const override;
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
     Utils::WarningFlags warningFlags(const QStringList &cxxflags) const override;
     const Macros &rawPredefinedMacros() const;
@@ -79,12 +74,9 @@ public:
 
     BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(
             const Utils::Environment &) const override;
-    HeaderPaths builtInHeaderPaths(const QStringList &cxxFlags,
-                                   const Utils::FilePath &,
-                                   const Utils::Environment &env) const override;
     void addToEnvironment(Utils::Environment &env) const override;
     QStringList suggestedMkspecList() const override;
-    IOutputParser *outputParser() const override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
     QStringList headerPathsList() const;
     void setHeaderPaths(const QStringList &list);
 
@@ -95,8 +87,6 @@ public:
 
     bool operator ==(const ToolChain &) const override;
 
-    void setCompilerCommand(const Utils::FilePath &);
-    Utils::FilePath compilerCommand() const override;
     void setMakeCommand(const Utils::FilePath &);
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
 
@@ -106,26 +96,24 @@ public:
     void setMkspecs(const QString &);
     QString mkspecs() const;
 
-    Core::Id outputParserId() const;
-    void setOutputParserId(Core::Id parserId);
-    CustomParserSettings customParserSettings() const;
-    void setCustomParserSettings(const CustomParserSettings &settings);
+    Utils::Id outputParserId() const;
+    void setOutputParserId(Utils::Id parserId);
     static QList<CustomToolChain::Parser> parsers();
 
 private:
     CustomToolChain();
 
+    CustomParserSettings customParserSettings() const;
+
     Utils::FilePath m_compilerCommand;
     Utils::FilePath m_makeCommand;
 
-    Abi m_targetAbi;
     Macros m_predefinedMacros;
     HeaderPaths m_builtInHeaderPaths;
     QStringList m_cxx11Flags;
     QStringList m_mkspecs;
 
-    Core::Id m_outputParserId;
-    CustomParserSettings m_customParserSettings;
+    Utils::Id m_outputParserId;
 
     friend class Internal::CustomToolChainFactory;
     friend class ToolChainFactory;
@@ -135,8 +123,6 @@ namespace Internal {
 
 class CustomToolChainFactory : public ToolChainFactory
 {
-    Q_OBJECT
-
 public:
     CustomToolChainFactory();
 };
@@ -157,7 +143,6 @@ public:
 private:
     void updateSummaries();
     void errorParserChanged(int index = -1);
-    void openCustomParserSettingsDialog();
 
 protected:
     void applyImpl() override;
@@ -177,9 +162,6 @@ protected:
     QLineEdit *m_cxx11Flags;
     QLineEdit *m_mkspecs;
     QComboBox *m_errorParserComboBox;
-    QPushButton *m_customParserSettingsButton;
-
-    CustomParserSettings m_customParserSettings;
 };
 
 } // namespace Internal

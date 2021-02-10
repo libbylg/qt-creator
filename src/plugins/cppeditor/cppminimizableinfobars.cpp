@@ -27,19 +27,16 @@
 
 #include "cppeditorconstants.h"
 
-#include <QTimer>
 #include <QToolButton>
-
-#include <coreplugin/id.h>
-#include <coreplugin/infobar.h>
 
 #include <cpptools/cpptoolssettings.h>
 
-#include <utils/utilsicons.h>
+#include <utils/infobar.h>
 #include <utils/qtcassert.h>
+#include <utils/utilsicons.h>
 
-using namespace Core;
 using namespace CppTools;
+using namespace Utils;
 
 namespace CppEditor {
 namespace Internal {
@@ -144,10 +141,8 @@ static InfoBarEntry createMinimizableInfo(const Id &id,
     // The minimizer() might delete the "Minimize" button immediately and as
     // result invalid reads will happen in QToolButton::mouseReleaseEvent().
     // Avoid this by running the minimizer in the next event loop iteration.
-    info.setCustomButtonInfo(MinimizableInfoBars::tr("Minimize"), [=](){
-        QTimer::singleShot(0, [=] {
-            minimizer();
-        });
+    info.setCustomButtonInfo(MinimizableInfoBars::tr("Minimize"), [minimizer] {
+        QMetaObject::invokeMethod(settings(), [minimizer] { minimizer(); }, Qt::QueuedConnection);
     });
 
     return info;

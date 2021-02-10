@@ -24,6 +24,8 @@
 ****************************************************************************/
 
 #include "clangdiagnostictooltipwidget.h"
+
+#include "clangdiagnosticmanager.h"
 #include "clangfixitoperation.h"
 #include "clangutils.h"
 
@@ -43,9 +45,8 @@
 #include <QTextDocument>
 #include <QUrl>
 
-using namespace ClangCodeModel;
-using Internal::ClangDiagnosticWidget;
-using Internal::ClangFixItOperation;
+namespace ClangCodeModel {
+namespace Internal {
 
 namespace {
 
@@ -102,7 +103,8 @@ public:
     {
     }
 
-    QWidget *createWidget(const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics)
+    QWidget *createWidget(const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics,
+                          const ClangDiagnosticManager *diagMgr)
     {
         const QString text = htmlText(diagnostics);
 
@@ -130,18 +132,22 @@ public:
 
         const TargetIdToDiagnosticTable table = m_targetIdsToDiagnostics;
         const bool hideToolTipAfterLinkActivation = m_displayHints.hideTooltipAfterLinkActivation;
-        QObject::connect(label, &QLabel::linkActivated, [table, hideToolTipAfterLinkActivation]
-                         (const QString &action) {
+        QObject::connect(label, &QLabel::linkActivated, [table, hideToolTipAfterLinkActivation,
+                         diagMgr](const QString &action) {
             const ClangBackEnd::DiagnosticContainer diagnostic = table.value(action);
 
             if (diagnostic == ClangBackEnd::DiagnosticContainer())
                 QDesktopServices::openUrl(QUrl(action));
-            else if (action.startsWith(LINK_ACTION_GOTO_LOCATION))
+            else if (action.startsWith(LINK_ACTION_GOTO_LOCATION)) {
                 openEditorAt(diagnostic);
-            else if (action.startsWith(LINK_ACTION_APPLY_FIX))
-                applyFixit(diagnostic);
-            else
+            } else if (action.startsWith(LINK_ACTION_APPLY_FIX)) {
+                if (diagMgr && !diagMgr->diagnosticsInvalidated()
+                        && diagMgr->diagnosticsWithFixIts().contains(diagnostic)) {
+                    applyFixit(diagnostic);
+                }
+            } else {
                 QTC_CHECK(!"Link target cannot be handled.");
+            }
 
             if (hideToolTipAfterLinkActivation)
                 ::Utils::ToolTip::hideImmediately();
@@ -184,7 +190,6 @@ private:
 
         ClangBackEnd::DiagnosticContainer supplementedDiagnostic = diagnostic;
 
-        using namespace ClangCodeModel::Utils;
         DiagnosticTextInfo info(diagnostic.text);
         supplementedDiagnostic.enableOption = info.option();
         supplementedDiagnostic.category = info.category();
@@ -221,7 +226,7 @@ private:
         QString option = optionAsUtf8String.toString();
 
         // Clazy
-        if (ClangCodeModel::Utils::DiagnosticTextInfo::isClazyOption(option)) {
+        if (DiagnosticTextInfo::isClazyOption(option)) {
             option = optionAsUtf8String.mid(8); // Remove "-Wclazy-" prefix.
             return QString::fromUtf8(CppTools::Constants::CLAZY_DOCUMENTATION_URL_TEMPLATE)
                 .arg(option);
@@ -396,14 +401,15 @@ private:
     QString m_mainFilePath;
 };
 
-WidgetFromDiagnostics::DisplayHints toHints(const ClangDiagnosticWidget::Destination &destination)
+WidgetFromDiagnostics::DisplayHints toHints(const ClangDiagnosticWidget::Destination &destination,
+                                            const ClangDiagnosticManager *diagMgr = nullptr)
 {
     WidgetFromDiagnostics::DisplayHints hints;
 
     if (destination == ClangDiagnosticWidget::ToolTip) {
         hints.showCategoryAndEnableOption = true;
         hints.showFileNameInMainDiagnostic = false;
-        hints.enableClickableFixits = true;
+        hints.enableClickableFixits = diagMgr && !diagMgr->diagnosticsInvalidated();
         hints.limitWidth = true;
         hints.hideTooltipAfterLinkActivation = true;
         hints.allowTextSelection = false;
@@ -421,9 +427,6 @@ WidgetFromDiagnostics::DisplayHints toHints(const ClangDiagnosticWidget::Destina
 }
 
 } // anonymous namespace
-
-namespace ClangCodeModel {
-namespace Internal {
 
 QString ClangDiagnosticWidget::createText(
     const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics,
@@ -443,10 +446,10 @@ QString ClangDiagnosticWidget::createText(
     return text;
 }
 
-QWidget *ClangDiagnosticWidget::createWidget(
-    const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics, const Destination &destination)
+QWidget *ClangDiagnosticWidget::createWidget(const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics,
+        const Destination &destination, const ClangDiagnosticManager *diagMgr)
 {
-    return WidgetFromDiagnostics(toHints(destination)).createWidget(diagnostics);
+    return WidgetFromDiagnostics(toHints(destination, diagMgr)).createWidget(diagnostics, diagMgr);
 }
 
 } // namespace Internal

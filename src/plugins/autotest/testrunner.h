@@ -26,8 +26,6 @@
 #pragma once
 
 #include "autotest_global.h"
-
-#include "testconfiguration.h"
 #include "testresult.h"
 
 #include <QDialog>
@@ -43,27 +41,30 @@ class QLabel;
 class QProcess;
 QT_END_NAMESPACE
 
-namespace ProjectExplorer {
-class Project;
-}
+namespace ProjectExplorer { class Project; }
 
 namespace Autotest {
 
 enum class TestRunMode;
+class ITestConfiguration;
+class TestOutputReader;
 
 namespace Internal {
 
-class AUTOTESTSHARED_EXPORT TestRunner : public QObject
+class AUTOTESTSHARED_EXPORT TestRunner final : public QObject
 {
     Q_OBJECT
+
 public:
+    TestRunner();
+    ~TestRunner() final;
+
     enum CancelReason { UserCanceled, Timeout, KitChanged };
 
     static TestRunner* instance();
-    ~TestRunner() override;
 
-    void setSelectedTests(const QList<TestConfiguration *> &selected);
-    void runTest(TestRunMode mode, const TestTreeItem *item);
+    void setSelectedTests(const QList<ITestConfiguration *> &selected);
+    void runTest(TestRunMode mode, const ITestTreeItem *item);
     bool isTestRunning() const { return m_executingTests; }
 
     void prepareToRunTests(TestRunMode mode);
@@ -83,6 +84,9 @@ private:
     void onFinished();
 
     int precheckTestConfigurations();
+    bool currentConfigValid();
+    void setUpProcess();
+    void setUpProcessEnv();
     void scheduleNext();
     void cancelCurrent(CancelReason reason);
     void onProcessFinished();
@@ -92,14 +96,15 @@ private:
     void debugTests();
     void runOrDebugTests();
     void reportResult(ResultType type, const QString &description);
-    explicit TestRunner(QObject *parent = nullptr);
+    bool postponeTestRunWithEmptyExecutable(ProjectExplorer::Project *project);
+    void onBuildSystemUpdated();
 
     QFutureWatcher<TestResultPtr> m_futureWatcher;
     QFutureInterface<TestResultPtr> *m_fakeFutureInterface = nullptr;
-    QQueue<TestConfiguration *> m_selectedTests;
+    QQueue<ITestConfiguration *> m_selectedTests;
     bool m_executingTests = false;
     bool m_canceled = false;
-    TestConfiguration *m_currentConfig = nullptr;
+    ITestConfiguration *m_currentConfig = nullptr;
     QProcess *m_currentProcess = nullptr;
     TestOutputReader *m_currentOutputReader = nullptr;
     TestRunMode m_runMode = TestRunMode::None;
@@ -111,6 +116,7 @@ private:
     QMetaObject::Connection m_finishDebugConnect;
     // temporarily used for handling of switching the current target
     QMetaObject::Connection m_targetConnect;
+    bool m_skipTargetsCheck = false;
 };
 
 class RunConfigurationSelectionDialog : public QDialog

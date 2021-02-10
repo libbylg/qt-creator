@@ -38,6 +38,8 @@
 #include "internalnodeproperty.h"
 #include "internalnodeabstractproperty.h"
 
+#include <utils/porting.h>
+
 namespace QmlDesigner {
 
 namespace Internal {
@@ -84,7 +86,7 @@ public:
     void setAuxiliaryData(const PropertyName &name, const QVariant &data);
     void removeAuxiliaryData(const PropertyName &name);
     bool hasAuxiliaryData(const PropertyName &name) const;
-    QHash<PropertyName, QVariant> auxiliaryData() const;
+    const QHash<PropertyName, QVariant> &auxiliaryData() const;
 
     InternalProperty::Pointer property(const PropertyName &name) const;
     InternalBindingProperty::Pointer bindingProperty(const PropertyName &name) const;
@@ -150,7 +152,7 @@ private:
     int m_nodeSourceType = 0;
 };
 
-uint qHash(const InternalNodePointer& node);
+Utils::QHashValueType qHash(const InternalNodePointer& node);
 bool operator <(const InternalNodePointer &firstNode, const InternalNodePointer &secondNode);
 } // Internal
 } // QtQmlDesigner

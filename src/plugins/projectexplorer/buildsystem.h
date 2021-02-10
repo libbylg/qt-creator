@@ -38,10 +38,18 @@ namespace ProjectExplorer {
 class BuildConfiguration;
 class Node;
 
+struct TestCaseInfo
+{
+    QString name;
+    Utils::FilePath path;
+    int line = 0;
+};
+
 // --------------------------------------------------------------------
 // BuildSystem:
 // --------------------------------------------------------------------
 
+// Check buildsystem.md for more information
 class PROJECTEXPLORER_EXPORT BuildSystem : public QObject
 {
     Q_OBJECT
@@ -54,6 +62,7 @@ public:
     Project *project() const;
     Target *target() const;
     Kit *kit() const;
+    BuildConfiguration *buildConfiguration() const;
 
     Utils::FilePath projectFilePath() const;
     Utils::FilePath projectDirectory() const;
@@ -62,6 +71,10 @@ public:
 
     void requestParse();
     void requestDelayedParse();
+    void requestParseWithCustomDelay(int delayInMs = 1000);
+    void cancelDelayedParseRequest();
+    void setParseDelay(int delayInMs);
+    int parseDelay() const;
 
     bool isParsing() const;
     bool hasParsingData() const;
@@ -78,7 +91,7 @@ public:
     virtual bool supportsAction(Node *context, ProjectAction action, const Node *node) const;
 
     virtual QStringList filesGeneratedFrom(const QString &sourceFile) const;
-    virtual QVariant additionalData(Core::Id id) const;
+    virtual QVariant additionalData(Utils::Id id) const;
 
     void setDeploymentData(const DeploymentData &deploymentData);
     DeploymentData deploymentData() const;
@@ -88,6 +101,10 @@ public:
     BuildTargetInfo buildTarget(const QString &buildKey) const;
 
     void setRootProjectNode(std::unique_ptr<ProjectNode> &&root);
+
+    virtual const QList<TestCaseInfo> testcasesInfo() const { return {}; }
+    virtual Utils::CommandLine commandLineForTests(const QList<QString> &tests,
+                                                   const QStringList &options) const;
 
     class PROJECTEXPLORER_EXPORT ParseGuard
     {
@@ -116,6 +133,9 @@ public:
 
     void emitBuildSystemUpdated();
 
+    void setExtraData(const QString &buildKey, Utils::Id dataKey, const QVariant &data);
+    QVariant extraData(const QString &buildKey, Utils::Id dataKey) const;
+
 public:
     // FIXME: Make this private and the BuildSystem a friend
     ParseGuard guardParsingRun() { return ParseGuard(this); }
@@ -129,6 +149,7 @@ signals:
     void parsingFinished(bool success);
     void deploymentDataChanged();
     void applicationTargetsChanged();
+    void testInformationUpdated();
 
 protected:
     // Helper methods to manage parsing state and signalling

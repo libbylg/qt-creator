@@ -33,7 +33,12 @@
 #include <nodehints.h>
 #include <nodemetainfo.h>
 
+#include <designdocument.h>
+#include <qmldesignerplugin.h>
+#include <designermcumanager.h>
+
 #include <utils/algorithm.h>
+#include <utils/qtcassert.h>
 
 #include <QVariant>
 #include <QMetaProperty>
@@ -46,7 +51,7 @@
 static Q_LOGGING_CATEGORY(itemlibraryPopulate, "qtc.itemlibrary.populate", QtWarningMsg)
 
 static bool inline registerItemLibrarySortedModel() {
-    qmlRegisterType<QmlDesigner::ItemLibrarySectionModel>();
+    qmlRegisterAnonymousType<QmlDesigner::ItemLibrarySectionModel>("ItemLibrarySectionModel", 1);
     return true;
 }
 
@@ -186,24 +191,28 @@ void ItemLibraryModel::update(ItemLibraryInfo *itemLibraryInfo, Model *model)
 
         qCInfo(itemlibraryPopulate) << "required import: " << entry.requiredImport() << entryToImport(entry).toImportString();
 
-        if (!isItem && valid) {
-            qDebug() << Q_FUNC_INFO;
-            qDebug() << metaInfo.typeName() << "is not a QtQuick.Item";
-            qDebug() << Utils::transform(metaInfo.superClasses(), &NodeMetaInfo::typeName);
-        }
-
         bool forceVisiblity = valid && NodeHints::fromItemLibraryEntry(entry).visibleInLibrary();
 
-        if (m_flowMode) {
-            forceVisiblity = false;
-            isItem = metaInfo.isSubclassOf("FlowView.FlowItem");
+        if (m_flowMode && metaInfo.isValid()) {
+
+            isItem = metaInfo.isSubclassOf("FlowView.FlowItem")
+                    || metaInfo.isSubclassOf("FlowView.FlowWildcard")
+                    || metaInfo.isSubclassOf("FlowView.FlowDecision");
+            forceVisiblity = isItem;
         }
 
+        const DesignerMcuManager &mcuManager = DesignerMcuManager::instance();
 
-        if (valid
-                && (isItem || forceVisiblity) //We can change if the navigator does support pure QObjects
-                && (entry.requiredImport().isEmpty()
-                    || model->hasImport(entryToImport(entry), true, true))) {
+        if (mcuManager.isMCUProject()) {
+            const QSet<QString> blockTypes = mcuManager.bannedItems();
+
+            if (blockTypes.contains(QString::fromUtf8(entry.typeName())))
+                valid = false;
+        }
+
+        if (valid && (isItem || forceVisiblity) //We can change if the navigator does support pure QObjects
+            && (entry.requiredImport().isEmpty()
+                || model->hasImport(entryToImport(entry), true, true))) {
             QString itemSectionName = entry.category();
             qCInfo(itemlibraryPopulate) << "Adding:" << entry.typeName() << "to:" << entry.category();
             ItemLibrarySection *sectionModel = sectionByName(itemSectionName);
@@ -240,11 +249,6 @@ QMimeData *ItemLibraryModel::getMimeData(const ItemLibraryEntry &itemLibraryEntr
     return mimeData;
 }
 
-QList<ItemLibrarySection *> ItemLibraryModel::sections() const
-{
-    return m_sections;
-}
-
 void ItemLibraryModel::clearSections()
 {
     qDeleteAll(m_sections);
@@ -253,8 +257,8 @@ void ItemLibraryModel::clearSections()
 
 void ItemLibraryModel::registerQmlTypes()
 {
-    qmlRegisterType<QmlDesigner::ItemLibrarySectionModel>();
-    qmlRegisterType<QmlDesigner::ItemLibraryModel>();
+    qmlRegisterAnonymousType<QmlDesigner::ItemLibrarySectionModel>("ItemLibrarySectionModel", 1);
+    qmlRegisterAnonymousType<QmlDesigner::ItemLibraryModel>("ItemLibraryModel", 1);
 }
 
 ItemLibrarySection *ItemLibraryModel::sectionByName(const QString &sectionName)
@@ -276,9 +280,6 @@ void ItemLibraryModel::updateVisibility(bool *changed)
         bool sectionVisibility = itemLibrarySection->updateSectionVisibility(sectionSearchText,
                                                                              &sectionChanged);
 
-        if (m_flowMode  && itemLibrarySection->sectionName() != "My QML Components")
-            sectionVisibility= false;
-
         *changed |= sectionChanged;
         *changed |= itemLibrarySection->setVisible(sectionVisibility);
     }
@@ -296,13 +297,15 @@ void ItemLibraryModel::addRoleNames()
 
 void ItemLibraryModel::sortSections()
 {
+    int nullPointerSectionCount = m_sections.removeAll(QPointer<ItemLibrarySection>());
+    QTC_ASSERT(nullPointerSectionCount == 0,;);
     auto sectionSort = [](ItemLibrarySection *first, ItemLibrarySection *second) {
-        return QString::localeAwareCompare(first->sortingName(), second->sortingName()) < 1;
+        return QString::localeAwareCompare(first->sortingName(), second->sortingName()) < 0;
     };
 
     std::sort(m_sections.begin(), m_sections.end(), sectionSort);
 
-    foreach (ItemLibrarySection *itemLibrarySection, m_sections)
+    for (const auto &itemLibrarySection : qAsConst(m_sections))
         itemLibrarySection->sortItems();
 }
 

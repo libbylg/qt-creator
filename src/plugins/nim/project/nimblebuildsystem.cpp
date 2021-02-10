@@ -24,6 +24,8 @@
 ****************************************************************************/
 
 #include "nimblebuildsystem.h"
+
+#include "nimbuildsystem.h"
 #include "nimbleproject.h"
 #include "nimproject.h"
 
@@ -33,7 +35,6 @@
 #include <utils/qtcassert.h>
 
 #include <QProcess>
-#include <QStandardPaths>
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -41,13 +42,12 @@ using namespace Utils;
 namespace Nim {
 
 const char C_NIMBLEPROJECT_TASKS[] = "Nim.NimbleProject.Tasks";
-const char C_NIMBLEPROJECT_METADATA[] = "Nim.NimbleProject.Metadata";
 
 static std::vector<NimbleTask> parseTasks(const QString &nimblePath, const QString &workingDirectory)
 {
     QProcess process;
     process.setWorkingDirectory(workingDirectory);
-    process.start(QStandardPaths::findExecutable(nimblePath), {"tasks"});
+    process.start(nimblePath, {"tasks"});
     process.waitForFinished();
 
     std::vector<NimbleTask> result;
@@ -71,7 +71,7 @@ static NimbleMetadata parseMetadata(const QString &nimblePath, const QString &wo
 {
     QProcess process;
     process.setWorkingDirectory(workingDirectory);
-    process.start(QStandardPaths::findExecutable(nimblePath), {"dump"});
+    process.start(nimblePath, {"dump"});
     process.waitForFinished();
 
     NimbleMetadata result = {};
@@ -109,11 +109,6 @@ static NimbleMetadata parseMetadata(const QString &nimblePath, const QString &wo
 NimbleBuildSystem::NimbleBuildSystem(Target *target)
     : BuildSystem(target), m_projectScanner(target->project())
 {
-    // Not called in parseProject due to nimble behavior to create temporary
-    // files in project directory. This creation in turn stimulate the fs watcher
-    // that in turn causes project parsing (thus a loop if invoke in parseProject).
-    // For this reason we call this function manually during project creation
-    // See https://github.com/nim-lang/nimble/issues/720
     m_projectScanner.watchProjectFilePath();
 
     connect(&m_projectScanner, &NimProjectScanner::fileChanged, this, [this](const QString &path) {
@@ -126,33 +121,46 @@ NimbleBuildSystem::NimbleBuildSystem(Target *target)
 
     connect(&m_projectScanner, &NimProjectScanner::finished, this, &NimbleBuildSystem::updateProject);
 
-    connect(&m_projectScanner, &NimProjectScanner::directoryChanged, this, [this] {
-        if (!isWaitingForParse())
+    connect(&m_projectScanner, &NimProjectScanner::directoryChanged, this, [this] (const QString &directory){
+        // Workaround for nimble creating temporary files in project root directory
+        // when querying the list of tasks.
+        // See https://github.com/nim-lang/nimble/issues/720
+        if (directory != projectDirectory().toString())
             requestDelayedParse();
     });
 
+    connect(target->project(), &ProjectExplorer::Project::settingsLoaded,
+            this, &NimbleBuildSystem::loadSettings);
+    connect(target->project(), &ProjectExplorer::Project::aboutToSaveSettings,
+            this, &NimbleBuildSystem::saveSettings);
     requestDelayedParse();
 }
 
 void NimbleBuildSystem::triggerParsing()
 {
-    m_guard = guardParsingRun();
+    // Only allow one parsing run at the same time:
+    auto guard = guardParsingRun();
+    if (!guard.guardsProject())
+        return;
+    m_guard = std::move(guard);
+
     m_projectScanner.startScan();
 }
 
 void NimbleBuildSystem::updateProject()
 {
     const FilePath projectDir = projectDirectory();
+    const FilePath nimble = Nim::nimblePathFromKit(kit());
 
-    m_metadata = parseMetadata(QStandardPaths::findExecutable("nimble"), projectDir.toString());
-    const FilePath binDir = projectDir.pathAppended(m_metadata.binDir);
+    const NimbleMetadata metadata = parseMetadata(nimble.toString(), projectDir.toString());
+    const FilePath binDir = projectDir.pathAppended(metadata.binDir);
     const FilePath srcDir = projectDir.pathAppended("src");
 
-    QList<BuildTargetInfo> targets = Utils::transform(m_metadata.bin, [&](const QString &bin){
+    QList<BuildTargetInfo> targets = Utils::transform(metadata.bin, [&](const QString &bin){
         BuildTargetInfo info = {};
         info.displayName = bin;
-        info.targetFilePath = binDir.pathAppended(HostOsInfo::withExecutableSuffix(bin));
-        info.projectFilePath = srcDir.pathAppended(bin).stringAppended(".nim");
+        info.targetFilePath = binDir.pathAppended(bin);
+        info.projectFilePath = projectFilePath();
         info.workingDirectory = binDir;
         info.buildKey = bin;
         return info;
@@ -160,7 +168,7 @@ void NimbleBuildSystem::updateProject()
 
     setApplicationTargets(std::move(targets));
 
-    std::vector<NimbleTask> tasks = parseTasks(QStandardPaths::findExecutable("nimble"), projectDir.toString());
+    std::vector<NimbleTask> tasks = parseTasks(nimble.toString(), projectDir.toString());
     if (tasks != m_tasks) {
         m_tasks = std::move(tasks);
         emit tasksChanged();
@@ -178,13 +186,9 @@ std::vector<NimbleTask> NimbleBuildSystem::tasks() const
     return m_tasks;
 }
 
-NimbleMetadata NimbleBuildSystem::metadata() const
-{
-    return m_metadata;
-}
-
 void NimbleBuildSystem::saveSettings()
 {
+    // only handles nimble specific settings - NimProjectScanner handles general settings
     QStringList result;
     for (const NimbleTask &task : m_tasks) {
         result.push_back(task.name);
@@ -196,17 +200,15 @@ void NimbleBuildSystem::saveSettings()
 
 void NimbleBuildSystem::loadSettings()
 {
+    // only handles nimble specific settings - NimProjectScanner handles general settings
     QStringList list = project()->namedSettings(C_NIMBLEPROJECT_TASKS).toStringList();
 
     m_tasks.clear();
     if (list.size() % 2 != 0)
         return;
 
-    std::vector<NimbleTask> result;
     for (int i = 0; i < list.size(); i += 2)
-        result.push_back({list[i], list[i + 1]});
-
-    requestParse();
+        m_tasks.push_back({list[i], list[i + 1]});
 }
 
 bool NimbleBuildSystem::supportsAction(Node *context, ProjectAction action, const Node *node) const

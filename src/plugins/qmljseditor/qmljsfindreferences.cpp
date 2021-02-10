@@ -25,14 +25,15 @@
 
 #include "qmljsfindreferences.h"
 
-#include <texteditor/basefilefind.h>
+#include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/find/searchresultwindow.h>
-#include <extensionsystem/pluginmanager.h>
-#include <utils/filesearch.h>
+#include <coreplugin/icore.h>
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <coreplugin/progressmanager/futureprogress.h>
-#include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/icore.h>
+#include <extensionsystem/pluginmanager.h>
+#include <texteditor/basefilefind.h>
+#include <utils/filesearch.h>
+#include <utils/runextensions.h>
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <qmljs/qmljsbind.h>
@@ -47,14 +48,14 @@
 
 #include "qmljseditorconstants.h"
 
+#include <QApplication>
+#include <QDebug>
+#include <QDir>
+#include <QFuture>
+#include <QLabel>
 #include <QTime>
 #include <QTimer>
-#include <QtConcurrentRun>
 #include <QtConcurrentMap>
-#include <QDir>
-#include <QApplication>
-#include <QLabel>
-#include <utils/runextensions.h>
 
 #include <functional>
 
@@ -70,7 +71,7 @@ namespace {
 class FindUsages: protected Visitor
 {
 public:
-    using Result = QList<AST::SourceLocation>;
+    using Result = QList<SourceLocation>;
 
     FindUsages(Document::Ptr doc, const ContextPtr &context)
         : _doc(doc)
@@ -236,6 +237,11 @@ protected:
         return true;
     }
 
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth while visitin AST in FindUsages");
+    }
+
 private:
     bool contains(const QmlComponentChain *chain)
     {
@@ -294,7 +300,7 @@ private:
 class FindTypeUsages: protected Visitor
 {
 public:
-    using Result = QList<AST::SourceLocation>;
+    using Result = QList<SourceLocation>;
 
     FindTypeUsages(Document::Ptr doc, const ContextPtr &context)
         : _doc(doc)
@@ -427,6 +433,10 @@ protected:
         return false;
     }
 
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth while visitin AST in FindTypeUsages");
+    }
 
 private:
     bool checkTypeName(UiQualifiedId *id)
@@ -624,6 +634,11 @@ protected:
         return true;
     }
 
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth visiting AST in FindUsages");
+    }
+
 private:
     bool containsOffset(SourceLocation start, SourceLocation end)
     {
@@ -720,7 +735,7 @@ public:
         // find all idenfifier expressions, try to resolve them and check if the result is in scope
         FindUsages findUsages(doc, context);
         FindUsages::Result results = findUsages(name, scope);
-        foreach (const AST::SourceLocation &loc, results)
+        foreach (const SourceLocation &loc, results)
             usages.append(Usage(fileName, matchingLine(loc.offset, doc->source()), loc.startLine, loc.startColumn - 1, loc.length));
         if (future->isPaused())
             future->waitForResume();
@@ -762,7 +777,7 @@ public:
         // find all idenfifier expressions, try to resolve them and check if the result is in scope
         FindTypeUsages findUsages(doc, context);
         FindTypeUsages::Result results = findUsages(name, scope);
-        foreach (const AST::SourceLocation &loc, results)
+        foreach (const SourceLocation &loc, results)
             usages.append(Usage(fileName, matchingLine(loc.offset, doc->source()), loc.startLine, loc.startColumn - 1, loc.length));
         if (future->isPaused())
             future->waitForResume();
@@ -904,7 +919,7 @@ void FindReferences::findUsages(const QString &fileName, quint32 offset)
 {
     ModelManagerInterface *modelManager = ModelManagerInterface::instance();
 
-    QFuture<Usage> result = Utils::runAsync(&find_helper, modelManager->workingCopy(),
+    QFuture<Usage> result = Utils::runAsync(&find_helper, ModelManagerInterface::workingCopy(),
                                             modelManager->snapshot(), fileName, offset, QString());
     m_watcher.setFuture(result);
 }
@@ -919,7 +934,7 @@ void FindReferences::renameUsages(const QString &fileName, quint32 offset,
     if (newName.isNull())
         newName = QLatin1String("");
 
-    QFuture<Usage> result = Utils::runAsync(&find_helper, modelManager->workingCopy(),
+    QFuture<Usage> result = Utils::runAsync(&find_helper, ModelManagerInterface::workingCopy(),
                                             modelManager->snapshot(), fileName, offset, newName);
     m_watcher.setFuture(result);
 }
@@ -944,7 +959,7 @@ QList<FindReferences::Usage> FindReferences::findUsageOfType(const QString &file
     foreach (const QmlJS::Document::Ptr &doc, snapshot) {
         FindTypeUsages findUsages(doc, context);
         FindTypeUsages::Result results = findUsages(typeName, targetValue);
-        foreach (const AST::SourceLocation &loc, results) {
+        foreach (const SourceLocation &loc, results) {
             usages.append(Usage(doc->fileName(), matchingLine(loc.offset, doc->source()), loc.startLine, loc.startColumn - 1, loc.length));
         }
     }
@@ -1028,7 +1043,7 @@ void FindReferences::onReplaceButtonClicked(const QString &text, const QList<Sea
     QStringList changedOnDisk;
     QStringList changedUnsavedEditors;
     foreach (const QString &fileName, fileNames) {
-        if (DocumentModel::documentForFilePath(fileName))
+        if (DocumentModel::documentForFilePath(Utils::FilePath::fromString(fileName)))
             changedOnDisk += fileName;
         else
             changedUnsavedEditors += fileName;

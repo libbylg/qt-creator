@@ -49,7 +49,7 @@ static QString decode(const QString& original)
         const QRegularExpressionMatch match = it.next();
         const QString value = match.captured(1);
         if (value.startsWith('x'))
-            result.replace(match.captured(0), QChar(value.midRef(1).toInt(nullptr, 16)));
+            result.replace(match.captured(0), QChar(value.mid(1).toInt(nullptr, 16)));
         else
             result.replace(match.captured(0), QChar(value.toInt(nullptr, 10)));
     }
@@ -267,7 +267,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
         }
         case QXmlStreamReader::Characters: {
             m_expectTag = false;
-            QStringRef text = m_xmlReader.text().trimmed();
+            const QStringView text = m_xmlReader.text().trimmed();
             if (text.isEmpty())
                 break;
 
@@ -278,7 +278,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
             case Description:
                 if (!m_description.isEmpty())
                     m_description.append('\n');
-                m_description.append(text);
+                m_description.append(text.toString());
                 break;
             case QtVersion:
                 m_description = trQtVersion(text.toString());
@@ -299,7 +299,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
         case QXmlStreamReader::EndElement: {
             m_expectTag = true;
             m_cdataMode = None;
-            const QStringRef currentTag = m_xmlReader.name();
+            const QStringView currentTag = m_xmlReader.name();
             if (currentTag == QStringLiteral("TestFunction")) {
                 sendFinishMessage(true);
                 m_futureInterface.setProgressValue(m_futureInterface.progressValue() + 1);
@@ -359,8 +359,8 @@ void QtTestOutputReader::processPlainTextOutput(const QByteArray &outputLine)
     static const QRegularExpression start("^[*]{9} Start testing of (.*) [*]{9}$");
     static const QRegularExpression config("^Config: Using QtTest library (.*), "
                                            "(Qt (\\d+(\\.\\d+){2}) \\(.*\\))$");
-    static const QRegularExpression summary("^Totals: \\d+ passed, \\d+ failed, "
-                                            "\\d+ skipped(, \\d+ blacklisted)?$");
+    static const QRegularExpression summary("^Totals: (\\d+) passed, (\\d+) failed, "
+                                            "(\\d+) skipped(, (\\d+) blacklisted)?(, \\d+ms)?$");
     static const QRegularExpression finish("^[*]{9} Finished testing of (.*) [*]{9}$");
 
     static const QRegularExpression result("^(PASS   |FAIL!  |XFAIL  |XPASS  |SKIP   |RESULT "
@@ -397,7 +397,15 @@ void QtTestOutputReader::processPlainTextOutput(const QByteArray &outputLine)
         m_className = match.captured(1);
         QTC_CHECK(!m_className.isEmpty());
         sendStartMessage(false);
-    } else if (summary.match(line).hasMatch() || finish.match(line).hasMatch()) {
+    } else if (hasMatch(summary)) {
+        m_summary[ResultType::Pass] = match.captured(1).toInt();
+        m_summary[ResultType::Fail] = match.captured(2).toInt();
+        m_summary[ResultType::Skip] = match.captured(3).toInt();
+        // BlacklistedXYZ is wrong here, but we use it for convenience (avoids another enum value)
+        if (int blacklisted = match.captured(5).toInt())
+            m_summary[ResultType::BlacklistedPass] = blacklisted;
+        processSummaryFinishOutput();
+    } else if (finish.match(line).hasMatch()) {
         processSummaryFinishOutput();
     } else { // we have some plain output, but we cannot say where for sure it belongs to..
         if (!m_description.isEmpty())
@@ -434,7 +442,7 @@ void QtTestOutputReader::processResultOutput(const QString &result, const QStrin
     if (!description.isEmpty()) {
         if (!m_description.isEmpty())
             m_description.append('\n');
-        m_description.append(description.midRef(1)); // cut the first whitespace
+        m_description.append(description.mid(1)); // cut the first whitespace
     }
     m_formerTestCase = m_testCase;
 }
@@ -479,10 +487,10 @@ void QtTestOutputReader::sendCompleteInformation()
         testResult->setFileName(m_file);
         testResult->setLine(m_lineNumber);
     } else {
-        const TestTreeItem *testItem = testResult->findTestTreeItem();
+        const ITestTreeItem *testItem = testResult->findTestTreeItem();
         if (testItem && testItem->line()) {
             testResult->setFileName(testItem->filePath());
-            testResult->setLine(static_cast<int>(testItem->line()));
+            testResult->setLine(testItem->line());
         }
     }
     testResult->setDescription(m_description);
@@ -503,10 +511,10 @@ void QtTestOutputReader::sendStartMessage(bool isFunction)
     testResult->setResult(ResultType::TestStart);
     testResult->setDescription(isFunction ? tr("Executing test function %1").arg(m_testCase)
                                           : tr("Executing test case %1").arg(m_className));
-    const TestTreeItem *testItem = testResult->findTestTreeItem();
+    const ITestTreeItem *testItem = testResult->findTestTreeItem();
     if (testItem && testItem->line()) {
         testResult->setFileName(testItem->filePath());
-        testResult->setLine(static_cast<int>(testItem->line()));
+        testResult->setLine(testItem->line());
     }
     reportResult(testResult);
 }

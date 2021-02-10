@@ -25,28 +25,38 @@
 
 #pragma once
 
+#include "itemdatacache.h"
 #include "testsettings.h"
 
-#include <projectexplorer/project.h>
+namespace ProjectExplorer { class Project; }
 
 namespace Autotest {
+
+class ITestFramework;
+class ITestTool;
+
 namespace Internal {
 
 class TestProjectSettings : public QObject
 {
     Q_OBJECT
 public:
-    TestProjectSettings(ProjectExplorer::Project *project);
+    explicit TestProjectSettings(ProjectExplorer::Project *project);
     ~TestProjectSettings();
 
     void setUseGlobalSettings(bool useGlobal);
     bool useGlobalSettings() const { return m_useGlobalSettings; }
     void setRunAfterBuild(RunAfterBuildMode mode) {m_runAfterBuild = mode; }
     RunAfterBuildMode runAfterBuild() const { return m_runAfterBuild; }
-    void setActiveFrameworks(const QMap<Core::Id, bool> enabledFrameworks)
+    void setActiveFrameworks(const QHash<ITestFramework *, bool> &enabledFrameworks)
     { m_activeTestFrameworks = enabledFrameworks; }
-    QMap<Core::Id, bool> activeFrameworks() const { return m_activeTestFrameworks; }
-    void activateFramework(const Core::Id &id, bool activate);
+    QHash<ITestFramework *, bool> activeFrameworks() const { return m_activeTestFrameworks; }
+    void activateFramework(const Utils::Id &id, bool activate);
+    void setActiveTestTools(const QHash<ITestTool *, bool> &enabledTestTools)
+    { m_activeTestTools = enabledTestTools; }
+    QHash<ITestTool *, bool> activeTestTools() const { return m_activeTestTools; }
+    void activateTestTool(const Utils::Id &id, bool activate);
+    Internal::ItemDataCache<Qt::CheckState> *checkStateCache() { return &m_checkStateCache; }
 private:
     void load();
     void save();
@@ -54,7 +64,9 @@ private:
     ProjectExplorer::Project *m_project;
     bool m_useGlobalSettings = true;
     RunAfterBuildMode m_runAfterBuild = RunAfterBuildMode::None;
-    QMap<Core::Id, bool> m_activeTestFrameworks;
+    QHash<ITestFramework *, bool> m_activeTestFrameworks;
+    QHash<ITestTool *, bool> m_activeTestTools;
+    Internal::ItemDataCache<Qt::CheckState> m_checkStateCache;
 };
 
 } // namespace Internal

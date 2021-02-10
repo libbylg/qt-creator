@@ -8,4 +8,6 @@ add_executable(%{ProjectName})
 qul_target_qml_sources(%{ProjectName} %{MainQmlFile})
 
 target_link_libraries(%{ProjectName} Qul::QuickUltralite)
+
 app_target_setup_os(%{ProjectName})
+app_target_default_main(%{ProjectName} %{RootItemName})

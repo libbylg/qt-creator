@@ -31,11 +31,11 @@
 
 #include <coreplugin/dialogs/ioptionspage.h>
 #include <coreplugin/icore.h>
-#include <coreplugin/variablechooser.h>
 
 #include <utils/fancylineedit.h>
 #include <utils/pathchooser.h>
 #include <utils/savedaction.h>
+#include <utils/variablechooser.h>
 
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -153,13 +153,10 @@ GdbOptionsPageWidget::GdbOptionsPageWidget()
         "<html><head/><body>GDB shows by default AT&&T style disassembly."
         "</body></html>"));
 
-    auto checkBoxIdentifyDebugInfoPackages = new QCheckBox(groupBoxGeneral);
-    checkBoxIdentifyDebugInfoPackages->setText(GdbOptionsPage::tr("Create tasks from missing packages"));
-    checkBoxIdentifyDebugInfoPackages->setToolTip(GdbOptionsPage::tr(
-        "<html><head/><body><p>Attempts to identify missing debug info packages "
-        "and lists them in the Issues output pane.</p><p>"
-        "<b>Note:</b> This feature needs special support from the Linux "
-        "distribution and GDB build and is not available everywhere.</p></body></html>"));
+    auto checkBoxUsePseudoTracepoints = new QCheckBox(groupBoxGeneral);
+    checkBoxUsePseudoTracepoints->setText(GdbOptionsPage::tr("Use pseudo message tracepoints"));
+    checkBoxUsePseudoTracepoints->setToolTip(GdbOptionsPage::tr(
+        "Uses python to extend the ordinary GDB breakpoint class."));
 
     QString howToUsePython = GdbOptionsPage::tr(
         "<p>To execute simple Python commands, prefix them with \"python\".</p>"
@@ -233,7 +230,7 @@ GdbOptionsPageWidget::GdbOptionsPageWidget()
     formLayout->addRow(checkBoxLoadGdbInit);
     formLayout->addRow(checkBoxLoadGdbDumpers);
     formLayout->addRow(checkBoxIntelFlavor);
-    formLayout->addRow(checkBoxIdentifyDebugInfoPackages);
+    formLayout->addRow(checkBoxUsePseudoTracepoints);
 
     auto startLayout = new QGridLayout(groupBoxStartupCommands);
     startLayout->addWidget(textEditStartupCommands, 0, 0, 1, 1);
@@ -255,9 +252,9 @@ GdbOptionsPageWidget::GdbOptionsPageWidget()
     group.insert(action(AdjustBreakpointLocations), checkBoxAdjustBreakpointLocations);
     group.insert(action(GdbWatchdogTimeout), spinBoxGdbWatchdogTimeout);
     group.insert(action(IntelFlavor), checkBoxIntelFlavor);
-    group.insert(action(IdentifyDebugInfoPackages), checkBoxIdentifyDebugInfoPackages);
     group.insert(action(UseMessageBoxForSignals), checkBoxUseMessageBoxForSignals);
     group.insert(action(SkipKnownFrames), checkBoxSkipKnownFrames);
+    group.insert(action(UsePseudoTracepoints), checkBoxUsePseudoTracepoints);
 
     //lineEditSelectedPluginBreakpointsPattern->
     //    setEnabled(action(SelectedPluginBreakpoints)->value().toBool());
@@ -296,8 +293,6 @@ GdbOptionsPageWidget2::GdbOptionsPageWidget2()
     groupBoxDangerous->setTitle(GdbOptionsPage::tr("Extended"));
 
     auto labelDangerous = new QLabel(GdbOptionsPage::tr(
-        "The options below should be used with care."));
-    labelDangerous->setToolTip(GdbOptionsPage::tr(
         "<html><head/><body>The options below give access to advanced "
         "or experimental functions of GDB. Enabling them may negatively "
         "impact your debugging experience.</body></html>"));

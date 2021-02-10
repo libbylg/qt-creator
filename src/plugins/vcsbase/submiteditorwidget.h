@@ -124,8 +124,6 @@ protected slots:
 private:
     void updateCheckAllComboBox();
     void checkAllToggled();
-    void checkAll();
-    void uncheckAll();
 
     void triggerDiffSelected();
     void diffActivated(const QModelIndex &index);
@@ -139,6 +137,7 @@ private:
     int checkedFilesCount() const;
     void wrapDescription();
     void trimDescription();
+    void verifyDescription();
 
     SubmitEditorWidgetPrivate *d;
 };

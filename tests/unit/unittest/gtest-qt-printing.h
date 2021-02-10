@@ -34,11 +34,17 @@ QT_BEGIN_NAMESPACE
 class QVariant;
 class QString;
 class QTextCharFormat;
+class QImage;
+class QIcon;
 
-std::ostream &operator<<(std::ostream &out, const QVariant &variant);
+std::ostream &operator<<(std::ostream &out, const QVariant &QVariant);
 std::ostream &operator<<(std::ostream &out, const QString &text);
 std::ostream &operator<<(std::ostream &out, const QByteArray &byteArray);
 std::ostream &operator<<(std::ostream &out, const QTextCharFormat &format);
+std::ostream &operator<<(std::ostream &out, const QImage &image);
+std::ostream &operator<<(std::ostream &out, const QIcon &icon);
 
 void PrintTo(const QString &text, std::ostream *os);
+void PrintTo(const QVariant &variant, std::ostream *os);
+void PrintTo(const QByteArray &text, std::ostream *os);
 QT_END_NAMESPACE

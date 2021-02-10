@@ -24,36 +24,41 @@
 ****************************************************************************/
 
 #include "cmakekitinformation.h"
-#include "cmakeprojectconstants.h"
-#include "cmaketoolmanager.h"
-#include "cmaketool.h"
 
-#include <app/app_version.h>
+#include "cmakeprojectconstants.h"
+#include "cmakeprojectplugin.h"
+#include "cmakespecificsettings.h"
+#include "cmaketool.h"
+#include "cmaketoolmanager.h"
+
 #include <coreplugin/icore.h>
-#include <coreplugin/variablechooser.h>
+#include <ios/iosconstants.h>
+#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/projectexplorer.h>
+#include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/projectexplorersettings.h>
 #include <projectexplorer/task.h>
 #include <projectexplorer/toolchain.h>
-#include <projectexplorer/kit.h>
-#include <projectexplorer/kitinformation.h>
 #include <qtsupport/baseqtversion.h>
 #include <qtsupport/qtkitinformation.h>
-#include <projectexplorer/projectexplorerconstants.h>
+
+#include <app/app_version.h>
+
 #include <utils/algorithm.h>
 #include <utils/elidinglabel.h>
 #include <utils/environment.h>
+#include <utils/macroexpander.h>
 #include <utils/qtcassert.h>
+#include <utils/variablechooser.h>
 
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QFileInfo>
 #include <QGridLayout>
-#include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
-#include <QVariant>
 
 using namespace ProjectExplorer;
 
@@ -62,15 +67,22 @@ namespace CMakeProjectManager {
 // CMakeKitAspect:
 // --------------------------------------------------------------------
 
-static Core::Id defaultCMakeToolId()
+static bool isIos(const Kit *k)
+{
+    const Utils::Id deviceType = DeviceTypeKitAspect::deviceTypeId(k);
+    return deviceType == Ios::Constants::IOS_DEVICE_TYPE
+           || deviceType == Ios::Constants::IOS_SIMULATOR_TYPE;
+}
+
+static Utils::Id defaultCMakeToolId()
 {
     CMakeTool *defaultTool = CMakeToolManager::defaultCMakeTool();
-    return defaultTool ? defaultTool->id() : Core::Id();
+    return defaultTool ? defaultTool->id() : Utils::Id();
 }
 
 static const char TOOL_ID[] = "CMakeProjectManager.CMakeKitInformation";
 
-class CMakeKitAspectWidget : public KitAspectWidget
+class CMakeKitAspectWidget final : public KitAspectWidget
 {
     Q_DECLARE_TR_FUNCTIONS(CMakeProjectManager::Internal::CMakeKitAspect)
 public:
@@ -121,10 +133,10 @@ private:
         m_comboBox->setCurrentIndex(tool ? indexOf(tool->id()) : -1);
     }
 
-    int indexOf(const Core::Id &id)
+    int indexOf(const Utils::Id &id)
     {
         for (int i = 0; i < m_comboBox->count(); ++i) {
-            if (id == Core::Id::fromSetting(m_comboBox->itemData(i)))
+            if (id == Utils::Id::fromSetting(m_comboBox->itemData(i)))
                 return i;
         }
         return -1;
@@ -133,20 +145,20 @@ private:
     void updateComboBox()
     {
         // remove unavailable cmake tool:
-        int pos = indexOf(Core::Id());
+        int pos = indexOf(Utils::Id());
         if (pos >= 0)
             m_comboBox->removeItem(pos);
 
         if (m_comboBox->count() == 0) {
             m_comboBox->addItem(tr("<No CMake Tool available>"),
-                                Core::Id().toSetting());
+                                Utils::Id().toSetting());
             m_comboBox->setEnabled(false);
         } else {
             m_comboBox->setEnabled(true);
         }
     }
 
-    void cmakeToolAdded(const Core::Id &id)
+    void cmakeToolAdded(const Utils::Id &id)
     {
         const CMakeTool *tool = CMakeToolManager::findById(id);
         QTC_ASSERT(tool, return);
@@ -156,7 +168,7 @@ private:
         refresh();
     }
 
-    void cmakeToolUpdated(const Core::Id &id)
+    void cmakeToolUpdated(const Utils::Id &id)
     {
         const int pos = indexOf(id);
         QTC_ASSERT(pos >= 0, return);
@@ -167,7 +179,7 @@ private:
         m_comboBox->setItemText(pos, tool->displayName());
     }
 
-    void cmakeToolRemoved(const Core::Id &id)
+    void cmakeToolRemoved(const Utils::Id &id)
     {
         const int pos = indexOf(id);
         QTC_ASSERT(pos >= 0, return);
@@ -187,14 +199,13 @@ private:
         if (m_removingItem)
             return;
 
-        const Core::Id id = Core::Id::fromSetting(m_comboBox->itemData(index));
+        const Utils::Id id = Utils::Id::fromSetting(m_comboBox->itemData(index));
         CMakeKitAspect::setCMakeTool(m_kit, id);
     }
 
     void manageCMakeTools()
     {
-        Core::ICore::showOptionsDialog(Constants::CMAKE_SETTINGSPAGE_ID,
-                                       buttonWidget());
+        Core::ICore::showOptionsDialog(Constants::CMAKE_SETTINGS_PAGE_ID, buttonWidget());
     }
 
     bool m_removingItem = false;
@@ -220,16 +231,16 @@ CMakeKitAspect::CMakeKitAspect()
             [this]() { foreach (Kit *k, KitManager::kits()) fix(k); });
 }
 
-Core::Id CMakeKitAspect::id()
+Utils::Id CMakeKitAspect::id()
 {
     return TOOL_ID;
 }
 
-Core::Id CMakeKitAspect::cmakeToolId(const Kit *k)
+Utils::Id CMakeKitAspect::cmakeToolId(const Kit *k)
 {
     if (!k)
         return {};
-    return Core::Id::fromSetting(k->value(TOOL_ID));
+    return Utils::Id::fromSetting(k->value(TOOL_ID));
 }
 
 CMakeTool *CMakeKitAspect::cmakeTool(const Kit *k)
@@ -237,9 +248,9 @@ CMakeTool *CMakeKitAspect::cmakeTool(const Kit *k)
     return CMakeToolManager::findById(cmakeToolId(k));
 }
 
-void CMakeKitAspect::setCMakeTool(Kit *k, const Core::Id id)
+void CMakeKitAspect::setCMakeTool(Kit *k, const Utils::Id id)
 {
-    const Core::Id toSet = id.isValid() ? id : defaultCMakeToolId();
+    const Utils::Id toSet = id.isValid() ? id : defaultCMakeToolId();
     QTC_ASSERT(!id.isValid() || CMakeToolManager::findById(toSet), return);
     if (k)
         k->setValue(TOOL_ID, toSet.toSetting());
@@ -251,9 +262,8 @@ Tasks CMakeKitAspect::validate(const Kit *k) const
     CMakeTool *tool = CMakeKitAspect::cmakeTool(k);
     if (tool) {
         CMakeTool::Version version = tool->version();
-        if (version.major < 3) {
-            result << BuildSystemTask(Task::Warning, tr("CMake version %1 is unsupported. Please update to "
-                                         "version 3.0 or later.").arg(QString::fromUtf8(version.fullVersion)));
+        if (version.major < 3 || (version.major == 3 && version.minor < 14)) {
+            result << BuildSystemTask(Task::Warning, msgUnsupportedVersion(version.fullVersion));
         }
     }
     return result;
@@ -293,11 +303,18 @@ void CMakeKitAspect::addToMacroExpander(Kit *k, Utils::MacroExpander *expander) 
     });
 }
 
-QSet<Core::Id> CMakeKitAspect::availableFeatures(const Kit *k) const
+QSet<Utils::Id> CMakeKitAspect::availableFeatures(const Kit *k) const
 {
     if (cmakeTool(k))
         return { CMakeProjectManager::Constants::CMAKE_FEATURE_ID };
     return {};
+}
+
+QString CMakeKitAspect::msgUnsupportedVersion(const QByteArray &versionString)
+{
+    return tr("CMake version %1 is unsupported. Please update to "
+              "version 3.14 (with file-api) or later.")
+        .arg(QString::fromUtf8(versionString));
 }
 
 // --------------------------------------------------------------------
@@ -311,7 +328,7 @@ static const char EXTRA_GENERATOR_KEY[] = "ExtraGenerator";
 static const char PLATFORM_KEY[] = "Platform";
 static const char TOOLSET_KEY[] = "Toolset";
 
-class CMakeGeneratorKitAspectWidget : public KitAspectWidget
+class CMakeGeneratorKitAspectWidget final : public KitAspectWidget
 {
     Q_DECLARE_TR_FUNCTIONS(CMakeProjectManager::Internal::CMakeGeneratorKitAspect)
 public:
@@ -368,7 +385,6 @@ private:
 
         // Disable help button in titlebar on windows:
         Qt::WindowFlags flags = changeDialog->windowFlags();
-        flags &= ~Qt::WindowContextHelpButtonHint;
         flags |= Qt::MSWindowsFixedSizeDialogHint;
         changeDialog->setWindowFlags(flags);
 
@@ -422,7 +438,7 @@ private:
 
         auto updateDialog = [&generatorList, generatorCombo, extraGeneratorCombo,
                 platformEdit, toolsetEdit](const QString &name) {
-            auto it = std::find_if(generatorList.constBegin(), generatorList.constEnd(),
+            const auto it = std::find_if(generatorList.constBegin(), generatorList.constEnd(),
                                    [name](const CMakeTool::Generator &g) { return g.name == name; });
             QTC_ASSERT(it != generatorList.constEnd(), return);
             generatorCombo->setCurrentText(name);
@@ -441,8 +457,8 @@ private:
 
         generatorCombo->setCurrentText(CMakeGeneratorKitAspect::generator(kit()));
         extraGeneratorCombo->setCurrentText(CMakeGeneratorKitAspect::extraGenerator(kit()));
-        platformEdit->setText(platformEdit->isEnabled() ? CMakeGeneratorKitAspect::platform(kit()) : QLatin1String("<unsupported>"));
-        toolsetEdit->setText(toolsetEdit->isEnabled() ? CMakeGeneratorKitAspect::toolset(kit()) : QLatin1String("<unsupported>"));
+        platformEdit->setText(platformEdit->isEnabled() ? CMakeGeneratorKitAspect::platform(kit()) : QString());
+        toolsetEdit->setText(toolsetEdit->isEnabled() ? CMakeGeneratorKitAspect::toolset(kit()) : QString());
 
         connect(generatorCombo, &QComboBox::currentTextChanged, updateDialog);
 
@@ -465,7 +481,20 @@ private:
 
 namespace {
 
-struct GeneratorInfo {
+class GeneratorInfo
+{
+public:
+    GeneratorInfo() = default;
+    GeneratorInfo(const QString &generator_,
+                  const QString &extraGenerator_ = QString(),
+                  const QString &platform_ = QString(),
+                  const QString &toolset_ = QString())
+        : generator(generator_)
+        , extraGenerator(extraGenerator_)
+        , platform(platform_)
+        , toolset(toolset_)
+    {}
+
     QVariant toVariant() const {
         QVariantMap result;
         result.insert(GENERATOR_KEY, generator);
@@ -567,10 +596,12 @@ void CMakeGeneratorKitAspect::setToolset(Kit *k, const QString &toolset)
 }
 
 void CMakeGeneratorKitAspect::set(Kit *k,
-                                       const QString &generator, const QString &extraGenerator,
-                                       const QString &platform, const QString &toolset)
+                                  const QString &generator,
+                                  const QString &extraGenerator,
+                                  const QString &platform,
+                                  const QString &toolset)
 {
-    GeneratorInfo info = {generator, extraGenerator, platform, toolset};
+    GeneratorInfo info(generator, extraGenerator, platform, toolset);
     setGeneratorInfo(k, info);
 }
 
@@ -596,6 +627,14 @@ QStringList CMakeGeneratorKitAspect::generatorArguments(const Kit *k)
     return result;
 }
 
+bool CMakeGeneratorKitAspect::isMultiConfigGenerator(const Kit *k)
+{
+    const QString generator = CMakeGeneratorKitAspect::generator(k);
+    return generator.indexOf("Visual Studio") != -1 ||
+           generator == "Xcode" ||
+           generator == "Ninja Multi-Config";
+}
+
 QVariant CMakeGeneratorKitAspect::defaultValue(const Kit *k) const
 {
     QTC_ASSERT(k, return QVariant());
@@ -604,41 +643,66 @@ QVariant CMakeGeneratorKitAspect::defaultValue(const Kit *k) const
     if (!tool)
         return QVariant();
 
-    const QString extraGenerator = "CodeBlocks";
+    if (isIos(k))
+        return GeneratorInfo("Xcode").toVariant();
 
-    QList<CMakeTool::Generator> known = tool->supportedGenerators();
-    auto it = std::find_if(known.constBegin(), known.constEnd(),
-                           [extraGenerator](const CMakeTool::Generator &g) {
-        return g.matches("Ninja", extraGenerator);
+    const QList<CMakeTool::Generator> known = tool->supportedGenerators();
+    auto it = std::find_if(known.constBegin(), known.constEnd(), [](const CMakeTool::Generator &g) {
+        return g.matches("Ninja");
     });
     if (it != known.constEnd()) {
-        Utils::Environment env = Utils::Environment::systemEnvironment();
-        k->addToEnvironment(env);
-        const Utils::FilePath ninjaExec = env.searchInPath(QLatin1String("ninja"));
-        if (!ninjaExec.isEmpty())
-            return GeneratorInfo({QString("Ninja"), extraGenerator, QString(), QString()}).toVariant();
+        const bool hasNinja = [k]() {
+            Internal::CMakeSpecificSettings *settings
+                = Internal::CMakeProjectPlugin::projectTypeSpecificSettings();
+
+            if (settings->ninjaPath().isEmpty()) {
+                Utils::Environment env = Utils::Environment::systemEnvironment();
+                k->addToEnvironment(env);
+                return !env.searchInPath("ninja").isEmpty();
+            }
+            return true;
+        }();
+
+        if (hasNinja)
+            return GeneratorInfo("Ninja").toVariant();
     }
 
     if (Utils::HostOsInfo::isWindowsHost()) {
         // *sigh* Windows with its zoo of incompatible stuff again...
-        ToolChain *tc = ToolChainKitAspect::toolChain(k, ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+        ToolChain *tc = ToolChainKitAspect::cxxToolChain(k);
         if (tc && tc->typeId() == ProjectExplorer::Constants::MINGW_TOOLCHAIN_TYPEID) {
-            it = std::find_if(known.constBegin(), known.constEnd(),
-                              [extraGenerator](const CMakeTool::Generator &g) {
-                return g.matches("MinGW Makefiles", extraGenerator);
-            });
+            it = std::find_if(known.constBegin(),
+                              known.constEnd(),
+                              [](const CMakeTool::Generator &g) {
+                                  return g.matches("MinGW Makefiles");
+                              });
         } else {
-            it = std::find_if(known.constBegin(), known.constEnd(),
-                              [extraGenerator](const CMakeTool::Generator &g) {
-                return g.matches("NMake Makefiles", extraGenerator)
-                        || g.matches("NMake Makefiles JOM", extraGenerator);
-            });
+            it = std::find_if(known.constBegin(),
+                              known.constEnd(),
+                              [](const CMakeTool::Generator &g) {
+                                  return g.matches("NMake Makefiles")
+                                         || g.matches("NMake Makefiles JOM");
+                              });
+            if (ProjectExplorerPlugin::projectExplorerSettings().useJom) {
+                it = std::find_if(known.constBegin(),
+                                  known.constEnd(),
+                                  [](const CMakeTool::Generator &g) {
+                                      return g.matches("NMake Makefiles JOM");
+                                  });
+            }
+
+            if (it == known.constEnd()) {
+                it = std::find_if(known.constBegin(),
+                                  known.constEnd(),
+                                  [](const CMakeTool::Generator &g) {
+                                      return g.matches("NMake Makefiles");
+                                  });
+            }
         }
     } else {
         // Unix-oid OSes:
-        it = std::find_if(known.constBegin(), known.constEnd(),
-                          [extraGenerator](const CMakeTool::Generator &g) {
-            return g.matches("Unix Makefiles", extraGenerator);
+        it = std::find_if(known.constBegin(), known.constEnd(), [](const CMakeTool::Generator &g) {
+            return g.matches("Unix Makefiles");
         });
     }
     if (it == known.constEnd())
@@ -646,7 +710,7 @@ QVariant CMakeGeneratorKitAspect::defaultValue(const Kit *k) const
     if (it == known.constEnd())
         return QVariant();
 
-    return GeneratorInfo({it->name, extraGenerator, QString(), QString()}).toVariant();
+    return GeneratorInfo(it->name).toVariant();
 }
 
 Tasks CMakeGeneratorKitAspect::validate(const Kit *k) const
@@ -676,11 +740,10 @@ Tasks CMakeGeneratorKitAspect::validate(const Kit *k) const
             if (!it->supportsToolset && !info.toolset.isEmpty())
                 addWarning(tr("Toolset is not supported by the selected CMake generator."));
         }
-        if (!tool->hasServerMode() && !tool->hasFileApi() && info.extraGenerator != "CodeBlocks") {
-            addWarning(tr("The selected CMake binary has no server-mode and the CMake "
-                          "generator does not generate a CodeBlocks file. "
+        if (!tool->hasFileApi()) {
+            addWarning(tr("The selected CMake binary does not support file-api. "
                           "%1 will not be able to parse CMake projects.")
-                       .arg(Core::Constants::IDE_DISPLAY_NAME));
+                           .arg(Core::Constants::IDE_DISPLAY_NAME));
         }
     }
 
@@ -713,9 +776,10 @@ void CMakeGeneratorKitAspect::fix(Kit *k)
         dv.fromVariant(defaultValue(k));
         setGeneratorInfo(k, dv);
     } else {
-        const GeneratorInfo dv = {info.generator, info.extraGenerator,
-                                  it->supportsPlatform ? info.platform : QString(),
-                                  it->supportsToolset ? info.toolset : QString()};
+        const GeneratorInfo dv(isIos(k) ? QString("Xcode") : info.generator,
+                               info.extraGenerator,
+                               it->supportsPlatform ? info.platform : QString(),
+                               it->supportsToolset ? info.toolset : QString());
         setGeneratorInfo(k, dv);
     }
 }
@@ -760,6 +824,16 @@ KitAspectWidget *CMakeGeneratorKitAspect::createConfigWidget(Kit *k) const
     return new CMakeGeneratorKitAspectWidget(k, this);
 }
 
+void CMakeGeneratorKitAspect::addToEnvironment(const Kit *k, Utils::Environment &env) const
+{
+    GeneratorInfo info = generatorInfo(k);
+    if (info.generator == "NMake Makefiles JOM") {
+        if (env.searchInPath("jom.exe").exists())
+            return;
+        env.appendOrSetPath(QCoreApplication::applicationDirPath());
+    }
+}
+
 // --------------------------------------------------------------------
 // CMakeConfigurationKitAspect:
 // --------------------------------------------------------------------
@@ -771,7 +845,7 @@ static const char CMAKE_CXX_TOOLCHAIN_KEY[] = "CMAKE_CXX_COMPILER";
 static const char CMAKE_QMAKE_KEY[] = "QT_QMAKE_EXECUTABLE";
 static const char CMAKE_PREFIX_PATH_KEY[] = "CMAKE_PREFIX_PATH";
 
-class CMakeConfigurationKitAspectWidget : public KitAspectWidget
+class CMakeConfigurationKitAspectWidget final : public KitAspectWidget
 {
     Q_DECLARE_TR_FUNCTIONS(CMakeProjectManager::Internal::CMakeConfigurationKitAspect)
 public:
@@ -826,7 +900,7 @@ private:
                                 "You may provide a type hint by adding \":TYPE\" before the \"=\"."));
         m_editor->setMinimumSize(800, 200);
 
-        auto chooser = new Core::VariableChooser(m_dialog);
+        auto chooser = new Utils::VariableChooser(m_dialog);
         chooser->addSupportedWidget(m_editor);
         chooser->addMacroExpanderProvider([this]() { return kit()->macroExpander(); });
 
@@ -923,6 +997,12 @@ void CMakeConfigurationKitAspect::fromStringList(Kit *k, const QStringList &in)
     setConfiguration(k, result);
 }
 
+QStringList CMakeConfigurationKitAspect::toArgumentsList(const Kit *k)
+{
+    return Utils::transform(CMakeConfigurationKitAspect::configuration(k),
+                            [](const CMakeConfigItem &i) { return i.toArgument(nullptr); });
+}
+
 CMakeConfig CMakeConfigurationKitAspect::defaultConfiguration(const Kit *k)
 {
     Q_UNUSED(k)
@@ -954,8 +1034,8 @@ Tasks CMakeConfigurationKitAspect::validate(const Kit *k) const
     QTC_ASSERT(k, return Tasks());
 
     const QtSupport::BaseQtVersion *const version = QtSupport::QtKitAspect::qtVersion(k);
-    const ToolChain *const tcC = ToolChainKitAspect::toolChain(k, ProjectExplorer::Constants::C_LANGUAGE_ID);
-    const ToolChain *const tcCxx = ToolChainKitAspect::toolChain(k, ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+    const ToolChain *const tcC = ToolChainKitAspect::cToolChain(k);
+    const ToolChain *const tcCxx = ToolChainKitAspect::cxxToolChain(k);
     const CMakeConfig config = configuration(k);
 
     const bool isQt4 = version && version->qtVersion() < QtSupport::QtVersionNumber(5, 0, 0);

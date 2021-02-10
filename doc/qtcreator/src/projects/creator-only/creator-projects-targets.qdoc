@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-configuring-projects.html
     \page creator-targets.html
     \nextpage creator-project-qmake.html
@@ -48,29 +47,20 @@
     devices:
 
     \list
-
-        \li Android Device
-
-        \li Bare Metal Device
-
-        \li Boot2Qt Device (commercial only)
-
-        \li \l {Emulator}{Boot2Qt Emulator Device} (commercial only)
-
-        \li Generic Linux Device
-
-        \li iOS Device
-
+        \li \l{Connecting Android Devices}{Android Device}
+        \li \l{Connecting Bare Metal Devices}{Bare Metal Device}
+        \li \l{https://doc.qt.io/QtForDeviceCreation/b2qt-installation-guides.html}
+            {Boot2Qt Device} (commercial only)
+        \li \l{Emulator}{Boot2Qt Emulator Device} (commercial only)
+        \li \l{Connecting Generic Remote Linux Devices}{Generic Remote Linux Device}
+        \li \l{Connecting iOS Devices}{iOS Device}
         \li iOS Simulator
-
-        \li QNX Device
-
-        \li Windows Phone
-
+        \li \l{Connecting MCUs}{MCU Device} (commercial only)
+        \li \l{Connecting QNX Devices}{QNX Device}
+        \li \l{Building Applications for the Web}{WebAssembly Runtime}
+        \li \l{Qt for UWP}{Windows Phone}
         \li Windows Phone Emulator
-
         \li Windows Runtime (local)
-
     \endlist
 
     \section1 Filtering Kit Settings
@@ -78,7 +68,7 @@
     Typically, only a subset of the kit settings is relevant for a particular
     setup. Therefore, \QC plugins register sets of relevant settings that you
     can view and modify in \uicontrol Tools > \uicontrol Options >
-    \uicontrol Kits >. For example, if you use CMake to build all your projects,
+    \uicontrol Kits. For example, if you use CMake to build all your projects,
     you can hide Qbs and qmake settings by default.
 
     To hide and show settings in the \uicontrol Kits tab for the
@@ -172,9 +162,9 @@
             \uicontrol Change to add settings to Qbs build profiles. For more
             information, see \l {Editing Qbs Profiles}.
 
-        \li In the \uicontrol {CMake Tool} field, select the CMake tool to use
-            for building the project. Select \uicontrol Manage to add installed
-            CMake tools to the list. For more information, see
+        \li In the \uicontrol {CMake Tool} field, select the CMake executable
+            to use for building the project. Select \uicontrol Manage to add
+            installed CMake executables to the list. For more information, see
             \l{Adding CMake Tools}.
 
         \li In the \uicontrol {CMake generator} field, select \uicontrol Change
@@ -185,8 +175,17 @@
             warning if you select a generator that is not supported.
 
         \li In the \uicontrol {CMake configuration} field, select
-            \uicontrol Change to edit the variables of the CMake configuration
+            \uicontrol Change to edit the parameters of the CMake configuration
             for the kit.
+
+        \li In the \uicontrol {Meson tool} field, select the Meson tool to use
+            for building the project. Select \uicontrol Manage to add installed
+            Meson tools to the list. For more information, see
+            \l{Adding Meson Tools}.
+
+        \li In the \uicontrol {Ninja tool} field, select the Ninja tool to use
+            for building the project with Meson. Select \uicontrol Manage to add installed
+            Ninja tools to the list.
 
     \endlist
 
@@ -199,7 +198,9 @@
     \section1 Editing Qbs Profiles
 
     To view the Qbs profile associated with the kit, select \uicontrol Tools >
-    \uicontrol Options > \uicontrol Kits > \uicontrol Qbs.
+    \uicontrol Options > \uicontrol Qbs > \uicontrol Profiles.
+
+    \image creator-qbs-profiles.png "Qbs Profiles tab"
 
     You can add keys and values to the profile or remove them from it, as well
     as modify existing values. For a list of available keys and values, see
@@ -214,7 +215,7 @@
             \uicontrol {Additional Qbs Profile Settings} field to open the
             \uicontrol {Custom Properties} dialog.
 
-            \image qtcreator-qbs-profile-settings.
+            \image qtcreator-qbs-profile-settings.png "Custom Properties dialog"
 
         \li Double-click an empty cell in the \uicontrol Key column to specify
             the key to add or modify as: \c <module_name>.<property_name>.

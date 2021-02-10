@@ -71,19 +71,6 @@ static SourceRangeContainer extractMatchingTokenRange(const Cursor &cursor,
     return SourceRangeContainer();
 }
 
-static int getTokenIndex(CXTranslationUnit tu, const Tokens &tokens, uint line, uint column)
-{
-    int tokenIndex = -1;
-    for (int i = tokens.size() - 1; i >= 0; --i) {
-        const SourceRange range(tu, tokens[i].extent());
-        if (range.contains(line, column)) {
-            tokenIndex = i;
-            break;
-        }
-    }
-    return tokenIndex;
-}
-
 FollowSymbolResult FollowSymbol::followSymbol(CXTranslationUnit tu,
                                               const Cursor &fullCursor,
                                               uint line,
@@ -100,7 +87,7 @@ FollowSymbolResult FollowSymbol::followSymbol(CXTranslationUnit tu,
         return SourceRangeContainer();
 
     std::vector<Cursor> cursors = tokens.annotate();
-    int tokenIndex = getTokenIndex(tu, tokens, line, column);
+    const int tokenIndex = tokens.getTokenIndex(tu, line, column);
     QTC_ASSERT(tokenIndex >= 0, return SourceRangeContainer());
 
     const Utf8String tokenSpelling = tokens[tokenIndex].spelling();
@@ -131,7 +118,11 @@ FollowSymbolResult FollowSymbol::followSymbol(CXTranslationUnit tu,
             return extractMatchingTokenRange(declCursor, declCursor.spelling());
         }
 
-        return extractMatchingTokenRange(cursor.canonical(), tokenSpelling);
+        const Cursor declCursor = cursor.canonical();
+        FollowSymbolResult result;
+        result.range = extractMatchingTokenRange(declCursor, tokenSpelling);
+        result.isResultOnlyForFallBack = cursor.isFunctionLike() && declCursor == cursor;
+        return result;
     }
 
     if (!cursor.isDeclaration()) {
@@ -150,12 +141,13 @@ FollowSymbolResult FollowSymbol::followSymbol(CXTranslationUnit tu,
         return result;
     }
 
+    const bool isFunction = cursor.isFunctionLike();
     cursor = cursor.definition();
     // If we are able to find a definition in current TU
     if (!cursor.isNull())
         return extractMatchingTokenRange(cursor, tokenSpelling);
 
-    return SourceRangeContainer();
+    return FollowSymbolResult({}, isFunction);
 }
 
 } // namespace ClangBackEnd

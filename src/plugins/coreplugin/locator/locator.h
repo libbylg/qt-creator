@@ -48,6 +48,7 @@ public:
     ~Locator() override;
 
     static Locator *instance();
+    void aboutToShutdown();
 
     void initialize();
     void extensionsInitialized();
@@ -62,6 +63,7 @@ public:
 
 signals:
     void filtersChanged();
+    void aboutToShutdownOccurred();
 
 public slots:
     void refresh(QList<ILocatorFilter *> filters);
@@ -74,10 +76,11 @@ private:
 
     LocatorData *m_locatorData = nullptr;
 
+    bool m_shuttingDown = false;
     bool m_settingsInitialized = false;
     QList<ILocatorFilter *> m_filters;
     QList<ILocatorFilter *> m_customFilters;
-    QMap<Id, QAction *> m_filterActionMap;
+    QMap<Utils::Id, QAction *> m_filterActionMap;
     QTimer m_refreshTimer;
     QFuture<void> m_refreshTask;
     QList<ILocatorFilter *> m_refreshingFilters;

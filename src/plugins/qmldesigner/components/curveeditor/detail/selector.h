@@ -28,17 +28,11 @@
 #include "curveeditorstyle.h"
 #include "selectableitem.h"
 
-#include <QMouseEvent>
-#include <QPainterPath>
-#include <QPoint>
-#include <QRectF>
-
-namespace DesignTools {
+namespace QmlDesigner {
 
 class GraphicsView;
+class GraphicsScene;
 class Playhead;
-
-enum class SelectionTool { Undefined, Lasso, Rectangle };
 
 class Selector
 {
@@ -47,40 +41,40 @@ public:
 
     void paint(QPainter *painter);
 
-    void mousePress(QMouseEvent *event, GraphicsView *view);
+    void mousePress(QMouseEvent *event, GraphicsView *view, GraphicsScene *scene);
 
-    void mouseMove(QMouseEvent *event, GraphicsView *view, Playhead &playhead);
+    void mouseMove(QMouseEvent *event, GraphicsView *view, GraphicsScene *scene, Playhead &playhead);
 
-    void mouseRelease(QMouseEvent *event, GraphicsView *view);
+    void mouseRelease(QMouseEvent *event, GraphicsScene *scene);
 
 private:
-    bool isOverSelectedKeyframe(const QPointF &pos, GraphicsView *view);
+    enum class SelectionTool { Undefined, Lasso, Rectangle };
 
-    bool select(const SelectionTool &tool, const QPointF &pos, GraphicsView *view);
+    bool select(const SelectionTool &tool, const QPointF &pos, GraphicsScene *scene);
 
-    bool pressSelection(SelectionMode mode, const QPointF &pos, GraphicsView *view);
+    bool pressSelection(SelectableItem::SelectionMode mode, const QPointF &pos, GraphicsScene *scene);
 
-    bool rectangleSelection(SelectionMode mode, const QPointF &pos, GraphicsView *view);
+    bool rectangleSelection(SelectableItem::SelectionMode mode, const QPointF &pos, GraphicsScene *scene);
 
-    bool lassoSelection(SelectionMode mode, const QPointF &pos, GraphicsView *view);
+    bool lassoSelection(SelectableItem::SelectionMode mode, const QPointF &pos, GraphicsScene *scene);
 
-    void clearSelection(GraphicsView *view);
+    void clearSelection(GraphicsScene *scene);
 
-    void applyPreSelection(GraphicsView *view);
+    void applyPreSelection(GraphicsScene *scene);
 
-    Shortcuts m_shortcuts = Shortcuts();
+    Shortcuts m_shortcuts;
 
     Shortcut m_shortcut;
 
     SelectionTool m_tool = SelectionTool::Rectangle;
 
-    QPoint m_mouseInit = QPoint();
+    QPoint m_mouseInit;
 
-    QPoint m_mouseCurr = QPoint();
+    QPoint m_mouseCurr;
 
-    QPainterPath m_lasso = QPainterPath();
+    QPainterPath m_lasso;
 
-    QRectF m_rect = QRectF();
+    QRectF m_rect;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

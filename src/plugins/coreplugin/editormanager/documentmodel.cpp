@@ -43,6 +43,8 @@
 #include <QSet>
 #include <QUrl>
 
+using namespace Utils;
+
 static Core::Internal::DocumentModelPrivate *d;
 
 namespace Core {
@@ -414,14 +416,28 @@ void DocumentModelPrivate::addEditor(IEditor *editor, bool *isNewDocument)
     }
 }
 
+/*!
+    \class Core::DocumentModel
+    \inmodule QtCreator
+    \internal
+*/
+
+/*!
+    \class Core::DocumentModel::Entry
+    \inmodule QtCreator
+    \internal
+*/
+
 DocumentModel::Entry *DocumentModelPrivate::addSuspendedDocument(const QString &fileName,
                                                                  const QString &displayName,
                                                                  Id id)
 {
+    QTC_CHECK(id.isValid());
     auto entry = new DocumentModel::Entry;
     entry->document = new IDocument;
     entry->document->setFilePath(Utils::FilePath::fromString(fileName));
-    entry->document->setPreferredDisplayName(displayName);
+    if (!displayName.isEmpty())
+        entry->document->setPreferredDisplayName(displayName);
     entry->document->setId(id);
     entry->isSuspended = true;
     d->addEntry(entry);
@@ -619,15 +635,15 @@ QList<IDocument *> DocumentModel::openedDocuments()
     return d->m_editors.keys();
 }
 
-IDocument *DocumentModel::documentForFilePath(const QString &filePath)
+IDocument *DocumentModel::documentForFilePath(const Utils::FilePath &filePath)
 {
-    const Utils::optional<int> index = d->indexOfFilePath(Utils::FilePath::fromString(filePath));
+    const Utils::optional<int> index = d->indexOfFilePath(filePath);
     if (!index)
         return nullptr;
     return d->m_entries.at(*index)->document;
 }
 
-QList<IEditor *> DocumentModel::editorsForFilePath(const QString &filePath)
+QList<IEditor *> DocumentModel::editorsForFilePath(const Utils::FilePath &filePath)
 {
     IDocument *document = documentForFilePath(filePath);
     if (document)

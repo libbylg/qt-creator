@@ -31,6 +31,7 @@
 #include <utils/algorithm.h>
 #include <utils/hostosinfo.h>
 #include <utils/optional.h>
+#include <utils/stringutils.h>
 
 #include <QDir>
 #include <QRegularExpression>
@@ -150,9 +151,7 @@ void filteredFlags(const QString &fileName,
         }
 
         if (flag == "-o" || flag == "-MF" || flag == "-c" || flag == "-pedantic"
-                || flag.startsWith("-O") || flag.startsWith("-W") || flag.startsWith("-w")
-                || QString::compare(flag, "-fpic", Qt::CaseInsensitive) == 0
-                || QString::compare(flag, "-fpie", Qt::CaseInsensitive) == 0) {
+                || flag.startsWith("-O") || flag.startsWith("-W") || flag.startsWith("-w")) {
             continue;
         }
 
@@ -238,7 +237,7 @@ QStringList splitCommandLine(QString commandLine, QSet<QString> &flagsCache)
             }
         } else { // If 's' is outside quotes ...
             for (const QString &flag :
-                 part.split(QRegularExpression("\\s+"), QString::SkipEmptyParts)) {
+                 part.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts)) {
                 auto flagIt = flagsCache.insert(flag);
                 result.append(*flagIt);
             }

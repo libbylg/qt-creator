@@ -31,11 +31,10 @@
 #include "qtcprocess.h"
 
 #include <QDataStream>
-#include <QDir>
-#include <QDebug>
 #include <QDateTime>
+#include <QDebug>
 #include <QOperatingSystemVersion>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
 #include <qplatformdefs.h>
@@ -160,10 +159,10 @@ bool FileUtils::removeRecursively(const FilePath &filePath, QString *error)
             return false;
         }
 
-        QStringList fileNames = dir.entryList(QDir::Files | QDir::Hidden
-                                              | QDir::System | QDir::Dirs | QDir::NoDotAndDotDot);
-        foreach (const QString &fileName, fileNames) {
-            if (!removeRecursively(filePath.pathAppended(fileName), error))
+        const QStringList fileNames = dir.entryList(
+                    QDir::Files | QDir::Hidden | QDir::System | QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QString &fileName : fileNames) {
+            if (!removeRecursively(filePath / fileName, error))
                 return false;
         }
         if (!QDir::root().rmdir(dir.path())) {
@@ -202,46 +201,45 @@ bool FileUtils::removeRecursively(const FilePath &filePath, QString *error)
 
   Returns whether the operation succeeded.
 */
-bool FileUtils::copyRecursively(const FilePath &srcFilePath, const FilePath &tgtFilePath,
-                                QString *error, const std::function<bool (QFileInfo, QFileInfo, QString *)> &copyHelper)
+
+bool FileUtils::copyRecursively(const FilePath &srcFilePath, const FilePath &tgtFilePath, QString *error)
 {
-    QFileInfo srcFileInfo = srcFilePath.toFileInfo();
-    if (srcFileInfo.isDir()) {
-        if (!tgtFilePath.exists()) {
-            QDir targetDir(tgtFilePath.toString());
-            targetDir.cdUp();
-            if (!targetDir.mkdir(tgtFilePath.fileName())) {
+    return copyRecursively(
+        srcFilePath, tgtFilePath, error, [](const QFileInfo &src, const QFileInfo &dest, QString *error) {
+            if (!QFile::copy(src.filePath(), dest.filePath())) {
                 if (error) {
-                    *error = QCoreApplication::translate("Utils::FileUtils", "Failed to create directory \"%1\".")
-                            .arg(tgtFilePath.toUserOutput());
+                    *error = QCoreApplication::translate("Utils::FileUtils",
+                                                         "Could not copy file \"%1\" to \"%2\".")
+                                 .arg(FilePath::fromFileInfo(src).toUserOutput(),
+                                      FilePath::fromFileInfo(dest).toUserOutput());
                 }
                 return false;
             }
-        }
-        QDir sourceDir(srcFilePath.toString());
-        QStringList fileNames = sourceDir.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot
-                                                    | QDir::Hidden | QDir::System);
-        foreach (const QString &fileName, fileNames) {
-            const FilePath newSrcFilePath = srcFilePath.pathAppended(fileName);
-            const FilePath newTgtFilePath = tgtFilePath.pathAppended(fileName);
-            if (!copyRecursively(newSrcFilePath, newTgtFilePath, error, copyHelper))
-                return false;
-        }
-    } else {
-        if (copyHelper) {
-            if (!copyHelper(srcFileInfo, tgtFilePath.toFileInfo(), error))
-                return false;
+            return true;
+        });
+}
+
+/*!
+  Copies a file specified by \a srcFilePath to \a tgtFilePath only if \a srcFilePath is different
+  (file size and last modification time).
+
+  Returns whether the operation succeeded.
+*/
+
+bool FileUtils::copyIfDifferent(const FilePath &srcFilePath, const FilePath &tgtFilePath)
+{
+    if (QFile::exists(tgtFilePath.toString())) {
+        const QFileInfo srcFileInfo = srcFilePath.toFileInfo();
+        const QFileInfo tgtFileInfo = tgtFilePath.toFileInfo();
+        if (srcFileInfo.lastModified() == tgtFileInfo.lastModified() &&
+            srcFileInfo.size() == tgtFileInfo.size()) {
+            return true;
         } else {
-            if (!QFile::copy(srcFilePath.toString(), tgtFilePath.toString())) {
-                if (error) {
-                    *error = QCoreApplication::translate("Utils::FileUtils", "Could not copy file \"%1\" to \"%2\".")
-                            .arg(srcFilePath.toUserOutput(), tgtFilePath.toUserOutput());
-                }
-                return false;
-            }
+            QFile::remove(tgtFilePath.toString());
         }
     }
-    return true;
+
+    return QFile::copy(srcFilePath.toString(), tgtFilePath.toString());
 }
 
 /*!
@@ -304,6 +302,11 @@ FilePath FilePath::canonicalPath() const
     return FilePath::fromString(result);
 }
 
+FilePath FilePath::operator/(const QString &str) const
+{
+    return pathAppended(str);
+}
+
 /*!
   Like QDir::toNativeSeparators(), but use prefix '~' instead of $HOME on unix systems when an
   absolute path is given.
@@ -325,10 +328,10 @@ QString FilePath::shortNativePath() const
 QString FileUtils::fileSystemFriendlyName(const QString &name)
 {
     QString result = name;
-    result.replace(QRegExp(QLatin1String("\\W")), QLatin1String("_"));
-    result.replace(QRegExp(QLatin1String("_+")), QLatin1String("_")); // compact _
-    result.remove(QRegExp(QLatin1String("^_*"))); // remove leading _
-    result.remove(QRegExp(QLatin1String("_+$"))); // remove trailing _
+    result.replace(QRegularExpression(QLatin1String("\\W")), QLatin1String("_"));
+    result.replace(QRegularExpression(QLatin1String("_+")), QLatin1String("_")); // compact _
+    result.remove(QRegularExpression(QLatin1String("^_*"))); // remove leading _
+    result.remove(QRegularExpression(QLatin1String("_+$"))); // remove trailing _
     if (result.isEmpty())
         result = QLatin1String("unknown");
     return result;
@@ -336,8 +339,8 @@ QString FileUtils::fileSystemFriendlyName(const QString &name)
 
 int FileUtils::indexOfQmakeUnfriendly(const QString &name, int startpos)
 {
-    static QRegExp checkRegExp(QLatin1String("[^a-zA-Z0-9_.-]"));
-    return checkRegExp.indexIn(name, startpos);
+    static const QRegularExpression checkRegExp(QLatin1String("[^a-zA-Z0-9_.-]"));
+    return checkRegExp.match(name, startpos).capturedStart();
 }
 
 QString FileUtils::qmakeFriendlyName(const QString &name)
@@ -837,10 +840,10 @@ FilePath FilePath::fromStringWithExtension(const QString &filepath, const QStrin
 }
 
 /// Constructs a FilePath from \a filePath
-/// \a filePath is only passed through QDir::cleanPath
+/// \a filePath is only passed through QDir::fromNativeSeparators
 FilePath FilePath::fromUserInput(const QString &filePath)
 {
-    QString clean = QDir::cleanPath(filePath);
+    QString clean = QDir::fromNativeSeparators(filePath);
     if (clean.startsWith(QLatin1String("~/")))
         clean = QDir::homePath() + clean.mid(1);
     return FilePath::fromString(clean);
@@ -985,6 +988,64 @@ QTextStream &operator<<(QTextStream &s, const FilePath &fn)
 {
     return s << fn.toString();
 }
+
+#ifdef QT_GUI_LIB
+FileUtils::CopyAskingForOverwrite::CopyAskingForOverwrite(QWidget *dialogParent)
+    : m_parent(dialogParent)
+{}
+
+bool FileUtils::CopyAskingForOverwrite::operator()(const QFileInfo &src,
+                                                   const QFileInfo &dest,
+                                                   QString *error)
+{
+    bool copyFile = true;
+    if (dest.exists()) {
+        if (m_skipAll)
+            copyFile = false;
+        else if (!m_overwriteAll) {
+            const int res = QMessageBox::question(
+                m_parent,
+                QCoreApplication::translate("Utils::FileUtils", "Overwrite File?"),
+                QCoreApplication::translate("Utils::FileUtils", "Overwrite existing file \"%1\"?")
+                    .arg(FilePath::fromFileInfo(dest).toUserOutput()),
+                QMessageBox::Yes | QMessageBox::YesToAll | QMessageBox::No | QMessageBox::NoToAll
+                    | QMessageBox::Cancel);
+            if (res == QMessageBox::Cancel) {
+                return false;
+            } else if (res == QMessageBox::No) {
+                copyFile = false;
+            } else if (res == QMessageBox::NoToAll) {
+                m_skipAll = true;
+                copyFile = false;
+            } else if (res == QMessageBox::YesToAll) {
+                m_overwriteAll = true;
+            }
+            if (copyFile)
+                QFile::remove(dest.filePath());
+        }
+    }
+    if (copyFile) {
+        if (!dest.absoluteDir().exists())
+            dest.absoluteDir().mkpath(dest.absolutePath());
+        if (!QFile::copy(src.filePath(), dest.filePath())) {
+            if (error) {
+                *error = QCoreApplication::translate("Utils::FileUtils",
+                                                     "Could not copy file \"%1\" to \"%2\".")
+                             .arg(FilePath::fromFileInfo(src).toUserOutput(),
+                                  FilePath::fromFileInfo(dest).toUserOutput());
+            }
+            return false;
+        }
+    }
+    m_files.append(dest.absoluteFilePath());
+    return true;
+}
+
+QStringList FileUtils::CopyAskingForOverwrite::files() const
+{
+    return m_files;
+}
+#endif // QT_GUI_LIB
 
 #ifdef Q_OS_WIN
 template <>

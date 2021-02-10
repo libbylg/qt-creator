@@ -75,7 +75,7 @@ static FilePath defaultBuildDirectory(const FilePath &projectFilePath, const Kit
 // QbsBuildConfiguration:
 // ---------------------------------------------------------------------------
 
-QbsBuildConfiguration::QbsBuildConfiguration(Target *target, Core::Id id)
+QbsBuildConfiguration::QbsBuildConfiguration(Target *target, Utils::Id id)
     : BuildConfiguration(target, id)
 {
     setConfigWidgetHasFrame(true);
@@ -123,11 +123,11 @@ QbsBuildConfiguration::QbsBuildConfiguration(Target *target, Core::Id id)
         emit qbsConfigurationChanged();
     });
 
-    m_configurationName = addAspect<BaseStringAspect>();
+    m_configurationName = addAspect<StringAspect>();
     m_configurationName->setLabelText(tr("Configuration name:"));
     m_configurationName->setSettingsKey("Qbs.configName");
-    m_configurationName->setDisplayStyle(BaseStringAspect::LineEditDisplay);
-    connect(m_configurationName, &BaseStringAspect::changed,
+    m_configurationName->setDisplayStyle(StringAspect::LineEditDisplay);
+    connect(m_configurationName, &StringAspect::changed,
             this, &BuildConfiguration::buildDirectoryChanged);
 
     const auto separateDebugInfoAspect = addAspect<SeparateDebugInfoAspect>();
@@ -159,6 +159,14 @@ QbsBuildConfiguration::QbsBuildConfiguration(Target *target, Core::Id id)
 
 QbsBuildConfiguration::~QbsBuildConfiguration()
 {
+    for (BuildStep * const bs : buildSteps()->steps()) {
+        if (const auto qbs = qobject_cast<QbsBuildStep *>(bs))
+            qbs->dropSession();
+    }
+    for (BuildStep * const cs : cleanSteps()->steps()) {
+        if (const auto qcs = qobject_cast<QbsCleanStep *>(cs))
+            qcs->dropSession();
+    }
     delete m_buildSystem;
 }
 
@@ -264,11 +272,7 @@ QString QbsBuildConfiguration::configurationName() const
 QString QbsBuildConfiguration::equivalentCommandLine(const QbsBuildStepData &stepData) const
 {
     CommandLine commandLine;
-    const QString qbsInstallDir = QString::fromLocal8Bit(qgetenv("QBS_INSTALL_DIR"));
-    const QString qbsFilePath = HostOsInfo::withExecutableSuffix(!qbsInstallDir.isEmpty()
-            ? qbsInstallDir + QLatin1String("/bin/qbs")
-            : QCoreApplication::applicationDirPath() + QLatin1String("/qbs"));
-    commandLine.addArg(QDir::toNativeSeparators(qbsFilePath));
+    commandLine.addArg(QDir::toNativeSeparators(QbsSettings::qbsExecutableFilePath().toString()));
     commandLine.addArg(stepData.command);
     const QString buildDir = buildDirectory().toUserOutput();
     commandLine.addArgs({"-d", buildDir});
@@ -309,11 +313,6 @@ QString QbsBuildConfiguration::equivalentCommandLine(const QbsBuildStepData &ste
     commandLine.addArg("profile:" + profileName);
 
     return commandLine.arguments();
-}
-
-bool QbsBuildConfiguration::isQmlDebuggingEnabled() const
-{
-    return qmlDebuggingSetting() == TriState::Enabled;
 }
 
 TriState QbsBuildConfiguration::qmlDebuggingSetting() const

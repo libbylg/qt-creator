@@ -44,6 +44,9 @@ if (WIN32)
 endif()
 
 if (APPLE)
+  if (CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(MACOSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET})
+  endif()
   set_target_properties(qtcreator PROPERTIES
       MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/app-Info.plist"
   )
@@ -63,10 +66,28 @@ if (APPLE)
       "${CMAKE_CURRENT_BINARY_DIR}/qtcreator.icns"
       "${CMAKE_CURRENT_BINARY_DIR}/qtcreator-project.icns"
   )
-  set_source_files_properties(
-    "${CMAKE_CURRENT_BINARY_DIR}/qtcreator.icns"
-    "${CMAKE_CURRENT_BINARY_DIR}/qtcreator-project.icns"
-    PROPERTIES
-      MACOSX_PACKAGE_LOCATION "Resources"
+  qtc_copy_to_builddir(copy_icns
+    DESTINATION ${IDE_DATA_PATH}
+    FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/qtcreator.icns
+      ${CMAKE_CURRENT_BINARY_DIR}/qtcreator-project.icns
   )
+  install(
+    FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/qtcreator.icns
+      ${CMAKE_CURRENT_BINARY_DIR}/qtcreator-project.icns
+    DESTINATION ${IDE_DATA_PATH}
+  )
+endif()
+
+extend_qtc_executable(qtcreator
+  CONDITION BUILD_WITH_CRASHPAD
+  DEFINES
+    CRASHPAD_BACKEND_URL="${CRASHPAD_BACKEND_URL}"
+    ENABLE_CRASHPAD
+    WIN32_LEAN_AND_MEAN # It comes usually with precompiled header, but at the installer they are disabled
+  DEPENDS Crashpad::Crashpad
+)
+if(BUILD_WITH_CRASHPAD)
+  install(FILES ${CRASHPAD_BIN_DIR}/crashpad_handler${CMAKE_EXECUTABLE_SUFFIX} DESTINATION "${IDE_LIBEXEC_PATH}")
 endif()

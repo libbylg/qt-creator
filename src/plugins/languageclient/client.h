@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "diagnosticmanager.h"
 #include "documentsymbolcache.h"
 #include "dynamiccapabilities.h"
 #include "languageclient_global.h"
@@ -34,9 +35,11 @@
 #include "languageclienthoverhandler.h"
 #include "languageclientquickfix.h"
 #include "languageclientsettings.h"
+#include "languageclientsymbolsupport.h"
 
-#include <coreplugin/id.h>
 #include <coreplugin/messagemanager.h>
+
+#include <utils/id.h>
 #include <utils/link.h>
 
 #include <languageserverprotocol/client.h>
@@ -59,15 +62,14 @@ namespace Core { class IDocument; }
 namespace ProjectExplorer { class Project; }
 namespace TextEditor
 {
+class IAssistProcessor;
 class TextDocument;
 class TextEditorWidget;
-class TextMark;
 }
 
 namespace LanguageClient {
 
 class BaseClientInterface;
-class TextMark;
 
 class LANGUAGECLIENT_EXPORT Client : public QObject
 {
@@ -110,9 +112,9 @@ public:
                                  int charsAdded);
     void registerCapabilities(const QList<LanguageServerProtocol::Registration> &registrations);
     void unregisterCapabilities(const QList<LanguageServerProtocol::Unregistration> &unregistrations);
-    bool findLinkAt(LanguageServerProtocol::GotoDefinitionRequest &request);
-    bool findUsages(LanguageServerProtocol::FindReferencesRequest &request);
     void cursorPositionChanged(TextEditor::TextEditorWidget *widget);
+
+    SymbolSupport &symbolSupport();
 
     void requestCodeActions(const LanguageServerProtocol::DocumentUri &uri,
                             const QList<LanguageServerProtocol::Diagnostic> &diagnostics);
@@ -129,23 +131,24 @@ public:
     const ProjectExplorer::Project *project() const;
     void projectOpened(ProjectExplorer::Project *project);
     void projectClosed(ProjectExplorer::Project *project);
+    void projectFileListChanged();
 
     void sendContent(const LanguageServerProtocol::IContent &content);
-    void sendContent(const LanguageServerProtocol::DocumentUri &uri,
-                     const LanguageServerProtocol::IContent &content);
     void cancelRequest(const LanguageServerProtocol::MessageId &id);
 
     void setSupportedLanguage(const LanguageFilter &filter);
+    void setInitializationOptions(const QJsonObject& initializationOptions);
     bool isSupportedDocument(const TextEditor::TextDocument *document) const;
     bool isSupportedFile(const Utils::FilePath &filePath, const QString &mimeType) const;
     bool isSupportedUri(const LanguageServerProtocol::DocumentUri &uri) const;
 
+    void addAssistProcessor(TextEditor::IAssistProcessor *processor);
+    void removeAssistProcessor(TextEditor::IAssistProcessor *processor);
+
     void setName(const QString &name) { m_displayName = name; }
     QString name() const { return m_displayName; }
 
-    Core::Id id() const { return m_id; }
-
-    bool needsRestart(const BaseSettings *) const;
+    Utils::Id id() const { return m_id; }
 
     QList<LanguageServerProtocol::Diagnostic> diagnosticsAt(
         const LanguageServerProtocol::DocumentUri &uri,
@@ -154,15 +157,12 @@ public:
     bool start();
     bool reset();
 
-    void log(const QString &message,
-             Core::MessageManager::PrintToOutputPaneFlag flag = Core::MessageManager::NoModeSwitch);
+    void log(const QString &message);
     template<typename Error>
-    void log(const LanguageServerProtocol::ResponseError<Error> &responseError,
-             Core::MessageManager::PrintToOutputPaneFlag flag = Core::MessageManager::NoModeSwitch)
-    { log(responseError.toString(), flag); }
-
-    void showDiagnostics(Core::IDocument *doc);
-    void hideDiagnostics(TextEditor::TextDocument *doc);
+    void log(const LanguageServerProtocol::ResponseError<Error> &responseError)
+    {
+        log(responseError.toString());
+    }
 
     const LanguageServerProtocol::ServerCapabilities &capabilities() const;
     const DynamicCapabilities &dynamicCapabilities() const;
@@ -171,8 +171,11 @@ public:
     HoverHandler *hoverHandler();
     void rehighlight();
 
+    bool documentUpdatePostponed(const Utils::FilePath &fileName) const;
+
 signals:
     void initialized(LanguageServerProtocol::ServerCapabilities capabilities);
+    void documentUpdated(TextEditor::TextDocument *document);
     void finished();
 
 protected:
@@ -182,7 +185,7 @@ protected:
 private:
     void handleResponse(const LanguageServerProtocol::MessageId &id, const QByteArray &content,
                         QTextCodec *codec);
-    void handleMethod(const QString &method, LanguageServerProtocol::MessageId id,
+    void handleMethod(const QString &method, const LanguageServerProtocol::MessageId &id,
                       const LanguageServerProtocol::IContent *content);
 
     void handleDiagnostics(const LanguageServerProtocol::PublishDiagnosticsParams &params);
@@ -191,27 +194,35 @@ private:
     void initializeCallback(const LanguageServerProtocol::InitializeRequest::Response &initResponse);
     void shutDownCallback(const LanguageServerProtocol::ShutdownRequest::Response &shutdownResponse);
     bool sendWorkspceFolderChanges() const;
-    void log(const LanguageServerProtocol::ShowMessageParams &message,
-             Core::MessageManager::PrintToOutputPaneFlag flag = Core::MessageManager::NoModeSwitch);
+    void log(const LanguageServerProtocol::ShowMessageParams &message);
 
     void showMessageBox(const LanguageServerProtocol::ShowMessageRequestParams &message,
                         const LanguageServerProtocol::MessageId &id);
 
-    void showDiagnostics(const LanguageServerProtocol::DocumentUri &uri);
     void removeDiagnostics(const LanguageServerProtocol::DocumentUri &uri);
     void resetAssistProviders(TextEditor::TextDocument *document);
+    void sendPostponedDocumentUpdates();
+
+    void updateCompletionProvider(TextEditor::TextDocument *document);
+    void updateFunctionHintProvider(TextEditor::TextDocument *document);
 
     using ContentHandler = std::function<void(const QByteArray &, QTextCodec *, QString &,
                                               LanguageServerProtocol::ResponseHandlers,
                                               LanguageServerProtocol::MethodHandler)>;
 
     State m_state = Uninitialized;
-    QHash<LanguageServerProtocol::MessageId, LanguageServerProtocol::ResponseHandler> m_responseHandlers;
+    QHash<LanguageServerProtocol::MessageId,
+          LanguageServerProtocol::ResponseHandler::Callback> m_responseHandlers;
     QHash<QByteArray, ContentHandler> m_contentHandler;
     QString m_displayName;
     LanguageFilter m_languagFilter;
+    QJsonObject m_initializationOptions;
     QMap<TextEditor::TextDocument *, QString> m_openedDocument;
-    Core::Id m_id;
+    QMap<TextEditor::TextDocument *,
+         QList<LanguageServerProtocol::DidChangeTextDocumentParams::TextDocumentContentChangeEvent>>
+        m_documentsToUpdate;
+    QTimer m_documentUpdateTimer;
+    Utils::Id m_id;
     LanguageServerProtocol::ServerCapabilities m_serverCapabilities;
     DynamicCapabilities m_dynamicCapabilities;
     struct AssistProviders
@@ -226,11 +237,13 @@ private:
     QHash<LanguageServerProtocol::DocumentUri, LanguageServerProtocol::MessageId> m_highlightRequests;
     int m_restartsLeft = 5;
     QScopedPointer<BaseClientInterface> m_clientInterface;
-    QMap<LanguageServerProtocol::DocumentUri, QList<LanguageServerProtocol::Diagnostic>> m_diagnostics;
+    DiagnosticManager m_diagnosticManager;
     DocumentSymbolCache m_documentSymbolCache;
     HoverHandler m_hoverHandler;
     QHash<LanguageServerProtocol::DocumentUri, TextEditor::HighlightingResults> m_highlights;
     const ProjectExplorer::Project *m_project = nullptr;
+    QSet<TextEditor::IAssistProcessor *> m_runningAssistProcessors;
+    SymbolSupport m_symbolSupport;
 };
 
 } // namespace LanguageClient

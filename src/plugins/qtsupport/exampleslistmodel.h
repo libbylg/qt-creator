@@ -45,22 +45,25 @@ class ExampleSetModel : public QStandardItemModel
     Q_OBJECT
 
 public:
+    struct ExtraExampleSet
+    {
+        QString displayName;
+        QString manifestPath;
+        QString examplesPath;
+    };
+    static QVector<ExtraExampleSet> pluginRegisteredExampleSets();
+
     ExampleSetModel();
 
     int selectedExampleSet() const { return m_selectedExampleSetIndex; }
     void selectExampleSet(int index);
     QStringList exampleSources(QString *examplesInstallPath, QString *demosInstallPath);
-    bool selectedQtSupports(const Core::Id &target) const;
+    bool selectedQtSupports(const Utils::Id &target) const;
 
 signals:
     void selectedExampleSetChanged(int);
 
 private:
-    struct ExtraExampleSet {
-        QString displayName;
-        QString manifestPath;
-        QString examplesPath;
-    };
 
     enum ExampleSetType {
         InvalidExampleSet,
@@ -87,10 +90,9 @@ private:
     void helpManagerInitialized();
     void tryToInitialize();
 
-    QList<ExtraExampleSet> m_extraExampleSets;
-    QList<BaseQtVersion*> m_qtVersions;
+    QVector<ExtraExampleSet> m_extraExampleSets;
     int m_selectedExampleSetIndex = -1;
-    QSet<Core::Id> m_selectedQtTypes;
+    QSet<Utils::Id> m_selectedQtTypes;
 
     bool m_qtVersionManagerInitialized = false;
     bool m_helpManagerInitialized = false;

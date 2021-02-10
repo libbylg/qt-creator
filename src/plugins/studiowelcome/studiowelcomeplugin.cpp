@@ -26,6 +26,7 @@
 #include "studiowelcomeplugin.h"
 
 #include <coreplugin/coreconstants.h>
+#include <coreplugin/dialogs/restartdialog.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/helpmanager.h>
 #include <coreplugin/icore.h>
@@ -36,11 +37,11 @@
 #include <extensionsystem/pluginspec.h>
 
 #include <projectexplorer/projectexplorer.h>
-#include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectmanager.h>
 
 #include <utils/checkablemessagebox.h>
 #include <utils/icon.h>
+#include <utils/infobar.h>
 #include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
@@ -63,6 +64,70 @@ namespace Internal {
 const char DO_NOT_SHOW_SPLASHSCREEN_AGAIN_KEY[] = "StudioSplashScreen";
 
 QPointer<QQuickWidget> s_view = nullptr;
+
+static bool isUsageStatistic(const ExtensionSystem::PluginSpec *spec)
+{
+    if (!spec)
+        return false;
+
+    return spec->name().contains("UsageStatistic");
+}
+
+ExtensionSystem::PluginSpec *getUsageStatisticPlugin()
+{
+    const auto plugins = ExtensionSystem::PluginManager::plugins();
+    return Utils::findOrDefault(plugins, &isUsageStatistic);
+}
+
+class UsageStatisticPluginModel : public QObject
+{
+    Q_OBJECT
+
+    Q_PROPERTY(bool usageStatisticEnabled MEMBER m_usageStatisticEnabled NOTIFY usageStatisticChanged)
+public:
+    explicit UsageStatisticPluginModel(QObject *parent = nullptr)
+        : QObject(parent)
+    {
+        setupModel();
+    }
+
+    void setupModel()
+    {
+        auto plugin = getUsageStatisticPlugin();
+        if (plugin)
+            m_usageStatisticEnabled = plugin->isEnabledBySettings();
+        else
+            m_usageStatisticEnabled = false;
+
+        emit usageStatisticChanged();
+    }
+
+    Q_INVOKABLE void setPluginEnabled(bool b)
+    {
+        auto plugin = getUsageStatisticPlugin();
+
+        if (!plugin)
+            return;
+
+        if (plugin->isEnabledBySettings() == b)
+            return;
+
+        plugin->setEnabledBySettings(b);
+        ExtensionSystem::PluginManager::writeSettings();
+
+        const QString restartText = tr("The change will take effect after restart.");
+        Core::RestartDialog restartDialog(Core::ICore::dialogParent(), restartText);
+        restartDialog.exec();
+
+        setupModel();
+    }
+
+signals:
+    void usageStatisticChanged();
+
+private:
+    bool m_usageStatisticEnabled = false;
+};
 
 class ProjectModel : public QAbstractListModel
 {
@@ -199,6 +264,18 @@ void StudioWelcomePlugin::closeSplashScreen()
     }
 }
 
+void StudioWelcomePlugin::showSystemSettings()
+{
+    Core::ICore::infoBar()->removeInfo("WarnCrashReporting");
+    Core::ICore::infoBar()->globallySuppressInfo("WarnCrashReporting");
+
+    // pause remove splash timer while settings dialog is open otherwise splash crashes upon removal
+    int splashAutoCloseRemainingTime = m_removeSplashTimer.remainingTime(); // milliseconds
+    m_removeSplashTimer.stop();
+    Core::ICore::showOptionsDialog(Core::Constants::SETTINGS_ID_SYSTEM);
+    m_removeSplashTimer.start(splashAutoCloseRemainingTime);
+}
+
 StudioWelcomePlugin::~StudioWelcomePlugin()
 {
     delete m_welcomeMode;
@@ -210,6 +287,7 @@ bool StudioWelcomePlugin::initialize(const QStringList &arguments, QString *erro
     Q_UNUSED(errorString)
 
     qmlRegisterType<ProjectModel>("projectmodel", 1, 0, "ProjectModel");
+    qmlRegisterType<UsageStatisticPluginModel>("usagestatistics", 1, 0, "UsageStatisticModel");
 
     m_welcomeMode = new WelcomeMode;
 
@@ -218,6 +296,9 @@ bool StudioWelcomePlugin::initialize(const QStringList &arguments, QString *erro
     QFont systemFont("Titillium Web", QApplication::font().pointSize());
     QApplication::setFont(systemFont);
 
+    m_removeSplashTimer.setSingleShot(true);
+    m_removeSplashTimer.setInterval(15000);
+    connect(&m_removeSplashTimer, &QTimer::timeout, this, [this] { closeSplashScreen(); });
     return true;
 }
 
@@ -226,7 +307,7 @@ void StudioWelcomePlugin::extensionsInitialized()
     Core::ModeManager::activateMode(m_welcomeMode->id());
     if (Utils::CheckableMessageBox::shouldAskAgain(Core::ICore::settings(),
                                                    DO_NOT_SHOW_SPLASHSCREEN_AGAIN_KEY)) {
-        connect(Core::ICore::instance(), &Core::ICore::coreOpened, this, [this] (){
+        connect(Core::ICore::instance(), &Core::ICore::coreOpened, this, [this] {
             s_view = new QQuickWidget(Core::ICore::dialogParent());
             s_view->setResizeMode(QQuickWidget::SizeRootObjectToView);
             s_view->setWindowFlag(Qt::SplashScreen, true);
@@ -247,11 +328,12 @@ void StudioWelcomePlugin::extensionsInitialized()
                        return);
 
             connect(s_view->rootObject(), SIGNAL(closeClicked()), this, SLOT(closeSplashScreen()));
+            connect(s_view->rootObject(), SIGNAL(configureClicked()), this, SLOT(showSystemSettings()));
 
             s_view->show();
             s_view->raise();
 
-            QTimer::singleShot(15000, [this](){ closeSplashScreen(); });
+            m_removeSplashTimer.start();
         });
     }
 }
@@ -259,20 +341,20 @@ void StudioWelcomePlugin::extensionsInitialized()
 bool StudioWelcomePlugin::delayedInitialize()
 {
     if (s_view.isNull())
-        return true;
+        return false;
 
     QTC_ASSERT(s_view->rootObject() , return true);
 
-    s_view->rootObject()->setProperty("loadingPlugins", false);
+#ifdef ENABLE_CRASHPAD
+    const bool crashReportingEnabled = true;
+    const bool crashReportingOn = Core::ICore::settings()->value("CrashReportingEnabled", false).toBool();
+#else
+    const bool crashReportingEnabled = false;
+    const bool crashReportingOn = false;
+#endif
 
-    QPointer<QQuickWidget> view = s_view;
-
-    connect(Core::ICore::mainWindow()->windowHandle(), &QWindow::visibleChanged, this, [view](){
-        if (!view.isNull()) {
-            view->close();
-            view->deleteLater();
-        }
-    });
+    QMetaObject::invokeMethod(s_view->rootObject(), "onPluginInitialized",
+            Q_ARG(bool, crashReportingEnabled), Q_ARG(bool, crashReportingOn));
 
     return false;
 }
@@ -289,7 +371,7 @@ WelcomeMode::WelcomeMode()
 
     setPriority(Core::Constants::P_MODE_WELCOME);
     setId(Core::Constants::MODE_WELCOME);
-    setContextHelp("Qt Creator Manual");
+    setContextHelp("Qt Design Studio Manual");
     setContext(Core::Context(Core::Constants::C_WELCOME_MODE));
 
     m_modeWidget = new QQuickWidget;

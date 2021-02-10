@@ -25,18 +25,24 @@
 
 #pragma once
 
-#include "fileapiparser.h"
-
 #include "cmakebuildtarget.h"
-#include "cmakeprocess.h"
 #include "cmakeprojectnodes.h"
 
 #include <projectexplorer/rawprojectpart.h>
+
+#include <utils/fileutils.h>
+#include <utils/optional.h>
+
+#include <QList>
+#include <QSet>
+#include <QString>
 
 #include <memory>
 
 namespace CMakeProjectManager {
 namespace Internal {
+
+class FileApiData;
 
 class FileApiQtcData
 {
@@ -48,11 +54,18 @@ public:
     ProjectExplorer::RawProjectParts projectParts;
     std::unique_ptr<CMakeProjectNode> rootProjectNode;
     QSet<Utils::FilePath> knownHeaders;
+    QString ctestPath;
+    bool isMultiConfig = false;
+    bool usesAllCapsTargets = false;
 };
 
 FileApiQtcData extractData(FileApiData &data,
                            const Utils::FilePath &sourceDirectory,
                            const Utils::FilePath &buildDirectory);
+FileApiQtcData generateFallbackData(const Utils::FilePath &topCmakeFile,
+                                    const Utils::FilePath &sourceDirectory,
+                                    const Utils::FilePath &buildDirectory,
+                                    QString errorMessage);
 
 } // namespace Internal
 } // namespace CMakeProjectManager

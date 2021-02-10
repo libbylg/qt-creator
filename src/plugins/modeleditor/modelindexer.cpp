@@ -55,6 +55,7 @@
 
 #include <QLoggingCategory>
 #include <QDebug>
+#include <QPointer>
 
 namespace ModelEditor {
 namespace Internal {
@@ -200,8 +201,8 @@ class ModelIndexer::DiagramsCollectorVisitor :
 public:
     DiagramsCollectorVisitor(ModelIndexer::IndexedModel *indexedModel);
 
-    void visitMObject(const qmt::MObject *object);
-    void visitMDiagram(const qmt::MDiagram *diagram);
+    void visitMObject(const qmt::MObject *object) final;
+    void visitMDiagram(const qmt::MDiagram *diagram) final;
 
 private:
     ModelIndexer::IndexedModel *m_indexedModel;
@@ -373,7 +374,7 @@ void ModelIndexer::onProjectAdded(ProjectExplorer::Project *project)
     connect(project,
             &ProjectExplorer::Project::fileListChanged,
             this,
-            [=]() { this->onProjectFileListChanged(project); },
+            [this, p = QPointer(project)] { if (p) onProjectFileListChanged(p.data()); },
             Qt::QueuedConnection);
     scanProject(project);
 }

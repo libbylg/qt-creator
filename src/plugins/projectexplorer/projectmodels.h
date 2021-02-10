@@ -92,7 +92,6 @@ public:
 
 signals:
     void renamed(const Utils::FilePath &oldName, const Utils::FilePath &newName);
-    void requestExpansion(const QModelIndex &index);
 
 private:
     bool m_filterProjects = false;
@@ -119,8 +118,6 @@ private:
 
     QTimer m_timer;
     QSet<ExpandData> m_toExpand;
-    QColor m_enabledTextColor;
-    QColor m_disabledTextColor;
 };
 
 } // namespace Internal

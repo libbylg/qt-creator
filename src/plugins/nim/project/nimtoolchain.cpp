@@ -32,7 +32,7 @@
 
 #include <QFileInfo>
 #include <QProcess>
-#include <QRegExp>
+#include <QRegularExpression>
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -43,36 +43,19 @@ NimToolChain::NimToolChain()
     : NimToolChain(Constants::C_NIMTOOLCHAIN_TYPEID)
 {}
 
-NimToolChain::NimToolChain(Core::Id typeId)
+NimToolChain::NimToolChain(Utils::Id typeId)
     : ToolChain(typeId)
-    , m_compilerCommand(FilePath())
     , m_version(std::make_tuple(-1,-1,-1))
 {
     setLanguage(Constants::C_NIMLANGUAGE_ID);
-    setTypeDisplayName(NimToolChainFactory::tr("Nim"));
-}
-
-Abi NimToolChain::targetAbi() const
-{
-    return Abi::hostAbi();
-}
-
-bool NimToolChain::isValid() const
-{
-    if (m_compilerCommand.isEmpty())
-        return false;
-    QFileInfo fi = compilerCommand().toFileInfo();
-    return fi.isExecutable();
+    setTypeDisplayName(tr("Nim"));
+    setTargetAbiNoSignal(Abi::hostAbi());
+    setCompilerCommandKey("Nim.NimToolChain.CompilerCommand");
 }
 
 ToolChain::MacroInspectionRunner NimToolChain::createMacroInspectionRunner() const
 {
     return ToolChain::MacroInspectionRunner();
-}
-
-Macros NimToolChain::predefinedMacros(const QStringList &) const
-{
-    return Macros();
 }
 
 LanguageExtensions NimToolChain::languageExtensions(const QStringList &) const
@@ -91,12 +74,6 @@ ToolChain::BuiltInHeaderPathsRunner NimToolChain::createBuiltInHeaderPathsRunner
     return ToolChain::BuiltInHeaderPathsRunner();
 }
 
-HeaderPaths NimToolChain::builtInHeaderPaths(const QStringList &, const FilePath &,
-                                             const Environment &) const
-{
-    return {};
-}
-
 void NimToolChain::addToEnvironment(Environment &env) const
 {
     if (isValid())
@@ -109,20 +86,9 @@ FilePath NimToolChain::makeCommand(const Environment &env) const
     return tmp.isEmpty() ? FilePath::fromString("make") : tmp;
 }
 
-FilePath NimToolChain::compilerCommand() const
+QList<Utils::OutputLineParser *> NimToolChain::createOutputParsers() const
 {
-    return m_compilerCommand;
-}
-
-void NimToolChain::setCompilerCommand(const FilePath &compilerCommand)
-{
-    m_compilerCommand = compilerCommand;
-    parseVersion(compilerCommand, m_version);
-}
-
-IOutputParser *NimToolChain::outputParser() const
-{
-    return nullptr;
+    return {};
 }
 
 std::unique_ptr<ProjectExplorer::ToolChainConfigWidget> NimToolChain::createConfigurationWidget()
@@ -130,16 +96,9 @@ std::unique_ptr<ProjectExplorer::ToolChainConfigWidget> NimToolChain::createConf
     return std::make_unique<NimToolChainConfigWidget>(this);
 }
 
-QVariantMap NimToolChain::toMap() const
-{
-    QVariantMap data = ToolChain::toMap();
-    data[Constants::C_NIMTOOLCHAIN_COMPILER_COMMAND_KEY] = m_compilerCommand.toString();
-    return data;
-}
-
 QString NimToolChain::compilerVersion() const
 {
-    return m_compilerCommand.isEmpty() || m_version == std::make_tuple(-1,-1,-1)
+    return compilerCommand().isEmpty() || m_version == std::make_tuple(-1,-1,-1)
             ? QString()
             : QString::asprintf("%d.%d.%d",
                                 std::get<0>(m_version),
@@ -151,7 +110,7 @@ bool NimToolChain::fromMap(const QVariantMap &data)
 {
     if (!ToolChain::fromMap(data))
         return false;
-    setCompilerCommand(FilePath::fromString(data.value(Constants::C_NIMTOOLCHAIN_COMPILER_COMMAND_KEY).toString()));
+    parseVersion(compilerCommand(), m_version);
     return true;
 }
 
@@ -164,14 +123,15 @@ bool NimToolChain::parseVersion(const FilePath &path, std::tuple<int, int, int> 
     const QString version = QString::fromUtf8(process.readLine());
     if (version.isEmpty())
         return false;
-    const QRegExp regex("(\\d+)\\.(\\d+)\\.(\\d+)");
-    if (regex.indexIn(version) == -1)
+    const QRegularExpression regex("(\\d+)\\.(\\d+)\\.(\\d+)");
+    const QRegularExpressionMatch match = regex.match(version);
+    if (!match.hasMatch())
         return false;
-    const QStringList text = regex.capturedTexts();
+    const QStringList text = match.capturedTexts();
     if (text.length() != 4)
         return false;
     result = std::make_tuple(text[1].toInt(), text[2].toInt(), text[3].toInt());
     return true;
 }
 
-}
+} // Nim

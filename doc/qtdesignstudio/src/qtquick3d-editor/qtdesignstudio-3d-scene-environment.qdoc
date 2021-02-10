@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Design Studio.
@@ -26,10 +26,13 @@
 ****************************************************************************/
 
 /*!
-    \contentspage {Qt Design Studio Manual}
     \page studio-3d-scene-environment.html
     \previouspage studio-3d-camera.html
+    \if defined (qtdesignstudio)
     \nextpage creator-live-preview.html
+    \else
+    \nextpage qtquick-iso-icon-browser.html
+    \endif
 
     \title Setting Scene Environment
 
@@ -77,13 +80,12 @@
     To clear the background using a color, select \uicontrol Color,
     and select the color in the \uicontrol {Clear Color} field.
 
+    To render a Skybox or Skydome instead of clearing the scene,
+    select \uicontrol SkyBox. You can specify the image to use as
+    a value of the \l{SceneEnvironment::lightProbe}{lightProbe}
+    property in \uicontrol {Text Editor}.
+
     To leave the scene uncleared, select \uicontrol {Unspecified}.
-
-    \section1 Blending Scene Colors
-
-    To determine how colors are blended, select a blend mode in the
-    \uicontrol {Blend mode} field. For more information on the options,
-    see \uicontrol {Blending Colors}.
 
     \section1 Performing Depth Tests
 

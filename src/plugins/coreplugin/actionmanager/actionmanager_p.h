@@ -46,8 +46,8 @@ class ActionManagerPrivate : public QObject
     Q_OBJECT
 
 public:
-    using IdCmdMap = QHash<Id, Action *>;
-    using IdContainerMap = QHash<Id, ActionContainerPrivate *>;
+    using IdCmdMap = QHash<Utils::Id, Action *>;
+    using IdContainerMap = QHash<Utils::Id, ActionContainerPrivate *>;
 
     ~ActionManagerPrivate() override;
 
@@ -55,13 +55,13 @@ public:
     bool hasContext(int context) const;
 
     void saveSettings();
-    void saveSettings(Action *cmd);
+    static void saveSettings(Action *cmd);
 
-    void showShortcutPopup(const QString &shortcut);
+    static void showShortcutPopup(const QString &shortcut);
     bool hasContext(const Context &context) const;
-    Action *overridableAction(Id id);
+    Action *overridableAction(Utils::Id id);
 
-    void readUserSettings(Id id, Action *cmd);
+    static void readUserSettings(Utils::Id id, Action *cmd);
 
     void containerDestroyed();
     void actionTriggered();

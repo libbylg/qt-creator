@@ -44,6 +44,8 @@
 QT_BEGIN_NAMESPACE
 class QStyle;
 class QToolButton;
+class QImage;
+class QPixmap;
 QT_END_NAMESPACE
 
 namespace QmlDesigner {
@@ -140,11 +142,12 @@ public:
                          const QString &nodeSource = QString(),
                          ModelNode::NodeSourceType nodeSourceType = ModelNode::NodeWithoutSource);
 
-    const ModelNode rootModelNode() const;
+    ModelNode rootModelNode() const;
     ModelNode rootModelNode();
 
     void setSelectedModelNodes(const QList<ModelNode> &selectedNodeList);
     void setSelectedModelNode(const ModelNode &modelNode);
+
     void selectModelNode(const ModelNode &node);
     void deselectModelNode(const ModelNode &node);
     void clearSelectedModelNodes();
@@ -159,6 +162,7 @@ public:
     ModelNode modelNodeForId(const QString &id);
     bool hasId(const QString &id) const;
     QString generateNewId(const QString &prefixName) const;
+    QString generateNewId(const QString &prefixName, const QString &fallbackPrefix) const;
 
     ModelNode modelNodeForInternalId(qint32 internalId) const;
     bool hasModelNodeForInternalId(qint32 internalId) const;
@@ -182,6 +186,10 @@ public:
     void emitRewriterBeginTransaction();
     void emitRewriterEndTransaction();
     void emitInstanceToken(const QString &token, int number, const QVector<ModelNode> &nodeVector);
+    void emitRenderImage3DChanged(const QImage &image);
+    void emitUpdateActiveScene3D(const QVariantMap &sceneState);
+    void emitModelNodelPreviewPixmapChanged(const ModelNode &node, const QPixmap &pixmap);
+    void emitImport3DSupportChanged(const QVariantMap &supportMap);
 
     void sendTokenToInstances(const QString &token, int number, const QVector<ModelNode> &nodeVector);
 
@@ -226,6 +234,8 @@ public:
     virtual void nodeOrderChanged(const NodeListProperty &listProperty, const ModelNode &movedNode, int oldIndex);
 
     virtual void importsChanged(const QList<Import> &addedImports, const QList<Import> &removedImports);
+    virtual void possibleImportsChanged(const QList<Import> &possibleImports);
+    virtual void usedImportsChanged(const QList<Import> &usedImports);
 
     virtual void auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data);
 
@@ -236,6 +246,11 @@ public:
     virtual void documentMessagesChanged(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &warnings);
 
     virtual void currentTimelineChanged(const ModelNode &node);
+
+    virtual void renderImage3DChanged(const QImage &image);
+    virtual void updateActiveScene3D(const QVariantMap &sceneState);
+    virtual void updateImport3DSupport(const QVariantMap &supportMap);
+    virtual void modelNodePreviewPixmapChanged(const ModelNode &node, const QPixmap &pixmap);
 
     void changeRootNodeType(const TypeName &type, int majorVersion, int minorVersion);
 
@@ -268,6 +283,26 @@ public:
     using OperationBlock = std::function<void()>;
     bool executeInTransaction(const QByteArray &identifier, const OperationBlock &lambda);
 
+    bool isEnabled() const;
+    void setEnabled(bool b);
+
+    bool isBlockingNotifications() const { return m_isBlockingNotifications; }
+
+    class NotificationBlocker
+    {
+    public:
+        NotificationBlocker(AbstractView *view)
+            : m_view{view}
+        {
+            m_view->m_isBlockingNotifications = true;
+        }
+
+        ~NotificationBlocker() { m_view->m_isBlockingNotifications = false; }
+
+    private:
+        AbstractView *m_view;
+    };
+
 protected:
     void setModel(Model * model);
     void removeModel();
@@ -281,9 +316,10 @@ protected:
 private: //functions
     QList<ModelNode> toModelNodeList(const QList<Internal::InternalNodePointer> &nodeList) const;
 
-
 private:
     QPointer<Model> m_model;
+    bool m_enabled = true;
+    bool m_isBlockingNotifications = false;
 };
 
 QMLDESIGNERCORE_EXPORT QList<Internal::InternalNodePointer> toInternalNodeList(const QList<ModelNode> &nodeList);

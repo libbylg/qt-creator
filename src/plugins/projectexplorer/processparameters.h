@@ -69,17 +69,16 @@ public:
     QString summary(const QString &displayName) const;
     QString summaryInWorkdir(const QString &displayName) const;
 
-    void resolveAll();
 private:
     Utils::FilePath m_workingDirectory;
     Utils::CommandLine m_command;
     Utils::Environment m_environment;
-    Utils::MacroExpander *m_macroExpander;
+    Utils::MacroExpander *m_macroExpander = nullptr;
 
     mutable Utils::FilePath m_effectiveWorkingDirectory;
     mutable Utils::FilePath m_effectiveCommand;
     mutable QString m_effectiveArguments;
-    mutable bool m_commandMissing;
+    mutable bool m_commandMissing = false;
 };
 
 } // namespace ProjectExplorer

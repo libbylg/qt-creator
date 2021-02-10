@@ -40,13 +40,6 @@ class ThemePrivate;
 class QTCREATOR_UTILS_EXPORT Theme : public QObject
 {
     Q_OBJECT
-
-    Q_ENUMS(Color)
-    Q_ENUMS(ImageFile)
-    Q_ENUMS(Gradient)
-    Q_ENUMS(Flag)
-    Q_ENUMS(WidgetStyle)
-
 public:
     Theme(const QString &id, QObject *parent = nullptr);
     ~Theme() override;
@@ -89,7 +82,7 @@ public:
         FancyToolButtonSelectedColor,
         FutureProgressBackgroundColor,
         InfoBarBackground,
-        InfoBarText,
+        InfoBarText, // TODO: Deprecate. Unused.
         MenuBarEmptyAreaBackgroundColor,
         MenuBarItemBackgroundColor,
         MenuBarItemTextColorDisabled,
@@ -306,7 +299,46 @@ public:
         QmlDesigner_BorderColor,
         QmlDesigner_FormeditorBackgroundColor,
         QmlDesigner_AlternateBackgroundColor,
-        QmlDesigner_ScrollBarHandleColor
+        QmlDesigner_ScrollBarHandleColor,
+
+        /* Palette for DS Controls */
+
+        DScontrolBackground,
+        DScontrolOutline,
+        DStextColor,
+        DSdisabledTextColor,
+        DSpanelBackground,
+        DShoverHighlight,
+        DScolumnBackground,
+        DSfocusEdit,
+        DSfocusDrag,
+        DScontrolBackgroundPressed,
+        DScontrolBackgroundChecked,
+        DSinteraction,
+        DSsliderActiveTrack,
+        DSsliderInactiveTrack,
+        DSsliderHandle,
+        DSsliderActiveTrackHover,
+        DSsliderInactiveTrackHover,
+        DSsliderHandleHover,
+        DSsliderActiveTrackFocus,
+        DSsliderInactiveTrackFocus,
+        DSsliderHandleFocus,
+        DSerrorColor,
+        DScontrolBackgroundDisabled,
+        DScontrolOutlineDisabled,
+        DStextColorDisabled,
+        DStextSelectionColor,
+        DStextSelectedTextColor,
+        DSscrollBarTrack,
+        DSscrollBarHandle,
+        DScontrolBackgroundInteraction,
+        DStranslationIndicatorBorder,
+        DSsectionHeadBackground,
+        DSchangedStateText,
+        DS3DAxisXColor,
+        DS3DAxisYColor,
+        DS3DAxisZColor
     };
 
     enum Gradient {
@@ -342,6 +374,11 @@ public:
         DarkUserInterface
     };
 
+    Q_ENUM(Color)
+    Q_ENUM(ImageFile)
+    Q_ENUM(Gradient)
+    Q_ENUM(Flag)
+
     Q_INVOKABLE bool flag(Flag f) const;
     Q_INVOKABLE QColor color(Color role) const;
     QString imageFile(ImageFile imageFile, const QString &fallBack) const;
@@ -357,6 +394,7 @@ public:
 
     void readSettings(QSettings &settings);
 
+    static bool systemUsesDarkMode();
     static QPalette initialPalette();
 
 protected:

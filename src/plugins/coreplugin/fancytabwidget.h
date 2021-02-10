@@ -25,13 +25,13 @@
 
 #pragma once
 
-#include "infobar.h"
+#include <utils/infobar.h>
+#include <utils/porting.h>
 
 #include <QIcon>
 #include <QWidget>
 
 #include <QPropertyAnimation>
-#include <QTimer>
 
 QT_BEGIN_NAMESPACE
 class QPainter;
@@ -87,7 +87,7 @@ public:
     void paintTab(QPainter *painter, int tabIndex) const;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
-    void enterEvent(QEvent *event) override;
+    void enterEvent(Utils::EnterEvent *event) override;
     void leaveEvent(QEvent *event) override;
     bool validIndex(int index) const { return index >= 0 && index < m_tabs.count(); }
 
@@ -159,7 +159,7 @@ public:
 
     int currentIndex() const;
     QStatusBar *statusBar() const;
-    InfoBar *infoBar();
+    Utils::InfoBar *infoBar();
 
     void setTabEnabled(int index, bool enable);
     bool isTabEnabled(int index) const;
@@ -186,8 +186,8 @@ private:
     QStackedLayout *m_modesStack;
     QWidget *m_selectionWidget;
     QStatusBar *m_statusBar;
-    InfoBarDisplay m_infoBarDisplay;
-    InfoBar m_infoBar;
+    Utils::InfoBarDisplay m_infoBarDisplay;
+    Utils::InfoBar m_infoBar;
 };
 
 } // namespace Internal

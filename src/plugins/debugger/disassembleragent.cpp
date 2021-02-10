@@ -238,8 +238,8 @@ void DisassemblerAgent::setLocation(const Location &loc)
         // Refresh when not displaying a function and there is not sufficient
         // context left past the address.
         if (d->cache.at(index).first.endAddress - loc.address() < 24) {
-            index = -1;
             d->cache.removeAt(index);
+            index = -1;
         }
     }
     if (index != -1) {
@@ -337,7 +337,7 @@ void DisassemblerAgent::setContentsToDocument(const DisassemblerLines &contents)
         .arg(d->location.functionName()));
 
     const Breakpoints bps = d->engine->breakHandler()->breakpoints();
-    for (const Breakpoint bp : bps)
+    for (const Breakpoint &bp : bps)
         updateBreakpointMarker(bp);
 
     updateLocationMarker();

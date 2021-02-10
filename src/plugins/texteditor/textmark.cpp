@@ -24,14 +24,18 @@
 ****************************************************************************/
 
 #include "textmark.h"
+
+#include "fontsettings.h"
 #include "textdocument.h"
 #include "texteditor.h"
 #include "texteditorplugin.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/documentmanager.h>
+#include <coreplugin/icore.h>
 #include <utils/qtcassert.h>
 #include <utils/tooltip/tooltip.h>
+#include <utils/utilsicons.h>
 
 #include <QAction>
 #include <QGridLayout>
@@ -93,6 +97,7 @@ TextMark::~TextMark()
 {
     qDeleteAll(m_actions);
     m_actions.clear();
+    delete m_settingsAction;
     if (!m_fileName.isEmpty())
         TextMarkRegistry::remove(this);
     if (m_baseTextDocument)
@@ -123,7 +128,7 @@ int TextMark::lineNumber() const
 
 void TextMark::paintIcon(QPainter *painter, const QRect &rect) const
 {
-    m_icon.paint(painter, rect, Qt::AlignCenter);
+    icon().paint(painter, rect, Qt::AlignCenter);
 }
 
 void TextMark::paintAnnotation(QPainter &painter, QRectF *annotationRect,
@@ -139,8 +144,10 @@ void TextMark::paintAnnotation(QPainter &painter, QRectF *annotationRect,
     const QColor &markColor = m_color.has_value()
                                   ? Utils::creatorTheme()->color(m_color.value()).toHsl()
                                   : painter.pen().color();
+
+    const FontSettings &fontSettings = m_baseTextDocument->fontSettings();
     const AnnotationColors &colors = AnnotationColors::getAnnotationColors(
-                markColor, painter.background().color());
+                markColor, fontSettings.toTextCharFormat(C_TEXT).background().color());
 
     painter.save();
     QLinearGradient grad(rects.fadeInRect.topLeft() - contentOffset,
@@ -176,7 +183,7 @@ TextMark::AnnotationRects TextMark::annotationRects(const QRectF &boundingRect,
     rects.fadeInRect.setWidth(fadeInOffset);
     rects.annotationRect = boundingRect;
     rects.annotationRect.setLeft(rects.fadeInRect.right());
-    const bool drawIcon = !m_icon.isNull();
+    const bool drawIcon = !icon().isNull();
     constexpr qreal margin = 1;
     rects.iconRect = QRectF(rects.annotationRect.left(), boundingRect.top(),
                             0, boundingRect.height());
@@ -280,9 +287,10 @@ void TextMark::addToToolTipLayout(QGridLayout *target) const
 
     // Left column: text mark icon
     const int row = target->rowCount();
-    if (!m_icon.isNull()) {
+    const QIcon icon = this->icon();
+    if (!icon.isNull()) {
         auto iconLabel = new QLabel;
-        iconLabel->setPixmap(m_icon.pixmap(16, 16));
+        iconLabel->setPixmap(icon.pixmap(16, 16));
         target->addWidget(iconLabel, row, 0, Qt::AlignTop | Qt::AlignHCenter);
     }
 
@@ -290,15 +298,19 @@ void TextMark::addToToolTipLayout(QGridLayout *target) const
     target->addLayout(contentLayout, row, 1);
 
     // Right column: action icons/button
-    if (!m_actions.isEmpty()) {
+    QVector<QAction *> actions = m_actions;
+    if (m_settingsAction)
+        actions << m_settingsAction;
+    if (!actions.isEmpty()) {
         auto actionsLayout = new QHBoxLayout;
         QMargins margins = actionsLayout->contentsMargins();
         margins.setLeft(margins.left() + 5);
         actionsLayout->setContentsMargins(margins);
-        for (QAction *action : m_actions) {
+        for (QAction *action : qAsConst(actions)) {
             QTC_ASSERT(!action->icon().isNull(), continue);
             auto button = new QToolButton;
             button->setIcon(action->icon());
+            button->setToolTip(action->toolTip());
             QObject::connect(button, &QToolButton::clicked, action, &QAction::triggered);
             QObject::connect(button, &QToolButton::clicked, []() {
                 Utils::ToolTip::hideImmediately();
@@ -311,8 +323,10 @@ void TextMark::addToToolTipLayout(QGridLayout *target) const
 
 bool TextMark::addToolTipContent(QLayout *target) const
 {
-    QString text = m_toolTip;
+    bool useDefaultToolTip = false;
+    QString text = toolTip();
     if (text.isEmpty()) {
+        useDefaultToolTip = true;
         text = m_defaultToolTip;
         if (text.isEmpty())
             return false;
@@ -322,10 +336,26 @@ bool TextMark::addToolTipContent(QLayout *target) const
     textLabel->setOpenExternalLinks(true);
     textLabel->setText(text);
     // Differentiate between tool tips that where explicitly set and default tool tips.
-    textLabel->setEnabled(!m_toolTip.isEmpty());
+    textLabel->setDisabled(useDefaultToolTip);
     target->addWidget(textLabel);
 
     return true;
+}
+
+void TextMark::setIcon(const QIcon &icon)
+{
+    m_icon = icon;
+    m_iconProvider = std::function<QIcon()>();
+}
+
+void TextMark::setIconProvider(const std::function<QIcon ()> &iconProvider)
+{
+    m_iconProvider = iconProvider;
+}
+
+const QIcon TextMark::icon() const
+{
+    return m_iconProvider ? m_iconProvider() : m_icon;
 }
 
 Utils::optional<Theme::Color> TextMark::color() const
@@ -338,6 +368,22 @@ void TextMark::setColor(const Theme::Color &color)
     m_color = color;
 }
 
+void TextMark::setToolTipProvider(const std::function<QString()> &toolTipProvider)
+{
+    m_toolTipProvider = toolTipProvider;
+}
+
+QString TextMark::toolTip() const
+{
+    return m_toolTipProvider ? m_toolTipProvider() : m_toolTip;
+}
+
+void TextMark::setToolTip(const QString &toolTip)
+{
+    m_toolTip = toolTip;
+    m_toolTipProvider = std::function<QString()>();
+}
+
 QVector<QAction *> TextMark::actions() const
 {
     return m_actions;
@@ -346,6 +392,17 @@ QVector<QAction *> TextMark::actions() const
 void TextMark::setActions(const QVector<QAction *> &actions)
 {
     m_actions = actions;
+}
+
+void TextMark::setSettingsPage(Id settingsPage)
+{
+    delete m_settingsAction;
+    m_settingsAction = new QAction;
+    m_settingsAction->setIcon(Utils::Icons::SETTINGS_TOOLBAR.icon());
+    m_settingsAction->setToolTip(tr("Show Diagnostic Settings"));
+    QObject::connect(m_settingsAction, &QAction::triggered, [this, settingsPage] {
+        Core::ICore::showOptionsDialog(settingsPage);
+    });
 }
 
 TextMarkRegistry::TextMarkRegistry(QObject *parent)

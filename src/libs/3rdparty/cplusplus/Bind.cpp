@@ -135,6 +135,8 @@ void Bind::setDeclSpecifiers(Symbol *symbol, const FullySpecifiedType &declSpeci
     if (Function *funTy = symbol->asFunction()) {
         if (declSpecifiers.isVirtual())
             funTy->setVirtual(true);
+        if (declSpecifiers.isStatic())
+            funTy->setStatic(true);
     }
 
     if (declSpecifiers.isDeprecated())
@@ -918,6 +920,19 @@ void Bind::parameterDeclarationClause(ParameterDeclarationClauseAST *ast, int lp
 
     for (ParameterDeclarationListAST *it = ast->parameter_declaration_list; it; it = it->next) {
         this->declaration(it->value);
+
+        // Check for '...' in last parameter declarator for variadic template
+        // (i.e. template<class ... T> void foo(T ... args);)
+        // those last dots are part of parameter declarator, not the parameter declaration clause
+        if (! it->next
+            && it->value->declarator != nullptr
+            && it->value->declarator->core_declarator != nullptr){
+            DeclaratorIdAST* declId = it->value->declarator->core_declarator->asDeclaratorId();
+            if (declId && declId->dot_dot_dot_token != 0){
+                fun->setVariadic(true);
+                fun->setVariadicTemplate(true);
+            }
+        }
     }
 
     if (ast->dot_dot_dot_token)
@@ -1238,12 +1253,39 @@ const StringLiteral *Bind::asStringLiteral(const AST *ast)
     const int firstToken = ast->firstToken();
     const int lastToken = ast->lastToken();
     std::string buffer;
+
+    const auto token = tokenAt(ast->firstToken());
+
+    if (token.isCharLiteral()) {
+        if (token.kind() == T_WIDE_CHAR_LITERAL)
+            buffer += 'L';
+        else if (token.kind() == T_UTF16_CHAR_LITERAL)
+            buffer += 'u';
+        else if (token.kind() == T_UTF32_CHAR_LITERAL)
+            buffer += 'U';
+        buffer += '\'';
+    } else if (token.isStringLiteral()) {
+        if (token.kind() == T_WIDE_STRING_LITERAL)
+            buffer += 'L';
+        else if (token.kind() == T_UTF16_STRING_LITERAL)
+            buffer += 'u';
+        else if (token.kind() == T_UTF32_STRING_LITERAL)
+            buffer += 'U';
+        else if (token.kind() == T_UTF8_STRING_LITERAL)
+            buffer += "u8";
+        buffer += '"';
+    }
     for (int index = firstToken; index != lastToken; ++index) {
         const Token &tk = tokenAt(index);
         if (index != firstToken && (tk.whitespace() || tk.newline()))
             buffer += ' ';
         buffer += tk.spell();
     }
+    if (token.isCharLiteral())
+        buffer += '\'';
+    else if (token.isStringLiteral())
+        buffer += '"';
+
     return control()->stringLiteral(buffer.c_str(), int(buffer.size()));
 }
 
@@ -1879,6 +1921,7 @@ bool Bind::visit(LambdaExpressionAST *ast)
 {
     this->lambdaIntroducer(ast->lambda_introducer);
     if (Function *function = this->lambdaDeclarator(ast->lambda_declarator)) {
+        function->setSourceLocation(ast->lambda_introducer->firstToken(), translationUnit());
         _scope->addMember(function);
         Scope *previousScope = switchScope(function);
         this->statement(ast->statement);
@@ -2238,6 +2281,19 @@ bool Bind::visit(FunctionDefinitionAST *ast)
 
     Function *fun = type->asFunctionType();
     ast->symbol = fun;
+
+    if (!fun && ast->declarator && ast->declarator->initializer)
+        if (ExpressionListParenAST *exprAst = ast->declarator->initializer->asExpressionListParen()) {
+            // this could be non-expanded function like macro, because
+            // for find usages we parse without expanding them
+            // So we create dummy function type here for findUsages to see function body
+            fun = control()->newFunction(0, nullptr);
+            fun->setStartOffset(tokenAt(exprAst->firstToken()).utf16charsBegin());
+            fun->setEndOffset(tokenAt(exprAst->lastToken() - 1).utf16charsEnd());
+
+            type = fun;
+            ast->symbol = fun;
+        }
 
     if (fun) {
         setDeclSpecifiers(fun, declSpecifiers);
@@ -2767,10 +2823,27 @@ bool Bind::visit(DestructorNameAST *ast)
 bool Bind::visit(TemplateIdAST *ast)
 {
     // collect the template parameters
-    std::vector<FullySpecifiedType> templateArguments;
+    std::vector<TemplateArgument> templateArguments;
     for (ExpressionListAST *it = ast->template_argument_list; it; it = it->next) {
         ExpressionTy value = this->expression(it->value);
-        templateArguments.push_back(value);
+        if (value.isValid()) {
+            templateArguments.emplace_back(value);
+        } else {
+            // special case for numeric values
+            if (it->value->asNumericLiteral()) {
+                templateArguments
+                    .emplace_back(value,
+                                  tokenAt(it->value->asNumericLiteral()->literal_token).number);
+            } else if (it->value->asBoolLiteral()) {
+                templateArguments
+                    .emplace_back(value, tokenAt(it->value->asBoolLiteral()->literal_token).number);
+            } else {
+                // fall back to non-valid type in templateArguments
+                // for ast->template_argument_list and templateArguments sizes match
+                // TODO support other literals/expressions as default arguments
+                templateArguments.emplace_back(value);
+            }
+        }
     }
 
     const Identifier *id = identifier(ast->identifier_token);
@@ -3014,6 +3087,22 @@ bool Bind::visit(GnuAttributeSpecifierAST *ast)
     return false;
 }
 
+bool Bind::visit(MsvcDeclspecSpecifierAST *ast)
+{
+    for (GnuAttributeListAST *it = ast->attribute_list; it; it = it->next) {
+        this->attribute(it->value);
+    }
+    return false;
+}
+
+bool Bind::visit(StdAttributeSpecifierAST *ast)
+{
+    for (GnuAttributeListAST *it = ast->attribute_list; it; it = it->next) {
+        this->attribute(it->value);
+    }
+    return false;
+}
+
 bool Bind::visit(TypeofSpecifierAST *ast)
 {
     ExpressionTy expression = this->expression(ast->expression);
@@ -3130,6 +3219,10 @@ bool Bind::visit(EnumSpecifierAST *ast)
     }
 
     (void) switchScope(previousScope);
+    if (ast->name)
+        _type.setType(control()->namedType(this->name(ast->name)));
+    else
+        _type.setType(ast->symbol);
     return false;
 }
 
@@ -3243,10 +3336,20 @@ bool Bind::visit(FunctionDeclaratorAST *ast)
         _type = this->trailingReturnType(ast->trailing_return_type, _type);
     fun->setReturnType(_type);
 
+    // "static", "virtual" etc.
+    FullySpecifiedType declSpecifiers;
+    for (SpecifierListAST *it = ast->decl_specifier_list; it; it = it->next)
+        declSpecifiers = this->specifier(it->value, declSpecifiers);
+    setDeclSpecifiers(fun, declSpecifiers);
+
     // int lparen_token = ast->lparen_token;
     this->parameterDeclarationClause(ast->parameter_declaration_clause, ast->lparen_token, fun);
     // int rparen_token = ast->rparen_token;
     FullySpecifiedType type(fun);
+    type.setStatic(declSpecifiers.isStatic());
+    type.setVirtual(declSpecifiers.isVirtual());
+    type.setDeprecated(declSpecifiers.isDeprecated());
+    type.setUnavailable(declSpecifiers.isUnavailable());
     for (SpecifierListAST *it = ast->cv_qualifier_list; it; it = it->next) {
         type = this->specifier(it->value, type);
     }

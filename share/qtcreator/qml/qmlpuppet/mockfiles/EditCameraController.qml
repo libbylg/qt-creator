@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.12
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 
 Item {
     id: cameraCtrl
@@ -43,13 +43,14 @@ Item {
     property int _button
     property real _zoomFactor: 1
     property Camera _prevCamera: null
-    readonly property vector3d _defaultCameraPosition: Qt.vector3d(0, 600, -600)
-    readonly property vector3d _defaultCameraRotation: Qt.vector3d(45, 0, 0)
+    readonly property vector3d _defaultCameraPosition: Qt.vector3d(0, 600, 600)
+    readonly property vector3d _defaultCameraRotation: Qt.vector3d(-45, 0, 0)
     readonly property real _defaultCameraLookAtDistance: _defaultCameraPosition.length()
+    property bool ignoreToolState: false
 
     function restoreCameraState(cameraState)
     {
-        if (!camera)
+        if (!camera || ignoreToolState)
             return;
 
         _lookAtPoint = cameraState[0];
@@ -68,14 +69,14 @@ Item {
         _lookAtPoint = Qt.vector3d(0, 0, 0);
         _zoomFactor = 1;
         camera.position = _defaultCameraPosition;
-        camera.rotation = _defaultCameraRotation;
+        camera.eulerRotation = _defaultCameraRotation;
         _generalHelper.zoomCamera(camera, 0, _defaultCameraLookAtDistance, _lookAtPoint,
                                   _zoomFactor, false);
     }
 
     function storeCameraState(delay)
     {
-        if (!camera)
+        if (!camera || ignoreToolState)
             return;
 
         var cameraState = [];
@@ -87,14 +88,15 @@ Item {
     }
 
 
-    function focusObject(targetObject, rotation, updateZoom)
+    function focusObject(targetObject, rotation, updateZoom, closeUp)
     {
         if (!camera)
             return;
 
-        camera.rotation = rotation;
+        camera.eulerRotation = rotation;
         var newLookAtAndZoom = _generalHelper.focusObjectToCamera(
-                    camera, _defaultCameraLookAtDistance, targetObject, view3d, _zoomFactor, updateZoom);
+                    camera, _defaultCameraLookAtDistance, targetObject, view3d, _zoomFactor,
+                    updateZoom, closeUp);
         _lookAtPoint = newLookAtAndZoom.toVector3d();
         _zoomFactor = newLookAtAndZoom.w;
         storeCameraState(0);
@@ -151,7 +153,7 @@ Item {
         onPressed: {
             if (cameraCtrl.camera && mouse.modifiers === Qt.AltModifier) {
                 cameraCtrl._dragging = true;
-                cameraCtrl._startRotation = cameraCtrl.camera.rotation;
+                cameraCtrl._startRotation = cameraCtrl.camera.eulerRotation;
                 cameraCtrl._startPosition = cameraCtrl.camera.position;
                 cameraCtrl._startLookAtPoint = _lookAtPoint;
                 cameraCtrl._pressPoint = Qt.vector3d(mouse.x, mouse.y, 0);

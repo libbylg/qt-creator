@@ -27,6 +27,8 @@
 
 #include "qmljsastvisitor_p.h"
 
+#include <QLocale>
+
 QT_QML_BEGIN_NAMESPACE
 
 namespace QmlJS { namespace AST {
@@ -153,7 +155,7 @@ UiObjectMember *UiObjectMember::uiObjectMemberCast()
     return this;
 }
 
-void NestedExpression::accept0(Visitor *visitor)
+void NestedExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -171,7 +173,7 @@ ClassExpression *NestedExpression::asClassDefinition()
     return expression->asClassDefinition();
 }
 
-void ThisExpression::accept0(Visitor *visitor)
+void ThisExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -179,7 +181,7 @@ void ThisExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void IdentifierExpression::accept0(Visitor *visitor)
+void IdentifierExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -187,7 +189,7 @@ void IdentifierExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void NullExpression::accept0(Visitor *visitor)
+void NullExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -195,7 +197,7 @@ void NullExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TrueLiteral::accept0(Visitor *visitor)
+void TrueLiteral::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -203,7 +205,7 @@ void TrueLiteral::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void FalseLiteral::accept0(Visitor *visitor)
+void FalseLiteral::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -211,7 +213,7 @@ void FalseLiteral::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void SuperLiteral::accept0(Visitor *visitor)
+void SuperLiteral::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -220,7 +222,7 @@ void SuperLiteral::accept0(Visitor *visitor)
 }
 
 
-void StringLiteral::accept0(Visitor *visitor)
+void StringLiteral::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -228,7 +230,7 @@ void StringLiteral::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TemplateLiteral::accept0(Visitor *visitor)
+void TemplateLiteral::accept0(BaseVisitor *visitor)
 {
     bool accepted = true;
     for (TemplateLiteral *it = this; it && accepted; it = it->next) {
@@ -237,7 +239,7 @@ void TemplateLiteral::accept0(Visitor *visitor)
     }
 }
 
-void NumericLiteral::accept0(Visitor *visitor)
+void NumericLiteral::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -245,7 +247,7 @@ void NumericLiteral::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void RegExpLiteral::accept0(Visitor *visitor)
+void RegExpLiteral::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -253,7 +255,7 @@ void RegExpLiteral::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ArrayPattern::accept0(Visitor *visitor)
+void ArrayPattern::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this))
         accept(elements, visitor);
@@ -273,7 +275,7 @@ bool ArrayPattern::isValidArrayLiteral(SourceLocation *errorLocation) const {
     return true;
 }
 
-void ObjectPattern::accept0(Visitor *visitor)
+void ObjectPattern::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(properties, visitor);
@@ -448,7 +450,7 @@ bool PatternProperty::convertLiteralToAssignmentPattern(MemoryPool *pool, Source
 }
 
 
-void Elision::accept0(Visitor *visitor)
+void Elision::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         // ###
@@ -457,7 +459,7 @@ void Elision::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void IdentifierPropertyName::accept0(Visitor *visitor)
+void IdentifierPropertyName::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -465,7 +467,7 @@ void IdentifierPropertyName::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void StringLiteralPropertyName::accept0(Visitor *visitor)
+void StringLiteralPropertyName::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -473,7 +475,7 @@ void StringLiteralPropertyName::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void NumericLiteralPropertyName::accept0(Visitor *visitor)
+void NumericLiteralPropertyName::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -503,7 +505,7 @@ QString NumericLiteralPropertyName::asString()const
     return locale.toString(id, 'g', 16);
 }
 
-void ArrayMemberExpression::accept0(Visitor *visitor)
+void ArrayMemberExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(base, visitor);
@@ -513,7 +515,7 @@ void ArrayMemberExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void FieldMemberExpression::accept0(Visitor *visitor)
+void FieldMemberExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(base, visitor);
@@ -522,7 +524,7 @@ void FieldMemberExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void NewMemberExpression::accept0(Visitor *visitor)
+void NewMemberExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(base, visitor);
@@ -532,7 +534,7 @@ void NewMemberExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void NewExpression::accept0(Visitor *visitor)
+void NewExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -541,7 +543,7 @@ void NewExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void CallExpression::accept0(Visitor *visitor)
+void CallExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(base, visitor);
@@ -551,7 +553,7 @@ void CallExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ArgumentList::accept0(Visitor *visitor)
+void ArgumentList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (ArgumentList *it = this; it; it = it->next) {
@@ -562,7 +564,7 @@ void ArgumentList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void PostIncrementExpression::accept0(Visitor *visitor)
+void PostIncrementExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(base, visitor);
@@ -571,7 +573,7 @@ void PostIncrementExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void PostDecrementExpression::accept0(Visitor *visitor)
+void PostDecrementExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(base, visitor);
@@ -580,7 +582,7 @@ void PostDecrementExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void DeleteExpression::accept0(Visitor *visitor)
+void DeleteExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -589,7 +591,7 @@ void DeleteExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void VoidExpression::accept0(Visitor *visitor)
+void VoidExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -598,7 +600,7 @@ void VoidExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TypeOfExpression::accept0(Visitor *visitor)
+void TypeOfExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -607,7 +609,7 @@ void TypeOfExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void PreIncrementExpression::accept0(Visitor *visitor)
+void PreIncrementExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -616,7 +618,7 @@ void PreIncrementExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void PreDecrementExpression::accept0(Visitor *visitor)
+void PreDecrementExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -625,7 +627,7 @@ void PreDecrementExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UnaryPlusExpression::accept0(Visitor *visitor)
+void UnaryPlusExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -634,7 +636,7 @@ void UnaryPlusExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UnaryMinusExpression::accept0(Visitor *visitor)
+void UnaryMinusExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -643,7 +645,7 @@ void UnaryMinusExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TildeExpression::accept0(Visitor *visitor)
+void TildeExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -652,7 +654,7 @@ void TildeExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void NotExpression::accept0(Visitor *visitor)
+void NotExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -661,7 +663,7 @@ void NotExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void BinaryExpression::accept0(Visitor *visitor)
+void BinaryExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(left, visitor);
@@ -671,7 +673,7 @@ void BinaryExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ConditionalExpression::accept0(Visitor *visitor)
+void ConditionalExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -682,7 +684,7 @@ void ConditionalExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void Expression::accept0(Visitor *visitor)
+void Expression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(left, visitor);
@@ -692,7 +694,7 @@ void Expression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void Block::accept0(Visitor *visitor)
+void Block::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(statements, visitor);
@@ -701,7 +703,7 @@ void Block::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void StatementList::accept0(Visitor *visitor)
+void StatementList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (StatementList *it = this; it; it = it->next) {
@@ -712,7 +714,7 @@ void StatementList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void VariableStatement::accept0(Visitor *visitor)
+void VariableStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(declarations, visitor);
@@ -721,7 +723,7 @@ void VariableStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void VariableDeclarationList::accept0(Visitor *visitor)
+void VariableDeclarationList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (VariableDeclarationList *it = this; it; it = it->next) {
@@ -732,7 +734,7 @@ void VariableDeclarationList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void EmptyStatement::accept0(Visitor *visitor)
+void EmptyStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -740,7 +742,7 @@ void EmptyStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ExpressionStatement::accept0(Visitor *visitor)
+void ExpressionStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -749,7 +751,7 @@ void ExpressionStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void IfStatement::accept0(Visitor *visitor)
+void IfStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -760,7 +762,7 @@ void IfStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void DoWhileStatement::accept0(Visitor *visitor)
+void DoWhileStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(statement, visitor);
@@ -770,7 +772,7 @@ void DoWhileStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void WhileStatement::accept0(Visitor *visitor)
+void WhileStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -780,7 +782,7 @@ void WhileStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ForStatement::accept0(Visitor *visitor)
+void ForStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(initialiser, visitor);
@@ -793,7 +795,7 @@ void ForStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ForEachStatement::accept0(Visitor *visitor)
+void ForEachStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(lhs, visitor);
@@ -804,7 +806,7 @@ void ForEachStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ContinueStatement::accept0(Visitor *visitor)
+void ContinueStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -812,7 +814,7 @@ void ContinueStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void BreakStatement::accept0(Visitor *visitor)
+void BreakStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -820,16 +822,7 @@ void BreakStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ReturnStatement::accept0(Visitor *visitor)
-{
-    if (visitor->visit(this)) {
-        accept(expression, visitor);
-    }
-
-    visitor->endVisit(this);
-}
-
-void YieldExpression::accept0(Visitor *visitor)
+void ReturnStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -838,8 +831,17 @@ void YieldExpression::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
+void YieldExpression::accept0(BaseVisitor *visitor)
+{
+    if (visitor->visit(this)) {
+        accept(expression, visitor);
+    }
 
-void WithStatement::accept0(Visitor *visitor)
+    visitor->endVisit(this);
+}
+
+
+void WithStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -849,7 +851,7 @@ void WithStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void SwitchStatement::accept0(Visitor *visitor)
+void SwitchStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -859,7 +861,7 @@ void SwitchStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void CaseBlock::accept0(Visitor *visitor)
+void CaseBlock::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(clauses, visitor);
@@ -870,7 +872,7 @@ void CaseBlock::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void CaseClauses::accept0(Visitor *visitor)
+void CaseClauses::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (CaseClauses *it = this; it; it = it->next) {
@@ -881,7 +883,7 @@ void CaseClauses::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void CaseClause::accept0(Visitor *visitor)
+void CaseClause::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -891,7 +893,7 @@ void CaseClause::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void DefaultClause::accept0(Visitor *visitor)
+void DefaultClause::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(statements, visitor);
@@ -900,7 +902,7 @@ void DefaultClause::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void LabelledStatement::accept0(Visitor *visitor)
+void LabelledStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(statement, visitor);
@@ -909,7 +911,7 @@ void LabelledStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ThrowStatement::accept0(Visitor *visitor)
+void ThrowStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -918,7 +920,7 @@ void ThrowStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TryStatement::accept0(Visitor *visitor)
+void TryStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(statement, visitor);
@@ -929,7 +931,7 @@ void TryStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void Catch::accept0(Visitor *visitor)
+void Catch::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(patternElement, visitor);
@@ -939,7 +941,7 @@ void Catch::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void Finally::accept0(Visitor *visitor)
+void Finally::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(statement, visitor);
@@ -948,7 +950,7 @@ void Finally::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void FunctionDeclaration::accept0(Visitor *visitor)
+void FunctionDeclaration::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(formals, visitor);
@@ -959,7 +961,7 @@ void FunctionDeclaration::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void FunctionExpression::accept0(Visitor *visitor)
+void FunctionExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(formals, visitor);
@@ -1004,7 +1006,7 @@ BoundNames FormalParameterList::boundNames() const
     return names;
 }
 
-void FormalParameterList::accept0(Visitor *visitor)
+void FormalParameterList::accept0(BaseVisitor *visitor)
 {
     bool accepted = true;
     for (FormalParameterList *it = this; it && accepted; it = it->next) {
@@ -1029,7 +1031,7 @@ FormalParameterList *FormalParameterList::finish(QmlJS::MemoryPool *pool)
     return front;
 }
 
-void Program::accept0(Visitor *visitor)
+void Program::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(statements, visitor);
@@ -1038,7 +1040,7 @@ void Program::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ImportSpecifier::accept0(Visitor *visitor)
+void ImportSpecifier::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
 
@@ -1046,7 +1048,7 @@ void ImportSpecifier::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ImportsList::accept0(Visitor *visitor)
+void ImportsList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (ImportsList *it = this; it; it = it->next) {
@@ -1057,7 +1059,7 @@ void ImportsList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void NamedImports::accept0(Visitor *visitor)
+void NamedImports::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(importsList, visitor);
@@ -1066,7 +1068,7 @@ void NamedImports::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void FromClause::accept0(Visitor *visitor)
+void FromClause::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -1074,7 +1076,7 @@ void FromClause::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void NameSpaceImport::accept0(Visitor *visitor)
+void NameSpaceImport::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -1082,7 +1084,7 @@ void NameSpaceImport::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ImportClause::accept0(Visitor *visitor)
+void ImportClause::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(nameSpaceImport, visitor);
@@ -1092,7 +1094,7 @@ void ImportClause::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ImportDeclaration::accept0(Visitor *visitor)
+void ImportDeclaration::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(importClause, visitor);
@@ -1102,7 +1104,7 @@ void ImportDeclaration::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ExportSpecifier::accept0(Visitor *visitor)
+void ExportSpecifier::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
 
@@ -1111,7 +1113,7 @@ void ExportSpecifier::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ExportsList::accept0(Visitor *visitor)
+void ExportsList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (ExportsList *it = this; it; it = it->next) {
@@ -1122,7 +1124,7 @@ void ExportsList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ExportClause::accept0(Visitor *visitor)
+void ExportClause::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(exportsList, visitor);
@@ -1131,7 +1133,7 @@ void ExportClause::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ExportDeclaration::accept0(Visitor *visitor)
+void ExportDeclaration::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(fromClause, visitor);
@@ -1142,7 +1144,7 @@ void ExportDeclaration::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ESModule::accept0(Visitor *visitor)
+void ESModule::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(body, visitor);
@@ -1151,7 +1153,7 @@ void ESModule::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void DebuggerStatement::accept0(Visitor *visitor)
+void DebuggerStatement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -1159,7 +1161,7 @@ void DebuggerStatement::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiProgram::accept0(Visitor *visitor)
+void UiProgram::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(headers, visitor);
@@ -1169,19 +1171,23 @@ void UiProgram::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiPublicMember::accept0(Visitor *visitor)
+void UiPublicMember::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
+        // accept(memberType, visitor); // accept manually in visit if interested
         accept(statement, visitor);
         accept(binding, visitor);
+        // accept(parameters, visitor); // accept manually in visit if interested
     }
 
     visitor->endVisit(this);
 }
 
-void UiObjectDefinition::accept0(Visitor *visitor)
+void UiObjectDefinition::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
         accept(qualifiedTypeNameId, visitor);
         accept(initializer, visitor);
     }
@@ -1189,7 +1195,7 @@ void UiObjectDefinition::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiObjectInitializer::accept0(Visitor *visitor)
+void UiObjectInitializer::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(members, visitor);
@@ -1198,16 +1204,18 @@ void UiObjectInitializer::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiParameterList::accept0(Visitor *visitor)
+void UiParameterList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(type, visitor); // accept manually in visit if interested
     }
     visitor->endVisit(this);
 }
 
-void UiObjectBinding::accept0(Visitor *visitor)
+void UiObjectBinding::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
         accept(qualifiedId, visitor);
         accept(qualifiedTypeNameId, visitor);
         accept(initializer, visitor);
@@ -1216,9 +1224,10 @@ void UiObjectBinding::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiScriptBinding::accept0(Visitor *visitor)
+void UiScriptBinding::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
         accept(qualifiedId, visitor);
         accept(statement, visitor);
     }
@@ -1226,9 +1235,10 @@ void UiScriptBinding::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiArrayBinding::accept0(Visitor *visitor)
+void UiArrayBinding::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
         accept(qualifiedId, visitor);
         accept(members, visitor);
     }
@@ -1236,7 +1246,7 @@ void UiArrayBinding::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiObjectMemberList::accept0(Visitor *visitor)
+void UiObjectMemberList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (UiObjectMemberList *it = this; it; it = it->next)
@@ -1246,7 +1256,7 @@ void UiObjectMemberList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiArrayMemberList::accept0(Visitor *visitor)
+void UiArrayMemberList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (UiArrayMemberList *it = this; it; it = it->next)
@@ -1256,15 +1266,16 @@ void UiArrayMemberList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiQualifiedId::accept0(Visitor *visitor)
+void UiQualifiedId::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(next, visitor) // accept manually in visit if interested
     }
 
     visitor->endVisit(this);
 }
 
-void Type::accept0(Visitor *visitor)
+void Type::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(typeId, visitor);
@@ -1274,7 +1285,7 @@ void Type::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TypeArgumentList::accept0(Visitor *visitor)
+void TypeArgumentList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         for (TypeArgumentList *it = this; it; it = it->next)
@@ -1284,7 +1295,7 @@ void TypeArgumentList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TypeAnnotation::accept0(Visitor *visitor)
+void TypeAnnotation::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(type, visitor);
@@ -1293,16 +1304,17 @@ void TypeAnnotation::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiImport::accept0(Visitor *visitor)
+void UiImport::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(importUri, visitor);
+        // accept(version, visitor); // accept manually in visit if interested
     }
 
     visitor->endVisit(this);
 }
 
-void UiPragma::accept0(Visitor *visitor)
+void UiPragma::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -1310,7 +1322,7 @@ void UiPragma::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void UiHeaderItemList::accept0(Visitor *visitor)
+void UiHeaderItemList::accept0(BaseVisitor *visitor)
 {
     bool accepted = true;
     for (UiHeaderItemList *it = this; it && accepted; it = it->next) {
@@ -1323,25 +1335,27 @@ void UiHeaderItemList::accept0(Visitor *visitor)
 }
 
 
-void UiSourceElement::accept0(Visitor *visitor)
+void UiSourceElement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
         accept(sourceElement, visitor);
     }
 
     visitor->endVisit(this);
 }
 
-void UiEnumDeclaration::accept0(Visitor *visitor)
+void UiEnumDeclaration::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
         accept(members, visitor);
     }
 
     visitor->endVisit(this);
 }
 
-void UiEnumMemberList::accept0(Visitor *visitor)
+void UiEnumMemberList::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -1349,7 +1363,7 @@ void UiEnumMemberList::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void TaggedTemplate::accept0(Visitor *visitor)
+void TaggedTemplate::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(base, visitor);
@@ -1359,7 +1373,7 @@ void TaggedTemplate::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void PatternElement::accept0(Visitor *visitor)
+void PatternElement::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(bindingTarget, visitor);
@@ -1382,7 +1396,7 @@ void PatternElement::boundNames(BoundNames *names)
     }
 }
 
-void PatternElementList::accept0(Visitor *visitor)
+void PatternElementList::accept0(BaseVisitor *visitor)
 {
     bool accepted = true;
     for (PatternElementList *it = this; it && accepted; it = it->next) {
@@ -1403,7 +1417,7 @@ void PatternElementList::boundNames(BoundNames *names)
     }
 }
 
-void PatternProperty::accept0(Visitor *visitor)
+void PatternProperty::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(name, visitor);
@@ -1420,7 +1434,7 @@ void PatternProperty::boundNames(BoundNames *names)
     PatternElement::boundNames(names);
 }
 
-void PatternPropertyList::accept0(Visitor *visitor)
+void PatternPropertyList::accept0(BaseVisitor *visitor)
 {
     bool accepted = true;
     for (PatternPropertyList *it = this; it && accepted; it = it->next) {
@@ -1437,7 +1451,7 @@ void PatternPropertyList::boundNames(BoundNames *names)
         it->property->boundNames(names);
 }
 
-void ComputedPropertyName::accept0(Visitor *visitor)
+void ComputedPropertyName::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(expression, visitor);
@@ -1446,7 +1460,7 @@ void ComputedPropertyName::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ClassExpression::accept0(Visitor *visitor)
+void ClassExpression::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(heritage, visitor);
@@ -1461,7 +1475,7 @@ ClassExpression *ClassExpression::asClassDefinition()
     return this;
 }
 
-void ClassDeclaration::accept0(Visitor *visitor)
+void ClassDeclaration::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(heritage, visitor);
@@ -1471,7 +1485,7 @@ void ClassDeclaration::accept0(Visitor *visitor)
     visitor->endVisit(this);
 }
 
-void ClassElementList::accept0(Visitor *visitor)
+void ClassElementList::accept0(BaseVisitor *visitor)
 {
     bool accepted = true;
     for (ClassElementList *it = this; it && accepted; it = it->next) {
@@ -1500,7 +1514,7 @@ LeftHandSideExpression *LeftHandSideExpression::leftHandSideExpressionCast()
     return this;
 }
 
-void UiVersionSpecifier::accept0(Visitor *visitor)
+void UiVersionSpecifier::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
     }
@@ -1517,7 +1531,7 @@ QString Type::toString() const
 void Type::toString(QString *out) const
 {
     for (QmlJS::AST::UiQualifiedId *it = typeId; it; it = it->next) {
-        out->append(it->name);
+        out->append(it->name.toString());
 
         if (it->next)
             out->append(QLatin1Char('.'));
@@ -1529,6 +1543,44 @@ void Type::toString(QString *out) const
             subType->toString(out);
         out->append(QLatin1Char('>'));
     };
+}
+
+void UiInlineComponent::accept0(BaseVisitor *visitor)
+{
+    if (visitor->visit(this)) {
+        // accept(annotations, visitor); // accept manually in visit if interested
+        accept(component, visitor);
+    }
+
+    visitor->endVisit(this);
+}
+
+void UiRequired::accept0(BaseVisitor *visitor)
+{
+    if (visitor->visit(this)) {
+    }
+
+    visitor->endVisit(this);
+}
+
+void UiAnnotationList::accept0(BaseVisitor *visitor)
+{
+    if (visitor->visit(this)) {
+        for (UiAnnotationList *it = this; it; it = it->next)
+            accept(it->annotation, visitor);
+    }
+
+    visitor->endVisit(this);
+}
+
+void UiAnnotation::accept0(BaseVisitor *visitor)
+{
+    if (visitor->visit(this)) {
+        accept(qualifiedTypeNameId, visitor);
+        accept(initializer, visitor);
+    }
+
+    visitor->endVisit(this);
 }
 
 } } // namespace QmlJS::AST

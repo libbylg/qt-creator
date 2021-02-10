@@ -27,6 +27,8 @@
 
 #include <QAbstractTableModel>
 #include <QDir>
+#include <QPair>
+#include <QSet>
 
 QT_BEGIN_NAMESPACE
 class QFileIconProvider;
@@ -37,11 +39,14 @@ namespace Utils { class FileSystemWatcher; }
 
 namespace QmlDesigner {
 
+class SynchronousImageCache;
+
 class CustomFileSystemModel : public QAbstractListModel
 {
     Q_OBJECT
 public:
-    CustomFileSystemModel(QObject *parent = nullptr);
+    CustomFileSystemModel(QmlDesigner::SynchronousImageCache &fontImageCache,
+                          QObject *parent = nullptr);
 
     void setFilter(QDir::Filters filters);
     QString rootPath() const;
@@ -59,6 +64,10 @@ public:
 
     Qt::ItemFlags flags(const QModelIndex &index) const override;
     void setSearchFilter(const QString &nameFilterList);
+
+    QPair<QString, QByteArray> resourceTypeAndData(const QModelIndex &index) const;
+    const QSet<QString> &supportedSuffixes() const;
+    const QSet<QString> &previewableSuffixes() const;
 
 private:
     QModelIndex updatePath(const QString &newPath);

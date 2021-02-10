@@ -26,7 +26,6 @@
 ****************************************************************************/
 
 /*!
-    \contentspage index.html
     \previouspage creator-project-qbs.html
     \page creator-projects-autotools.html
     \nextpage creator-project-generic.html
@@ -36,9 +35,8 @@
     The AutotoolsProjectManager is a plugin for autotools support. It is
     disabled by default. To enable the plugin, select \uicontrol Help >
     \uicontrol {About Plugins} > \uicontrol {Build Systems} >
-    \uicontrol AutotoolsProjectManager.
-
-    To use the plugin, restart \QC.
+    \uicontrol AutotoolsProjectManager.Then select \uicontrol {Restart Now}
+    to restart \QC and load the plugin.
 
     To work with your Autotools project in \QC:
 

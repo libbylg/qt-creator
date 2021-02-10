@@ -27,10 +27,29 @@
 
 #include "texteditor/codeassist/keywordscompletionassist.h"
 
+#include <android/androidconstants.h>
+
 const TextEditor::Keywords &QmakeProjectManager::Internal::qmakeKeywords()
 {
     static TextEditor::Keywords keywords(
                 QStringList{ // variables
+                    "ANDROID_ABIS",
+                    "ANDROID_API_VERSION",
+                    QLatin1String(Android::Constants::ANDROID_APPLICATION_ARGUMENTS),
+                    "ANDROID_BUNDLED_JAR_DEPENDENCIES",
+                    "ANDROID_DEPLOYMENT_DEPENDENCIES",
+                    QLatin1String(Android::Constants::ANDROID_DEPLOYMENT_SETTINGS_FILE),
+                    QLatin1String(Android::Constants::ANDROID_EXTRA_LIBS),
+                    "ANDROID_EXTRA_PLUGINS",
+                    "ANDROID_FEATURES",
+                    "ANDROID_LIB_DEPENDENCIES",
+                    "ANDROID_MIN_SDK_VERSION",
+                    QLatin1String(Android::Constants::ANDROID_PACKAGE_SOURCE_DIR),
+                    "ANDROID_PERMISSIONS",
+                    "ANDROID_TARGET_SDK_VERSION",
+                    "ANDROID_TARGET_ARCH",
+                    "ANDROID_VERSION_CODE",
+                    "ANDROID_VERSION_NAME",
                     "ARGC",
                     "ARGS",
                     "BUILDS",
@@ -208,6 +227,7 @@ const TextEditor::Keywords &QmakeProjectManager::Internal::qmakeKeywords()
                     "QMAKE_RUN_CXX_IMP",
                     "QMAKE_TARGET",
                     "QMAKE_UIC",
+                    "QOBJECT_REP",
                     "QT",
                     "QTPLUGIN",
                     "QT_MAJOR_VERSION",
@@ -216,6 +236,9 @@ const TextEditor::Keywords &QmakeProjectManager::Internal::qmakeKeywords()
                     "QT_VERSION",
                     "RCC_DIR",
                     "RC_FILE",
+                    "REPC_MERGED",
+                    "REPC_REPLICA",
+                    "REPC_SOURCE",
                     "REQUIRES",
                     "RESOURCES",
                     "RES_FILE",

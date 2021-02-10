@@ -65,6 +65,9 @@ public:
     QAction *m_includeOldEntriesAction = nullptr;
     QAction *m_includeTagsAction = nullptr;
 
+protected:
+    void showEvent(QShowEvent *) override;
+
 private:
     void refreshCurrentRepository();
     void resizeColumns();
@@ -83,6 +86,7 @@ private:
     void rebase();
     bool cherryPick();
     void log(const QModelIndex &idx);
+    void reflog(const QModelIndex &idx);
     void push();
 
     QToolButton *m_addButton = nullptr;

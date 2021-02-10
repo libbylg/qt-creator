@@ -33,6 +33,8 @@
 #include <projectexplorer/runconfiguration.h>
 #include <projectexplorer/devicesupport/deviceusedportsgatherer.h>
 
+#include <utils/environmentfwd.h>
+
 namespace Debugger {
 
 namespace Internal {
@@ -78,7 +80,7 @@ public:
     void setRunControlName(const QString &name);
     void setStartMessage(const QString &msg);
     void addQmlServerInferiorCommandLineArgumentIfNeeded();
-
+    void modifyDebuggerEnvironment(const Utils::EnvironmentItems &item);
     void setCrashParameter(const QString &event);
 
     void addExpectedSignal(const QString &signal);
@@ -92,6 +94,7 @@ public:
 
     void setSysRoot(const Utils::FilePath &sysRoot);
     void setSymbolFile(const Utils::FilePath &symbolFile);
+    void setLldbPlatform(const QString &platform);
     void setRemoteChannel(const QString &channel);
     void setRemoteChannel(const QString &host, int port);
     void setRemoteChannel(const QUrl &url);
@@ -126,6 +129,7 @@ public:
     void setAbi(const ProjectExplorer::Abi &abi);
 
     Internal::TerminalRunner *terminalRunner() const;
+    DebuggerEngineType cppEngineType() const;
 
 private:
     bool fixupParameters();

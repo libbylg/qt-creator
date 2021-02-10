@@ -98,6 +98,8 @@ public:
 
     static CppModelManager *instance();
 
+    void registerJsExtension();
+
      // Documented in source file.
      enum ProgressNotificationMode {
         ForcedProgressNotification,
@@ -106,17 +108,13 @@ public:
 
     QFuture<void> updateSourceFiles(const QSet<QString> &sourceFiles,
                                     ProgressNotificationMode mode = ReservedProgressNotification);
-    QFuture<void> updateSourceFiles(const QFutureInterface<void> &superFuture,
-                                    const QSet<QString> &sourceFiles,
-                                    ProgressNotificationMode mode = ReservedProgressNotification);
     void updateCppEditorDocuments(bool projectsUpdated = false) const;
     WorkingCopy workingCopy() const;
     QByteArray codeModelConfiguration() const;
 
     QList<ProjectInfo> projectInfos() const;
     ProjectInfo projectInfo(ProjectExplorer::Project *project) const;
-    QFuture<void> updateProjectInfo(QFutureInterface<void> &futureInterface,
-                                    const ProjectInfo &newProjectInfo);
+    QFuture<void> updateProjectInfo(const ProjectInfo &newProjectInfo);
 
     /// \return The project part with the given project file
     ProjectPart::Ptr projectPartForId(const QString &projectPartId) const override;
@@ -169,6 +167,9 @@ public:
                             SymbolFinder *symbolFinder,
                             bool inNextSplit) const final;
 
+    bool positionRequiresSignal(const QString &filePath, const QByteArray &content,
+                                int position) const;
+
     void renameUsages(CPlusPlus::Symbol *symbol, const CPlusPlus::LookupContext &context,
                       const QString &replacement = QString());
     void findUsages(CPlusPlus::Symbol *symbol, const CPlusPlus::LookupContext &context);
@@ -180,6 +181,7 @@ public:
 
     void activateClangCodeModel(ModelManagerSupportProvider *modelManagerSupportProvider);
     CppCompletionAssistProvider *completionAssistProvider() const;
+    CppCompletionAssistProvider *functionHintAssistProvider() const;
     BaseEditorDocumentProcessor *createEditorDocumentProcessor(
                     TextEditor::TextDocument *baseTextDocument) const;
     TextEditor::BaseHoverHandler *createHoverHandler() const;
@@ -270,7 +272,7 @@ private:
     void initializeBuiltinModelManagerSupport();
     void delayedGC();
     void recalculateProjectPartMappings();
-    void watchForCanceledProjectIndexer(const QVector<QFuture<void> > &futures,
+    void watchForCanceledProjectIndexer(const QFuture<void> &future,
                                         ProjectExplorer::Project *project);
 
     void replaceSnapshot(const CPlusPlus::Snapshot &newSnapshot);

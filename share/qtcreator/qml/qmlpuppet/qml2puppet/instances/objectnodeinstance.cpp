@@ -65,12 +65,7 @@ ObjectNodeInstance::ObjectNodeInstance(QObject *object)
 {
     if (object)
         QObject::connect(m_object.data(), &QObject::destroyed, [=] {
-
-            /*This lambda is save because m_nodeInstanceServer
-            is a smartpointer and object is a dangling pointer anyway.*/
-
-            if (m_nodeInstanceServer)
-                m_nodeInstanceServer->removeInstanceRelationsipForDeletedObject(object);
+            handleObjectDeletion(object);
         });
 }
 
@@ -98,6 +93,14 @@ void ObjectNodeInstance::destroy()
     }
 
     m_instanceId = -1;
+}
+
+void ObjectNodeInstance::handleObjectDeletion(QObject *object)
+{
+    // We must pass the m_instanceId here, because this instance is no longer
+    // valid, so the wrapper ServerNodeInstance will report -1 for id.
+    if (m_nodeInstanceServer)
+        m_nodeInstanceServer->removeInstanceRelationsipForDeletedObject(object, m_instanceId);
 }
 
 void ObjectNodeInstance::setInstanceId(qint32 id)
@@ -392,8 +395,24 @@ PropertyNameList ObjectNodeInstance::ignoredProperties() const
     return PropertyNameList();
 }
 
-void ObjectNodeInstance::setHideInEditor(bool)
+void ObjectNodeInstance::setHiddenInEditor(bool b)
 {
+    m_isHiddenInEditor = b;
+}
+
+bool ObjectNodeInstance::isHiddenInEditor() const
+{
+    return m_isHiddenInEditor;
+}
+
+void ObjectNodeInstance::setLockedInEditor(bool b)
+{
+    m_isLockedInEditor = b;
+}
+
+bool ObjectNodeInstance::isLockedInEditor() const
+{
+    return m_isLockedInEditor;
 }
 
 void ObjectNodeInstance::setModifiedFlag(bool b)
@@ -653,7 +672,6 @@ QObject *ObjectNodeInstance::createPrimitive(const QString &typeName, int majorN
             || typeName == "QtQuick.Controls/Drawer"
             || typeName == "QtQuick.Controls/Dialog"
             || typeName == "QtQuick.Controls/Menu"
-            || typeName == "QtQuick.Controls/Pane"
             || typeName == "QtQuick.Controls/ToolTip")
         polishTypeName = "QtQuick/Item";
 
@@ -754,10 +772,14 @@ QObject *ObjectNodeInstance::createComponent(const QString &componentPath, QQmlC
     Q_UNUSED(disableComponentComplete)
 
     QQmlComponent component(context->engine(), fixComponentPathForIncompatibleQt(componentPath));
-    QObject *object = component.beginCreate(context);
 
-    QmlPrivateGate::tweakObjects(object);
-    component.completeCreate();
+    QObject *object = nullptr;
+    if (!component.isError()) {
+        object = component.beginCreate(context);
+        QmlPrivateGate::tweakObjects(object);
+        component.completeCreate();
+        QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
+    }
 
     if (component.isError()) {
         qDebug() << componentPath;
@@ -765,7 +787,8 @@ QObject *ObjectNodeInstance::createComponent(const QString &componentPath, QQmlC
             qWarning() << error;
     }
 
-    QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
+    if (object)
+        object->setProperty("__designer_url__", QUrl::fromLocalFile(componentPath));
 
     return object;
 }
@@ -775,7 +798,9 @@ QObject *ObjectNodeInstance::createComponent(const QUrl &componentUrl, QQmlConte
     return QmlPrivateGate::createComponent(componentUrl, context);
 }
 
-QObject *ObjectNodeInstance::createCustomParserObject(const QString &nodeSource, const QByteArray &importCode, QQmlContext *context)
+QObject *ObjectNodeInstance::createCustomParserObject(const QString &nodeSource,
+                                                      const QByteArray &importCode,
+                                                      QQmlContext *context)
 {
     QmlPrivateGate::ComponentCompleteDisabler disableComponentComplete;
     Q_UNUSED(disableComponentComplete)
@@ -786,9 +811,11 @@ QObject *ObjectNodeInstance::createCustomParserObject(const QString &nodeSource,
     data.prepend(importCode);
     component.setData(data, context->baseUrl().resolved(QUrl("createCustomParserObject.qml")));
     QObject *object = component.beginCreate(context);
-    QmlPrivateGate::tweakObjects(object);
-    component.completeCreate();
-    QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
+    if (object) {
+        QmlPrivateGate::tweakObjects(object);
+        component.completeCreate();
+        QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
+    }
 
     if (component.isError()) {
         qWarning() << "Error in:" << Q_FUNC_INFO << component.url().toString();
@@ -870,6 +897,11 @@ void ObjectNodeInstance::deactivateState()
 {
 }
 
+QStringList ObjectNodeInstance::allStates() const
+{
+    return {};
+}
+
 void ObjectNodeInstance::populateResetHashes()
 {
     QmlPrivateGate::registerCustomData(object());
@@ -893,6 +925,11 @@ QImage ObjectNodeInstance::renderImage() const
 QImage ObjectNodeInstance::renderPreviewImage(const QSize & /*previewImageSize*/) const
 {
     return QImage();
+}
+
+QSharedPointer<QQuickItemGrabResult> ObjectNodeInstance::createGrabResult() const
+{
+    return {};
 }
 
 QObject *ObjectNodeInstance::parent() const

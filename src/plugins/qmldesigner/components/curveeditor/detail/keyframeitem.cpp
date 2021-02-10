@@ -31,19 +31,26 @@
 
 #include <cmath>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 KeyframeItem::KeyframeItem(QGraphicsItem *parent)
     : SelectableItem(parent)
+    , m_transform()
+    , m_style()
     , m_frame()
+    , m_left(nullptr)
+    , m_right(nullptr)
+    , m_validPos()
 {}
 
 KeyframeItem::KeyframeItem(const Keyframe &keyframe, QGraphicsItem *parent)
     : SelectableItem(parent)
     , m_transform()
+    , m_style()
     , m_frame()
     , m_left(nullptr)
     , m_right(nullptr)
+    , m_validPos()
 {
     setKeyframe(keyframe);
 }
@@ -64,26 +71,34 @@ void KeyframeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
     Q_UNUSED(option)
     Q_UNUSED(widget)
 
+    QColor mainColor = selected() ? m_style.selectionColor : m_style.color;
+    QColor borderColor = isUnified() ? m_style.unifiedColor : m_style.splitColor;
+
+    if (locked()) {
+        mainColor = m_style.lockedColor;
+        borderColor = m_style.lockedColor;
+    }
+
     QPen pen = painter->pen();
-    pen.setColor(Qt::black);
+    pen.setWidthF(1.);
+    pen.setColor(borderColor);
 
     painter->save();
     painter->setPen(pen);
-    painter->setBrush(locked() ? Qt::black : (selected() ? Qt::red : m_style.color));
+    painter->setBrush(mainColor);
     painter->drawEllipse(boundingRect());
-
     painter->restore();
 }
 
-void KeyframeItem::setLocked(bool locked)
+void KeyframeItem::lockedCallback()
 {
-    SelectableItem::setLocked(locked);
+    SelectableItem::lockedCallback();
 
     if (m_left)
-        m_left->setLocked(locked);
+        m_left->setLocked(locked());
 
     if (m_right)
-        m_right->setLocked(locked);
+        m_right->setLocked(locked());
 }
 
 KeyframeItem::~KeyframeItem() {}
@@ -91,6 +106,11 @@ KeyframeItem::~KeyframeItem() {}
 Keyframe KeyframeItem::keyframe() const
 {
     return m_frame;
+}
+
+bool KeyframeItem::isUnified() const
+{
+    return m_frame.isUnified();
 }
 
 bool KeyframeItem::hasLeftHandle() const
@@ -103,14 +123,38 @@ bool KeyframeItem::hasRightHandle() const
     return m_frame.hasRightHandle();
 }
 
-HandleSlot KeyframeItem::handleSlot(HandleItem *item) const
+bool KeyframeItem::hasActiveHandle() const
 {
-    if (item == m_left)
-        return HandleSlot::Left;
-    else if (item == m_right)
-        return HandleSlot::Right;
-    else
-        return HandleSlot::Undefined;
+    if (m_left && m_left->activated())
+        return true;
+
+    if (m_right && m_right->activated())
+        return true;
+
+    return false;
+}
+
+HandleItem *KeyframeItem::leftHandle() const
+{
+    return m_left;
+}
+
+HandleItem *KeyframeItem::rightHandle() const
+{
+    return m_right;
+}
+
+CurveSegment KeyframeItem::segment(HandleItem::Slot slot) const
+{
+    if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(parentItem()))
+        return curveItem->segment(this, slot);
+
+    return CurveSegment();
+}
+
+QTransform KeyframeItem::transform() const
+{
+    return m_transform;
 }
 
 void KeyframeItem::setHandleVisibility(bool visible)
@@ -168,7 +212,7 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
 
     if (m_frame.hasLeftHandle()) {
         if (!m_left) {
-            m_left = new HandleItem(this);
+            m_left = new HandleItem(this, HandleItem::Slot::Left);
             auto updateLeftHandle = [this]() { updateHandle(m_left); };
             connect(m_left, &QGraphicsObject::xChanged, updateLeftHandle);
             connect(m_left, &QGraphicsObject::yChanged, updateLeftHandle);
@@ -181,7 +225,7 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
 
     if (m_frame.hasRightHandle()) {
         if (!m_right) {
-            m_right = new HandleItem(this);
+            m_right = new HandleItem(this, HandleItem::Slot::Right);
             auto updateRightHandle = [this]() { updateHandle(m_right); };
             connect(m_right, &QGraphicsObject::xChanged, updateRightHandle);
             connect(m_right, &QGraphicsObject::yChanged, updateRightHandle);
@@ -193,6 +237,31 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
     }
 
     setPos(m_transform.map(m_frame.position()));
+}
+
+void KeyframeItem::toggleUnified()
+{
+    if (!m_left || !m_right)
+        return;
+
+    if (m_frame.isUnified())
+        m_frame.setUnified(false);
+    else
+        m_frame.setUnified(true);
+}
+
+void KeyframeItem::setActivated(bool active, HandleItem::Slot slot)
+{
+    if (isUnified() && m_left && m_right) {
+        m_left->setActivated(active);
+        m_right->setActivated(active);
+        return;
+    }
+
+    if (slot == HandleItem::Slot::Left && m_left)
+        m_left->setActivated(active);
+    else if (slot == HandleItem::Slot::Right && m_right)
+        m_right->setActivated(active);
 }
 
 void KeyframeItem::setInterpolation(Keyframe::Interpolation interpolation)
@@ -244,7 +313,7 @@ void KeyframeItem::moveKeyframe(const QPointF &direction)
     emit redrawCurve();
 }
 
-void KeyframeItem::moveHandle(HandleSlot handle, double deltaAngle, double deltaLength)
+void KeyframeItem::moveHandle(HandleItem::Slot slot, double deltaAngle, double deltaLength)
 {
     auto move = [this, deltaAngle, deltaLength](HandleItem *item) {
         if (!item)
@@ -259,9 +328,9 @@ void KeyframeItem::moveHandle(HandleSlot handle, double deltaAngle, double delta
 
     this->blockSignals(true);
 
-    if (handle == HandleSlot::Left)
+    if (slot == HandleItem::Slot::Left)
         move(m_left);
-    else if (handle == HandleSlot::Right)
+    else if (slot == HandleItem::Slot::Right)
         move(m_right);
 
     this->blockSignals(false);
@@ -280,14 +349,13 @@ void KeyframeItem::updateHandle(HandleItem *handle, bool emitChanged)
 
     QPointF oldPosition;
     QPointF newPosition;
-    HandleSlot slot = HandleSlot::Undefined;
-    if (handle == m_left) {
-        slot = HandleSlot::Left;
+    HandleItem::Slot slot = handle->slot();
+
+    if (slot == HandleItem::Slot::Left) {
         oldPosition = m_frame.leftHandle();
         m_frame.setLeftHandle(m_frame.position() + handlePosition);
         newPosition = m_frame.leftHandle();
-    } else {
-        slot = HandleSlot::Right;
+    } else if (slot == HandleItem::Slot::Right) {
         oldPosition = m_frame.rightHandle();
         m_frame.setRightHandle(m_frame.position() + handlePosition);
         newPosition = m_frame.rightHandle();
@@ -311,19 +379,51 @@ void KeyframeItem::updateHandle(HandleItem *handle, bool emitChanged)
 QVariant KeyframeItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value)
 {
     if (change == ItemPositionChange) {
+        if (!scene())
+            return QGraphicsItem::itemChange(change, value);
+
+        CurveItem *curveItem = qgraphicsitem_cast<CurveItem *>(parentItem());
+        if (!curveItem)
+            return QGraphicsItem::itemChange(change, value);
+
+        CurveSegment lseg = segment(HandleItem::Slot::Left);
+        CurveSegment rseg = segment(HandleItem::Slot::Right);
+
+        auto legalLeft = [this, curveItem, &lseg]() {
+            if (curveItem->isFirst(this))
+                return true;
+            else
+                return lseg.isLegal();
+        };
+
+        auto legalRight = [this, curveItem, &rseg]() {
+            if (curveItem->isLast(this))
+                return true;
+            else
+                return rseg.isLegal();
+        };
+
         bool ok;
         QPointF position = m_transform.inverted(&ok).map(value.toPointF());
         if (ok) {
             position.setX(std::round(position.x()));
 
-            if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(parentItem())) {
-                if (curveItem->valueType() == ValueType::Integer)
-                    position.setY(std::round(position.y()));
-                else if (curveItem->valueType() == ValueType::Bool)
-                    position.setY(position.y() > 0.5 ? 1.0 : 0.0);
-            }
+            if (curveItem->valueType() == PropertyTreeItem::ValueType::Integer)
+                position.setY(std::round(position.y()));
+            else if (curveItem->valueType() == PropertyTreeItem::ValueType::Bool)
+                position.setY(position.y() > 0.5 ? 1.0 : 0.0);
 
-            return QVariant(m_transform.map(position));
+            if (!legalLeft() || !legalRight()) {
+                return QVariant(m_transform.map(position));
+            } else {
+                lseg.moveRightTo(position);
+                rseg.moveLeftTo(position);
+
+                if (legalLeft() && legalRight())
+                    m_validPos = position;
+
+                return QVariant(m_transform.map(m_validPos));
+            }
         }
     }
 
@@ -349,14 +449,18 @@ void KeyframeItem::selectionCallback()
     if (selected()) {
         if (m_visibleOverride) {
             setHandleVisibility(true);
-            setHandleVisibility(true);
         }
     } else {
         if (!m_visibleOverride) {
             setHandleVisibility(false);
-            setHandleVisibility(false);
         }
     }
+
+    if (m_left)
+        m_left->setSelected(selected());
+
+    if (m_right)
+        m_right->setSelected(selected());
 }
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

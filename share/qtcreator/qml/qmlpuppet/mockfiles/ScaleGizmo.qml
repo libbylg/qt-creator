@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import MouseArea3D 1.0
 
 Node {
@@ -37,15 +37,16 @@ Node {
                                      || planeX.dragging || planeY.dragging || planeZ.dragging
                                      || centerMouseArea.dragging
     property MouseArea3D dragHelper: null
+    property alias freeDraggerArea: centerMouseArea
 
     position: dragHelper.pivotScenePosition(targetNode)
-    orientation: targetNode ? targetNode.orientation : Node.LeftHanded
 
     onTargetNodeChanged: position = dragHelper.pivotScenePosition(targetNode)
 
     Connections {
         target: scaleGizmo.targetNode
-        onSceneTransformChanged: {
+        function onSceneTransformChanged()
+        {
             scaleGizmo.position = scaleGizmo.dragHelper.pivotScenePosition(scaleGizmo.targetNode);
         }
     }
@@ -54,13 +55,11 @@ Node {
     signal scaleChange()
 
     Node {
-        rotation: !targetNode ? Qt.vector3d(0, 0, 0) : targetNode.sceneRotation
-        rotationOrder: scaleGizmo.targetNode ? scaleGizmo.targetNode.rotationOrder : Node.YXZ
-        orientation: scaleGizmo.orientation
+        rotation: !targetNode ? Qt.quaternion(1, 0, 0, 0) : targetNode.sceneRotation
 
         ScaleRod {
             id: scaleRodX
-            rotation: Qt.vector3d(0, 0, -90)
+            eulerRotation: Qt.vector3d(0, 0, -90)
             axis: Qt.vector3d(1, 0, 0)
             targetNode: scaleGizmo.targetNode
             color: highlightOnHover && (hovering || dragging) ? Qt.lighter(Qt.rgba(1, 0, 0, 1))
@@ -75,7 +74,7 @@ Node {
 
         ScaleRod {
             id: scaleRodY
-            rotation: Qt.vector3d(0, 0, 0)
+            eulerRotation: Qt.vector3d(0, 0, 0)
             axis: Qt.vector3d(0, 1, 0)
             targetNode: scaleGizmo.targetNode
             color: highlightOnHover && (hovering || dragging) ? Qt.lighter(Qt.rgba(0, 0.6, 0, 1))
@@ -90,7 +89,7 @@ Node {
 
         ScaleRod {
             id: scaleRodZ
-            rotation: Qt.vector3d(90, 0, 0)
+            eulerRotation: Qt.vector3d(90, 0, 0)
             axis: Qt.vector3d(0, 0, 1)
             targetNode: scaleGizmo.targetNode
             color: highlightOnHover && (hovering || dragging) ? Qt.lighter(Qt.rgba(0, 0, 1, 1))
@@ -109,7 +108,7 @@ Node {
             y: 10
             z: 10
 
-            rotation: Qt.vector3d(0, 90, 0)
+            eulerRotation: Qt.vector3d(0, 90, 0)
             axisX: Qt.vector3d(0, 0, -1)
             axisY: Qt.vector3d(0, 1, 0)
             targetNode: scaleGizmo.targetNode
@@ -129,7 +128,7 @@ Node {
             x: 10
             z: 10
 
-            rotation: Qt.vector3d(90, 0, 0)
+            eulerRotation: Qt.vector3d(90, 0, 0)
             axisX: Qt.vector3d(1, 0, 0)
             axisY: Qt.vector3d(0, 0, 1)
             targetNode: scaleGizmo.targetNode
@@ -149,7 +148,7 @@ Node {
             x: 10
             y: 10
 
-            rotation: Qt.vector3d(0, 0, 0)
+            eulerRotation: Qt.vector3d(0, 0, 0)
             axisX: Qt.vector3d(1, 0, 0)
             axisY: Qt.vector3d(0, 1, 0)
             targetNode: scaleGizmo.targetNode
@@ -171,7 +170,7 @@ Node {
         scale: Qt.vector3d(0.024, 0.024, 0.024)
         materials: DefaultMaterial {
             id: material
-            emissiveColor: highlightOnHover
+            diffuseColor: highlightOnHover
                            && (centerMouseArea.hovering || centerMouseArea.dragging)
                            ? Qt.lighter(Qt.rgba(0.5, 0.5, 0.5, 1))
                            : Qt.rgba(0.5, 0.5, 0.5, 1)
@@ -187,7 +186,7 @@ Node {
             height: 120
             rotation: view3D.camera.rotation
             grabsMouse: scaleGizmo.targetNode
-            priority: 1
+            priority: 10
             active: scaleGizmo.visible
             dragHelper: scaleGizmo.dragHelper
 

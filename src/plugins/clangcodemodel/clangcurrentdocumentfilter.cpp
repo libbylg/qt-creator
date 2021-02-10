@@ -47,6 +47,8 @@
 
 #include <QRegularExpression>
 
+using namespace Utils;
+
 namespace ClangCodeModel {
 namespace Internal {
 
@@ -54,9 +56,9 @@ ClangCurrentDocumentFilter::ClangCurrentDocumentFilter()
 {
     setId(CppTools::Constants::CURRENT_DOCUMENT_FILTER_ID);
     setDisplayName(CppTools::Constants::CURRENT_DOCUMENT_FILTER_DISPLAY_NAME);
-    setShortcutString(QString(QLatin1Char('.')));
+    setDefaultShortcutString(".");
     setPriority(High);
-    setIncludedByDefault(false);
+    setDefaultIncludedByDefault(false);
 
     Core::EditorManager *editorManager = Core::EditorManager::instance();
     connect(editorManager, &Core::EditorManager::currentEditorChanged,
@@ -75,7 +77,7 @@ static Core::LocatorFilterEntry makeEntry(Core::ILocatorFilter *filter,
 {
     const ClangBackEnd::ExtraInfo &extraInfo = info.extraInfo;
     QString displayName = extraInfo.token;
-    ::Utils::LineColumn lineColumn(info.line, info.column);
+    LineColumn lineColumn(info.line, info.column);
     Core::LocatorFilterEntry entry(filter, displayName, QVariant::fromValue(lineColumn));
     QString extra;
     ClangBackEnd::HighlightingType mainType = info.types.mainHighlightingType;
@@ -91,15 +93,21 @@ static Core::LocatorFilterEntry makeEntry(Core::ILocatorFilter *filter,
     }
     entry.displayName = displayName;
     entry.extraInfo = extra;
-    entry.displayIcon = ::Utils::CodeModelIcon::iconForType(Utils::iconTypeForToken(info));
+    entry.displayIcon = CodeModelIcon::iconForType(iconTypeForToken(info));
     return entry;
+}
+
+void ClangCurrentDocumentFilter::prepareSearch(const QString &entry)
+{
+    Q_UNUSED(entry)
+    m_preparedPath = m_currentPath;
 }
 
 QList<Core::LocatorFilterEntry> ClangCurrentDocumentFilter::matchesFor(
         QFutureInterface<Core::LocatorFilterEntry> &, const QString &entry)
 {
     QList<Core::LocatorFilterEntry> goodEntries;
-    if (!m_currentEditor)
+    if (m_preparedPath.isEmpty())
         return goodEntries;
 
     FuzzyMatcher::CaseSensitivity caseSesitivity = caseSensitivity(entry) == Qt::CaseSensitive
@@ -109,7 +117,7 @@ QList<Core::LocatorFilterEntry> ClangCurrentDocumentFilter::matchesFor(
     if (!regexp.isValid())
         return goodEntries;
 
-    ClangEditorDocumentProcessor *processor = ClangEditorDocumentProcessor::get(m_currentPath);
+    ClangEditorDocumentProcessor *processor = ClangEditorDocumentProcessor::get(m_preparedPath);
     if (!processor)
         return goodEntries;
 
@@ -132,7 +140,7 @@ void ClangCurrentDocumentFilter::accept(Core::LocatorFilterEntry selection,
 {
     if (!m_currentEditor)
         return;
-    auto lineColumn = qvariant_cast<::Utils::LineColumn>(selection.internalData);
+    auto lineColumn = qvariant_cast<LineColumn>(selection.internalData);
     Core::EditorManager::openEditorAt(m_currentPath, lineColumn.line,
                                       lineColumn.column - 1);
 }
@@ -141,10 +149,10 @@ void ClangCurrentDocumentFilter::refresh(QFutureInterface<void> &)
 {
 }
 
-void ClangCurrentDocumentFilter::reset()
+void ClangCurrentDocumentFilter::reset(Core::IEditor *newCurrent, const QString &path)
 {
-    m_currentEditor = nullptr;
-    m_currentPath.clear();
+    m_currentEditor = newCurrent;
+    m_currentPath = path;
 }
 
 void ClangCurrentDocumentFilter::onEditorAboutToClose(Core::IEditor *editorAboutToClose)
@@ -159,11 +167,10 @@ void ClangCurrentDocumentFilter::onEditorAboutToClose(Core::IEditor *editorAbout
 void ClangCurrentDocumentFilter::onCurrentEditorChanged(Core::IEditor *newCurrent)
 {
     if (newCurrent) {
-        m_currentEditor = newCurrent;
-        Core::IDocument *document = m_currentEditor->document();
-        QTC_ASSERT(document, return;);
+        Core::IDocument *document = newCurrent->document();
+        QTC_ASSERT(document, reset(); return);
         if (auto *textDocument = qobject_cast<TextEditor::TextDocument *>(document)) {
-            m_currentPath = textDocument->filePath().toString();
+            reset(newCurrent, textDocument->filePath().toString());
             return;
         }
     }

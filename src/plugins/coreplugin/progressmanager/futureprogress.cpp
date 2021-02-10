@@ -26,8 +26,6 @@
 #include "futureprogress.h"
 #include "progressbar.h"
 
-#include <coreplugin/id.h>
-
 #include <utils/stylehelper.h>
 #include <utils/theme/theme.h>
 
@@ -83,8 +81,11 @@ FutureProgressPrivate::FutureProgressPrivate(FutureProgress *q) :
 }
 
 /*!
-    \mainclass
+    \ingroup mainclasses
+    \inheaderfile coreplugin/progressmanager/futureprogress.h
     \class Core::FutureProgress
+    \inmodule QtCreator
+
     \brief The FutureProgress class is used to adapt the appearance of
     progress indicators that were created through the ProgressManager class.
 
@@ -98,28 +99,27 @@ FutureProgressPrivate::FutureProgressPrivate(FutureProgress *q) :
 */
 
 /*!
-    \fn void FutureProgress::clicked()
+    \fn void Core::FutureProgress::clicked()
     Connect to this signal to get informed when the user clicks on the
     progress indicator.
 */
 
 /*!
-    \fn void FutureProgress::canceled()
+    \fn void Core::FutureProgress::canceled()
     Connect to this signal to get informed when the operation is canceled.
 */
 
 /*!
-    \fn void FutureProgress::finished()
+    \fn void Core::FutureProgress::finished()
     Another way to get informed when the task has finished.
 */
 
 /*!
-    \fn QWidget FutureProgress::widget() const
+    \fn QWidget Core::FutureProgress::widget() const
     Returns the custom widget that is shown below the progress indicator.
 */
 
 /*!
-    \fn FutureProgress::FutureProgress(QWidget *parent)
     \internal
 */
 FutureProgress::FutureProgress(QWidget *parent) :

@@ -186,10 +186,10 @@ FormEditorItem *AbstractFormEditorTool::topMovableFormEditorItem(const QList<QGr
     return nullptr;
 }
 
-FormEditorItem* AbstractFormEditorTool::nearestFormEditorItem(const QPointF &point, const QList<QGraphicsItem*> & itemList)
+FormEditorItem* AbstractFormEditorTool::nearestFormEditorItem(const QPointF &point, const QList<QGraphicsItem*> &itemList)
 {
     FormEditorItem* nearestItem = nullptr;
-    foreach (QGraphicsItem *item, itemList) {
+    for (QGraphicsItem *item : itemList) {
         FormEditorItem *formEditorItem = FormEditorItem::fromQGraphicsItem(item);
 
         if (formEditorItem && formEditorItem->flowHitTest(point))
@@ -199,6 +199,9 @@ FormEditorItem* AbstractFormEditorTool::nearestFormEditorItem(const QPointF &poi
             continue;
 
         if (formEditorItem->parentItem() && !formEditorItem->parentItem()->isContentVisible())
+            continue;
+
+        if (formEditorItem && ModelNode::isThisOrAncestorLocked(formEditorItem->qmlItemNode().modelNode()))
             continue;
 
         if (!nearestItem)
@@ -231,8 +234,9 @@ void AbstractFormEditorTool::dropEvent(const QList<QGraphicsItem*> &/*itemList*/
 
 void AbstractFormEditorTool::dragEnterEvent(const QList<QGraphicsItem*> &itemList, QGraphicsSceneDragDropEvent *event)
 {
-    if (event->mimeData()->hasFormat(QLatin1String("application/vnd.bauhaus.itemlibraryinfo")) ||
-        event->mimeData()->hasFormat(QLatin1String("application/vnd.bauhaus.libraryresource"))) {
+    if (event->mimeData()->hasFormat(QLatin1String("application/vnd.bauhaus.itemlibraryinfo"))
+            || event->mimeData()->hasFormat(QLatin1String("application/vnd.bauhaus.libraryresource.image"))
+            || event->mimeData()->hasFormat(QLatin1String("application/vnd.bauhaus.libraryresource.font"))) {
         event->accept();
         view()->changeToDragTool();
         view()->currentTool()->dragEnterEvent(itemList, event);

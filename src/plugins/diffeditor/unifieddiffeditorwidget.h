@@ -45,12 +45,11 @@ namespace Internal {
 
 class DiffEditorDocument;
 
-class UnifiedDiffEditorWidget : public SelectableTextEditorWidget
+class UnifiedDiffEditorWidget final : public SelectableTextEditorWidget
 {
     Q_OBJECT
 public:
     UnifiedDiffEditorWidget(QWidget *parent = nullptr);
-    ~UnifiedDiffEditorWidget() override;
 
     void setDocument(DiffEditorDocument *document);
     DiffEditorDocument *diffDocument() const;
@@ -60,6 +59,8 @@ public:
     void setCurrentDiffFileIndex(int diffFileIndex);
 
     void saveState();
+
+    using TextEditor::TextEditorWidget::restoreState;
     void restoreState();
 
     void clear(const QString &message = QString());
@@ -115,7 +116,6 @@ private:
     QMap<int, QPair<int, int> > m_chunkInfo;
 
     QByteArray m_state;
-    Core::IContext *m_context = nullptr;
 };
 
 } // namespace Internal

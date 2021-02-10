@@ -24,7 +24,6 @@
 ****************************************************************************/
 
 /*!
-    \contentspage {Qt Creator}
     \previouspage creator-live-preview.html
     \page creator-live-preview-desktop.html
     \nextpage creator-live-preview-devices.html
@@ -47,8 +46,7 @@
     \endif
 
     To preview any QML file that belongs to the project, right-click the project
-    name in the \uicontrol Project tab in the \uicontrol Navigator, and select
-    \uicontrol {Preview file}.
+    name in the \uicontrol Projects view, and select \uicontrol {Preview file}.
 
     To preview the whole UI, select \uicontrol {Show Live Preview}
     when viewing the main QML UI file of the project.

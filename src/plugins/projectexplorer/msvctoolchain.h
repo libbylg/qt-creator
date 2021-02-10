@@ -53,16 +53,14 @@ namespace Internal {
 
 class MsvcToolChain : public ToolChain
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::MsvcToolChain)
+
 public:
     enum Type { WindowsSDK, VS };
     enum Platform { x86, amd64, x86_amd64, ia64, x86_ia64, arm, x86_arm, amd64_arm, amd64_x86 };
 
-    explicit MsvcToolChain(Core::Id typeId);
+    explicit MsvcToolChain(Utils::Id typeId);
     ~MsvcToolChain() override;
-
-    Abi targetAbi() const override;
-    Abis supportedAbis() const override;
-    void setTargetAbi(const Abi &abi);
 
     bool isValid() const override;
 
@@ -76,19 +74,16 @@ public:
     std::unique_ptr<ToolChainConfigWidget> createConfigurationWidget() override;
 
     MacroInspectionRunner createMacroInspectionRunner() const override;
-    Macros predefinedMacros(const QStringList &cxxflags) const override;
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
     Utils::WarningFlags warningFlags(const QStringList &cflags) const override;
+    QStringList includedFiles(const QStringList &flags,
+                              const QString &directoryPath) const override;
     BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(
             const Utils::Environment &env) const override;
-    HeaderPaths builtInHeaderPaths(const QStringList &cxxflags,
-                                   const Utils::FilePath &sysRoot,
-                                   const Utils::Environment &env) const override;
     void addToEnvironment(Utils::Environment &env) const override;
 
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
-    Utils::FilePath compilerCommand() const override;
-    IOutputParser *outputParser() const override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
 
     QString varsBatArg() const { return m_varsBatArg; }
     QString varsBat() const { return m_vcvarsBat; }
@@ -126,7 +121,7 @@ protected:
     virtual Macros msvcPredefinedMacros(const QStringList &cxxflags,
                                         const Utils::Environment &env) const;
     virtual Utils::LanguageVersion msvcLanguageVersion(const QStringList &cxxflags,
-                                                       const Core::Id &language,
+                                                       const Utils::Id &language,
                                                        const Macros &macros) const;
 
     struct GenerateEnvResult
@@ -146,7 +141,6 @@ protected:
 private:
     void updateEnvironmentModifications(Utils::EnvironmentItems modifications);
     void rescanForCompiler();
-    void detectInstalledAbis();
 
     mutable Utils::EnvironmentItems m_environmentModifications;
     mutable QFutureWatcher<GenerateEnvResult> m_envModWatcher;
@@ -154,46 +148,33 @@ private:
     mutable Utils::Environment m_lastEnvironment;   // Last checked 'incoming' environment.
     mutable Utils::Environment m_resultEnvironment; // Resulting environment for VC
 
-    Utils::FilePath m_compilerCommand;
-
 protected:
-    Abi m_abi;
-    Abis m_supportedAbis;
-
     QString m_vcvarsBat;
     QString m_varsBatArg; // Argument
 };
 
 class PROJECTEXPLORER_EXPORT ClangClToolChain : public MsvcToolChain
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::ClangClToolChain)
+
 public:
     ClangClToolChain();
 
     bool isValid() const override;
     QStringList suggestedMkspecList() const override;
     void addToEnvironment(Utils::Environment &env) const override;
-    Utils::FilePath compilerCommand() const override;
-    IOutputParser *outputParser() const override;
-    QVariantMap toMap() const override;
-    bool fromMap(const QVariantMap &data) override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
     std::unique_ptr<ToolChainConfigWidget> createConfigurationWidget() override;
     BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(
             const Utils::Environment &env) const override;
 
     const QList<MsvcToolChain *> &msvcToolchains() const;
-    QString clangPath() const { return m_clangPath; }
-    void setClangPath(const QString &path) { m_clangPath = path; }
 
     Macros msvcPredefinedMacros(const QStringList &cxxflags,
                                 const Utils::Environment &env) const override;
     Utils::LanguageVersion msvcLanguageVersion(const QStringList &cxxflags,
-                                               const Core::Id &language,
+                                               const Utils::Id &language,
                                                const Macros &macros) const override;
-
-    bool operator==(const ToolChain &) const override;
-
-private:
-    QString m_clangPath;
 };
 
 // --------------------------------------------------------------------------
@@ -202,8 +183,6 @@ private:
 
 class MsvcToolChainFactory : public ToolChainFactory
 {
-    Q_OBJECT
-
 public:
     MsvcToolChainFactory();
 
@@ -218,8 +197,6 @@ public:
 
 class ClangClToolChainFactory : public ToolChainFactory
 {
-    Q_OBJECT
-
 public:
     ClangClToolChainFactory();
 
@@ -271,6 +248,7 @@ private:
 
     void setFromMsvcToolChain();
 
+    void updateAbis();
     void handleVcVarsChange(const QString &vcVars);
     void handleVcVarsArchChange(const QString &arch);
 

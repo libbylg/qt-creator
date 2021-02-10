@@ -145,7 +145,6 @@ CleanDialog::CleanDialog(QWidget *parent) :
     d(new Internal::CleanDialogPrivate)
 {
     setModal(true);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     d->ui.setupUi(this);
     d->ui.buttonBox->addButton(tr("Delete..."), QDialogButtonBox::AcceptRole);
@@ -212,7 +211,8 @@ void CleanDialog::addFile(const QString &workingDirectory, QString fileName, boo
     nameItem->setData(QVariant(isDir), Internal::isDirectoryRole);
     // Tooltip with size information
     if (fi.isFile()) {
-        const QString lastModified = fi.lastModified().toString(Qt::DefaultLocaleShortDate);
+        const QString lastModified =
+                QLocale::system().toString(fi.lastModified(), QLocale::ShortFormat);
         nameItem->setToolTip(tr("%n bytes, last modified %1.", nullptr,
                                 fi.size()).arg(lastModified));
     }

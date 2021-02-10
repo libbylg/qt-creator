@@ -33,7 +33,7 @@
 
 #include <assert.h>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class CubicPolynomial
 {
@@ -150,7 +150,41 @@ CurveSegment::CurveSegment(const Keyframe &left, const Keyframe &right)
 
 bool CurveSegment::isValid() const
 {
-    return m_left.position() != m_right.position();
+    if (m_left.position() == m_right.position())
+        return false;
+
+    if (interpolation() == Keyframe::Interpolation::Undefined)
+        return false;
+
+    if (interpolation() == Keyframe::Interpolation::Easing
+        || interpolation() == Keyframe::Interpolation::Bezier) {
+        if (qFuzzyCompare(m_left.position().y(), m_right.position().y()))
+            return false;
+    }
+    return true;
+}
+
+bool CurveSegment::isLegal() const
+{
+    if (!isValid())
+        return false;
+
+    if (interpolation() == Keyframe::Interpolation::Step)
+        return true;
+
+    if (interpolation() == Keyframe::Interpolation::Linear)
+        return true;
+
+    std::vector<double> ex = CubicPolynomial(m_left.position().x(),
+                                             m_left.rightHandle().x(),
+                                             m_right.leftHandle().x(),
+                                             m_right.position().x())
+                                 .extrema();
+
+    ex.erase(std::remove_if(ex.begin(), ex.end(), [](double val) { return val <= 0. || val >= 1.; }),
+             ex.end());
+
+    return ex.size() == 0;
 }
 
 bool CurveSegment::containsX(double x) const
@@ -224,6 +258,23 @@ QPainterPath CurveSegment::path() const
     return path;
 }
 
+void CurveSegment::extendWithEasingCurve(QPainterPath &path, const QEasingCurve &curve) const
+{
+    auto mapEasing = [](const QPointF &start, const QPointF &end, const QPointF &pos) {
+        QPointF slope(end.x() - start.x(), end.y() - start.y());
+        return QPointF(start.x() + slope.x() * pos.x(), start.y() + slope.y() * pos.y());
+    };
+
+    QVector<QPointF> points = curve.toCubicSpline();
+    int numSegments = points.count() / 3;
+    for (int i = 0; i < numSegments; i++) {
+        QPointF p1 = mapEasing(m_left.position(), m_right.position(), points.at(i * 3));
+        QPointF p2 = mapEasing(m_left.position(), m_right.position(), points.at(i * 3 + 1));
+        QPointF p3 = mapEasing(m_left.position(), m_right.position(), points.at(i * 3 + 2));
+        path.cubicTo(p1, p2, p3);
+    }
+}
+
 void CurveSegment::extend(QPainterPath &path) const
 {
     if (interpolation() == Keyframe::Interpolation::Linear) {
@@ -232,23 +283,11 @@ void CurveSegment::extend(QPainterPath &path) const
         path.lineTo(QPointF(m_right.position().x(), m_left.position().y()));
         path.lineTo(m_right.position());
     } else if (interpolation() == Keyframe::Interpolation::Bezier) {
-        path.cubicTo(m_left.rightHandle(), m_right.leftHandle(), m_right.position());
+        extendWithEasingCurve(path, easingCurve());
     } else if (interpolation() == Keyframe::Interpolation::Easing) {
-        auto mapEasing = [](const QPointF &start, const QPointF &end, const QPointF &pos) {
-            QPointF slope(end.x() - start.x(), end.y() - start.y());
-            return QPointF(start.x() + slope.x() * pos.x(), start.y() + slope.y() * pos.y());
-        };
-
         QVariant data = m_right.data();
         if (data.isValid() && data.type() == static_cast<int>(QMetaType::QEasingCurve)) {
-            QVector<QPointF> points = data.value<QEasingCurve>().toCubicSpline();
-            int numSegments = points.count() / 3;
-            for (int i = 0; i < numSegments; i++) {
-                QPointF p1 = mapEasing(m_left.position(), m_right.position(), points.at(i * 3));
-                QPointF p2 = mapEasing(m_left.position(), m_right.position(), points.at(i * 3 + 1));
-                QPointF p3 = mapEasing(m_left.position(), m_right.position(), points.at(i * 3 + 2));
-                path.cubicTo(p1, p2, p3);
-            }
+            extendWithEasingCurve(path, data.value<QEasingCurve>());
         }
     }
 }
@@ -258,6 +297,10 @@ QEasingCurve CurveSegment::easingCurve() const
     auto mapPosition = [this](const QPointF &position) {
         QPointF min = m_left.position();
         QPointF max = m_right.position();
+        if (qFuzzyCompare(min.y(), max.y()))
+            return QPointF((position.x() - min.x()) / (max.x() - min.x()),
+                           (position.y() - min.y()) / (max.y()));
+
         return QPointF((position.x() - min.x()) / (max.x() - min.x()),
                        (position.y() - min.y()) / (max.y() - min.y()));
     };
@@ -265,8 +308,7 @@ QEasingCurve CurveSegment::easingCurve() const
     QEasingCurve curve;
     curve.addCubicBezierSegment(mapPosition(m_left.rightHandle()),
                                 mapPosition(m_right.leftHandle()),
-                                mapPosition(m_right.position()));
-
+                                QPointF(1., 1.));
     return curve;
 }
 
@@ -428,9 +470,11 @@ std::array<Keyframe, 3> CurveSegment::splitAt(double time)
 
             out[0].setInterpolation(left().interpolation());
             out[0].setData(left().data());
+            out[0].setUnified(left().isUnified());
 
             out[2].setInterpolation(right().interpolation());
             out[2].setData(right().data());
+            out[2].setUnified(right().isUnified());
             return out;
         }
     }
@@ -479,6 +523,31 @@ void CurveSegment::setRight(const Keyframe &frame)
     m_right = frame;
 }
 
+void CurveSegment::moveLeftTo(const QPointF &pos)
+{
+    QPointF delta = pos - m_left.position();
+
+    if (m_left.hasLeftHandle())
+        m_left.setLeftHandle(m_left.leftHandle() + delta);
+
+    if (m_left.hasRightHandle())
+        m_left.setRightHandle(m_left.rightHandle() + delta);
+
+    m_left.setPosition(pos);
+}
+
+void CurveSegment::moveRightTo(const QPointF &pos)
+{
+    QPointF delta = pos - m_right.position();
+    if (m_right.hasLeftHandle())
+        m_right.setLeftHandle(m_right.leftHandle() + delta);
+
+    if (m_right.hasRightHandle())
+        m_right.setRightHandle(m_right.rightHandle() + delta);
+
+    m_right.setPosition(pos);
+}
+
 void CurveSegment::setInterpolation(const Keyframe::Interpolation &interpol)
 {
     m_right.setInterpolation(interpol);
@@ -497,4 +566,4 @@ void CurveSegment::setInterpolation(const Keyframe::Interpolation &interpol)
     }
 }
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

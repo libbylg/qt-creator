@@ -44,7 +44,9 @@
 
 /*!
     \class ExtensionSystem::PluginView
+    \inheaderfile extensionsystem/pluginview.h
     \inmodule QtCreator
+
     \brief The PluginView class implements a widget that shows a list of all
     plugins and their state.
 
@@ -57,19 +59,19 @@
 */
 
 /*!
-    \fn void PluginView::currentPluginChanged(ExtensionSystem::PluginSpec *spec)
+    \fn void ExtensionSystem::PluginView::currentPluginChanged(ExtensionSystem::PluginSpec *spec)
     The current selection in the plugin list has changed to the
     plugin corresponding to \a spec.
 */
 
 /*!
-    \fn void PluginView::pluginActivated(ExtensionSystem::PluginSpec *spec)
+    \fn void ExtensionSystem::PluginView::pluginActivated(ExtensionSystem::PluginSpec *spec)
     The plugin list entry corresponding to \a spec has been activated,
     for example by a double-click.
 */
 
 /*!
-    \fn void PluginView::pluginSettingsChanged(ExtensionSystem::PluginSpec *spec)
+    \fn void ExtensionSystem::PluginView::pluginSettingsChanged(ExtensionSystem::PluginSpec *spec)
     The settings for the plugin list entry corresponding to \a spec changed.
 */
 
@@ -86,7 +88,6 @@ enum Columns { NameColumn, LoadedColumn, VersionColumn, VendorColumn, };
 enum IconIndex { OkIcon, ErrorIcon, NotLoadedIcon };
 
 static const int SortRole = Qt::UserRole + 1;
-static const int HiddenByDefaultRole = Qt::UserRole + 2;
 
 static const QIcon &icon(IconIndex icon)
 {
@@ -114,12 +115,8 @@ public:
         : m_spec(spec), m_view(view)
     {}
 
-    int columnCount() const { return 4; }
-
     QVariant data(int column, int role) const override
     {
-        if (role == HiddenByDefaultRole)
-            return m_spec->isHiddenByDefault() || !m_spec->isAvailableForHostPlatform();
         switch (column) {
         case NameColumn:
             if (role == Qt::DisplayRole)
@@ -227,12 +224,8 @@ public:
             appendChild(new PluginItem(spec, view));
     }
 
-    int columnCount() const { return 4; }
-
     QVariant data(int column, int role) const override
     {
-        if (role == HiddenByDefaultRole)
-            return false;
         if (column == NameColumn) {
             if (role == Qt::DisplayRole || role == SortRole)
                 return m_name;
@@ -288,40 +281,6 @@ public:
     PluginView *m_view; // Not owned.
 };
 
-class PluginFilterModel : public CategorySortFilterModel
-{
-public:
-    PluginFilterModel(QObject *parent = nullptr) : CategorySortFilterModel(parent) {}
-
-    void setShowHidden(bool show)
-    {
-        if (show == m_showHidden)
-            return;
-        m_showHidden = show;
-        invalidateFilter();
-    }
-
-    bool isShowingHidden() const
-    {
-        return m_showHidden;
-    }
-
-protected:
-    bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override
-    {
-        if (CategorySortFilterModel::filterAcceptsRow(source_row, source_parent)) {
-            if (m_showHidden)
-                return true;
-            const QModelIndex &index = sourceModel()->index(source_row, 0, source_parent);
-            return !sourceModel()->data(index, HiddenByDefaultRole).toBool();
-        }
-        return false;
-    }
-
-private:
-    bool m_showHidden = true;
-};
-
 } // Internal
 
 using namespace ExtensionSystem::Internal;
@@ -349,10 +308,9 @@ PluginView::PluginView(QWidget *parent)
     m_model = new TreeModel<TreeItem, CollectionItem, PluginItem>(this);
     m_model->setHeader({ tr("Name"), tr("Load"), tr("Version"), tr("Vendor") });
 
-    m_sortModel = new PluginFilterModel(this);
+    m_sortModel = new CategorySortFilterModel(this);
     m_sortModel->setSourceModel(m_model);
     m_sortModel->setSortRole(SortRole);
-    m_sortModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_sortModel->setFilterKeyColumn(-1/*all*/);
     m_categoryView->setModel(m_sortModel);
 
@@ -394,25 +352,10 @@ PluginSpec *PluginView::currentPlugin() const
 */
 void PluginView::setFilter(const QString &filter)
 {
-    m_sortModel->setFilterFixedString(filter);
+    m_sortModel->setFilterRegularExpression(
+        QRegularExpression(QRegularExpression::escape(filter),
+                           QRegularExpression::CaseInsensitiveOption));
     m_categoryView->expandAll();
-}
-
-/*!
-    Sets the list filtering to \a showHidden.
-*/
-void PluginView::setShowHidden(bool showHidden)
-{
-    m_sortModel->setShowHidden(showHidden);
-    m_categoryView->expandAll();
-}
-
-/*!
-    Returns whether hidden plugins are listed.
-*/
-bool PluginView::isShowingHidden() const
-{
-    return m_sortModel->isShowingHidden();
 }
 
 PluginSpec *PluginView::pluginForIndex(const QModelIndex &index) const

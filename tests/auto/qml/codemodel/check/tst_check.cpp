@@ -39,6 +39,8 @@
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <qmljs/parser/qmljsast_p.h>
 #include <qmljs/parser/qmljsengine_p.h>
+#include <qmljs/parser/qmljssourcelocation_p.h>
+#include <extensionsystem/pluginmanager.h>
 
 #include <QtTest>
 #include <algorithm>
@@ -85,6 +87,23 @@ void tst_Check::initTestCase()
     QFileInfo builtins(resourcePath() + "/qml-type-descriptions/builtins.qmltypes");
     QStringList errors, warnings;
     CppQmlTypesLoader::defaultQtObjects = CppQmlTypesLoader::loadQmlTypes(QFileInfoList() << builtins, &errors, &warnings);
+
+    if (!ModelManagerInterface::instance())
+        new ModelManagerInterface;
+    if (!ExtensionSystem::PluginManager::instance())
+        new ExtensionSystem::PluginManager;
+    ModelManagerInterface *modelManager = ModelManagerInterface::instance();
+
+    QFutureInterface<void> result;
+    PathsAndLanguages lPaths;
+    QStringList paths(QLibraryInfo::location(QLibraryInfo::Qml2ImportsPath));
+    for (auto p: paths)
+        lPaths.maybeInsert(Utils::FilePath::fromString(p), Dialect::Qml);
+    ModelManagerInterface::importScan(result, ModelManagerInterface::workingCopy(), lPaths,
+                                      modelManager, false);
+    QCoreApplication::processEvents();
+    modelManager->test_joinAllThreads();
+    QCoreApplication::processEvents();
 }
 
 static bool offsetComparator(const Message &lhs, const Message &rhs)
@@ -99,18 +118,16 @@ void tst_Check::test_data()
 {
     QTest::addColumn<QString>("path");
 
-    QDirIterator it(TESTSRCDIR, QStringList("*.qml"), QDir::Files);
-    while (it.hasNext()) {
-        const QString fileName = it.next();
-        QTest::newRow(fileName.toLatin1()) << it.filePath();
+    for (QFileInfo it : QDir(TESTSRCDIR).entryInfoList(QStringList("*.qml"), QDir::Files, QDir::Name)) {
+        QTest::newRow(it.fileName().toUtf8()) << it.filePath();
     }
 }
 
 void tst_Check::test()
 {
     QFETCH(QString, path);
-
-    Snapshot snapshot;
+    auto mm = ModelManagerInterface::instance();
+    Snapshot snapshot =  mm->snapshot();
     Document::MutablePtr doc = Document::create(path, Dialect::Qml);
     QFile file(doc->fileName());
     file.open(QFile::ReadOnly | QFile::Text);
@@ -118,9 +135,15 @@ void tst_Check::test()
     file.close();
     doc->parse();
     snapshot.insert(doc);
+    mm->updateDocument(doc);
+    QRegularExpression nDiagRe("// *nDiagnosticMessages *= *([0-9]+)");
+    auto m = nDiagRe.match(doc->source());
+    int nDiagnosticMessages = 0;
+    if (m.hasMatch())
+        nDiagnosticMessages = m.captured(1).toInt();
 
     QVERIFY(!doc->source().isEmpty());
-    QVERIFY(doc->diagnosticMessages().isEmpty());
+    QCOMPARE(doc->diagnosticMessages().size(), nDiagnosticMessages);
 
     ViewerContext vContext;
     vContext.flags = ViewerContext::Complete;
@@ -130,17 +153,18 @@ void tst_Check::test()
     QList<Message> messages = checker();
     std::sort(messages.begin(), messages.end(), &offsetComparator);
 
-    const QRegExp messagePattern(" (\\d+) (\\d+) (\\d+)");
+    const QRegularExpression messagePattern(" (-?\\d+) (\\d+) (\\d+)\\s*(# false positive|# wrong warning.*)?");
 
     QList<Message> expectedMessages;
-    foreach (const AST::SourceLocation &comment, doc->engine()->comments()) {
+    QHash<int, QString> xfails;
+    for (const SourceLocation &comment : doc->engine()->comments()) {
         const QString text = doc->source().mid(comment.begin(), comment.end() - comment.begin());
-
-        if (messagePattern.indexIn(text) == -1)
+        const QRegularExpressionMatch match = messagePattern.match(text);
+        if (!match.hasMatch())
             continue;
-        const int type = messagePattern.cap(1).toInt();
-        const int columnStart = messagePattern.cap(2).toInt();
-        const int columnEnd = messagePattern.cap(3).toInt() + 1;
+        const int type = match.captured(1).toInt();
+        const int columnStart = match.captured(2).toInt();
+        const int columnEnd = match.captured(3).toInt() + 1;
 
         Message message;
         message.location = SourceLocation(
@@ -150,6 +174,9 @@ void tst_Check::test()
                     columnStart),
         message.type = static_cast<QmlJS::StaticAnalysis::Type>(type);
         expectedMessages += message;
+
+        if (messagePattern.captureCount() == 4 && !match.captured(4).isEmpty())
+            xfails.insert(expectedMessages.size() - 1, match.captured(4));
     }
 
     for (int i = 0; i < messages.size(); ++i) {
@@ -159,6 +186,9 @@ void tst_Check::test()
         Message expected = expectedMessages.at(i);
         bool fail = false;
         fail |= !QCOMPARE_NOEXIT(actual.location.startLine, expected.location.startLine);
+        auto xFail = xfails.find(i);
+        if (xFail != xfails.end())
+            QEXPECT_FAIL(path.toUtf8(), xFail.value().toUtf8(), Continue);
         fail |= !QCOMPARE_NOEXIT((int)actual.type, (int)expected.type);
         if (fail)
             return;
@@ -175,12 +205,13 @@ void tst_Check::test()
             Message missingMessage = expectedMessages.at(i);
             qDebug() << "expected message of type" << missingMessage.type << "on line" << missingMessage.location.startLine;
         }
-        QFAIL("more messages expected");
+        QVERIFY2(false, "more messages expected");
     }
     if (expectedMessages.size() < messages.size()) {
         for (int i = expectedMessages.size(); i < messages.size(); ++i) {
             Message extraMessage = messages.at(i);
-            qDebug() << "unexpected message of type" << extraMessage.type << "on line" << extraMessage.location.startLine;
+            qDebug() << "unexpected message of type" << extraMessage.type << "on line" << extraMessage.location.startLine
+                     << extraMessage.message;
         }
         QFAIL("fewer messages expected");
     }

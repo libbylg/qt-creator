@@ -26,11 +26,12 @@
 #include "qmljsstaticanalysismessage.h"
 #include "qmljsconstants.h"
 #include "parser/qmljsengine_p.h"
+#include "parser/qmljsdiagnosticmessage_p.h"
 
 #include <utils/qtcassert.h>
 
 #include <QCoreApplication>
-#include <QRegExp>
+#include <QRegularExpression>
 
 using namespace QmlJS;
 using namespace QmlJS::StaticAnalysis;
@@ -242,6 +243,12 @@ StaticAnalysisMessages::StaticAnalysisMessages()
             tr("A State cannot have a child item (%1)."), 1);
     newMsg(WarnDuplicateImport, Warning,
            tr("Duplicate import (%1)."), 1);
+    newMsg(ErrHitMaximumRecursion, Error,
+           tr("Hit maximum recursion limit when visiting AST."));
+    newMsg(ErrTypeIsInstantiatedRecursively, Error,
+            tr("Type cannot be instantiated recursively (%1)."), 1);
+    newMsg(WarnLogicalValueDoesNotDependOnValues, Warning,
+           tr("Logical value does not depend on actual values"));
 }
 
 } // anonymous namespace
@@ -258,7 +265,7 @@ Message::Message()
 {}
 
 Message::Message(Type type,
-                 AST::SourceLocation location,
+                 SourceLocation location,
                  const QString &arg1,
                  const QString &arg2,
                  bool appendTypeId)
@@ -312,9 +319,9 @@ QString Message::suppressionString() const
     return QString::fromLatin1("@disable-check M%1").arg(QString::number(type));
 }
 
-QRegExp Message::suppressionPattern()
+QRegularExpression Message::suppressionPattern()
 {
-    return QRegExp(QLatin1String("@disable-check M(\\d+)"));
+    return QRegularExpression("@disable-check M(\\d+)");
 }
 
 const PrototypeMessageData Message::prototypeForMessageType(Type type)

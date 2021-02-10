@@ -35,6 +35,7 @@
 #include <QtQuick3D/private/qquick3dperspectivecamera_p.h>
 #include <QtQuick3D/private/qquick3dutils_p.h>
 #include <QtCore/qmath.h>
+#include <QtCore/qtimer.h>
 
 #include <limits>
 
@@ -49,6 +50,19 @@ CameraGeometry::CameraGeometry()
 CameraGeometry::~CameraGeometry()
 {
 }
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+QString CameraGeometry::name() const
+{
+    return objectName();
+}
+
+void CameraGeometry::setName(const QString &name)
+{
+    setObjectName(name);
+    emit nameChanged();
+}
+#endif
 
 QQuick3DCamera *CameraGeometry::camera() const
 {
@@ -70,31 +84,31 @@ void CameraGeometry::setCamera(QQuick3DCamera *camera)
     m_camera = camera;
     if (auto perspectiveCamera = qobject_cast<QQuick3DPerspectiveCamera *>(m_camera)) {
         QObject::connect(perspectiveCamera, &QQuick3DPerspectiveCamera::clipNearChanged,
-                         this, &CameraGeometry::update);
+                         this, &CameraGeometry::handleCameraPropertyChange);
         QObject::connect(perspectiveCamera, &QQuick3DPerspectiveCamera::clipFarChanged,
-                         this, &CameraGeometry::update);
+                         this, &CameraGeometry::handleCameraPropertyChange);
         QObject::connect(perspectiveCamera, &QQuick3DPerspectiveCamera::fieldOfViewChanged,
-                         this, &CameraGeometry::update);
+                         this, &CameraGeometry::handleCameraPropertyChange);
         QObject::connect(perspectiveCamera, &QQuick3DPerspectiveCamera::fieldOfViewOrientationChanged,
-                         this, &CameraGeometry::update);
+                         this, &CameraGeometry::handleCameraPropertyChange);
         if (auto frustumCamera = qobject_cast<QQuick3DFrustumCamera *>(m_camera)) {
             QObject::connect(frustumCamera, &QQuick3DFrustumCamera::topChanged,
-                             this, &CameraGeometry::update);
+                             this, &CameraGeometry::handleCameraPropertyChange);
             QObject::connect(frustumCamera, &QQuick3DFrustumCamera::bottomChanged,
-                             this, &CameraGeometry::update);
+                             this, &CameraGeometry::handleCameraPropertyChange);
             QObject::connect(frustumCamera, &QQuick3DFrustumCamera::rightChanged,
-                             this, &CameraGeometry::update);
+                             this, &CameraGeometry::handleCameraPropertyChange);
             QObject::connect(frustumCamera, &QQuick3DFrustumCamera::leftChanged,
-                             this, &CameraGeometry::update);
+                             this, &CameraGeometry::handleCameraPropertyChange);
         }
     } else if (auto orthoCamera = qobject_cast<QQuick3DOrthographicCamera *>(m_camera)) {
         QObject::connect(orthoCamera, &QQuick3DOrthographicCamera::clipNearChanged,
-                         this, &CameraGeometry::update);
+                         this, &CameraGeometry::handleCameraPropertyChange);
         QObject::connect(orthoCamera, &QQuick3DOrthographicCamera::clipFarChanged,
-                         this, &CameraGeometry::update);
+                         this, &CameraGeometry::handleCameraPropertyChange);
     } else if (auto customCamera = qobject_cast<QQuick3DCustomCamera *>(m_camera)) {
         QObject::connect(customCamera, &QQuick3DCustomCamera::projectionChanged,
-                         this, &CameraGeometry::update);
+                         this, &CameraGeometry::handleCameraPropertyChange);
     }
     emit cameraChanged();
     update();
@@ -110,48 +124,28 @@ void CameraGeometry::setViewPortRect(const QRectF &rect)
     update();
 }
 
+void CameraGeometry::handleCameraPropertyChange()
+{
+    m_cameraUpdatePending = true;
+    update();
+}
+
 QSSGRenderGraphObject *CameraGeometry::updateSpatialNode(QSSGRenderGraphObject *node)
 {
     if (!m_camera)
         return node;
 
+    // If camera properties have been updated, we need to defer updating the frustum geometry
+    // to the next frame to ensure camera's spatial node has been properly updated.
+    if (m_cameraUpdatePending) {
+        QTimer::singleShot(0, this, &CameraGeometry::update);
+        m_cameraUpdatePending = false;
+        return node;
+    }
+
     if (!m_camera->cameraNode()) {
-#if QT_VERSION <= QT_VERSION_CHECK(5, 14, 1)
-        // 5.14.1 doesn't yet have function to force camera node creation, so we must do it
-        // the hard way
-        auto camera = new QSSGRenderCamera();
-        bool changed = false;
-        if (auto perspCamera = qobject_cast<QQuick3DPerspectiveCamera *>(m_camera)) {
-            changed |= qUpdateIfNeeded(camera->clipNear, perspCamera->clipNear());
-            changed |= qUpdateIfNeeded(camera->clipFar, perspCamera->clipFar());
-            changed |= qUpdateIfNeeded(camera->fov, qDegreesToRadians(perspCamera->fieldOfView()));
-            changed |= qUpdateIfNeeded(camera->fovHorizontal, perspCamera->fieldOfViewOrientation()
-                                       == QQuick3DCamera::FieldOfViewOrientation::Horizontal);
-            changed |= qUpdateIfNeeded(camera->enableFrustumClipping, perspCamera->frustumCullingEnabled());
-            if (auto frustCamera = qobject_cast<QQuick3DFrustumCamera *>(m_camera)) {
-                camera->flags.setFlag(QSSGRenderNode::Flag::CameraFrustumProjection, true);
-                changed |= qUpdateIfNeeded(camera->top, frustCamera->top());
-                changed |= qUpdateIfNeeded(camera->bottom, frustCamera->bottom());
-                changed |= qUpdateIfNeeded(camera->right, frustCamera->right());
-                changed |= qUpdateIfNeeded(camera->left, frustCamera->left());
-            }
-        } else if (auto orthoCamera = qobject_cast<QQuick3DOrthographicCamera *>(m_camera)) {
-            camera->flags.setFlag(QSSGRenderNode::Flag::Orthographic, true);
-            changed |= qUpdateIfNeeded(camera->clipNear, orthoCamera->clipNear());
-            changed |= qUpdateIfNeeded(camera->clipFar, orthoCamera->clipFar());
-            changed |= qUpdateIfNeeded(camera->enableFrustumClipping, orthoCamera->frustumCullingEnabled());
-        } else if (auto customCamera = qobject_cast<QQuick3DCustomCamera *>(m_camera)) {
-            camera->flags.setFlag(QSSGRenderNode::Flag::CameraCustomProjection, true);
-            changed |= qUpdateIfNeeded(camera->projection, customCamera->projection());
-            changed |= qUpdateIfNeeded(camera->enableFrustumClipping, customCamera->frustumCullingEnabled());
-        }
-        if (changed)
-            camera->flags.setFlag(QSSGRenderNode::Flag::CameraDirty);
-        m_camera->setCameraNode(camera);
-#else
         // Doing explicit viewport mapping forces cameraNode creation
         m_camera->mapToViewport({}, m_viewPortRect.width(), m_viewPortRect.height());
-#endif
     }
 
     node = QQuick3DGeometry::updateSpatialNode(node);
@@ -165,14 +159,22 @@ QSSGRenderGraphObject *CameraGeometry::updateSpatialNode(QSSGRenderGraphObject *
     QVector3D maxBounds;
     fillVertexData(vertexData, indexData, minBounds, maxBounds);
 
+    geometry->setStride(12);
+#if QT_VERSION < QT_VERSION_CHECK(6, 1, 0)
     geometry->addAttribute(QSSGRenderGeometry::Attribute::PositionSemantic, 0,
                            QSSGRenderGeometry::Attribute::ComponentType::F32Type);
     geometry->addAttribute(QSSGRenderGeometry::Attribute::IndexSemantic, 0,
                            QSSGRenderGeometry::Attribute::ComponentType::U16Type);
-    geometry->setStride(12);
+    geometry->setPrimitiveType(QSSGRenderGeometry::Lines);
+#else
+    geometry->addAttribute(QSSGMesh::RuntimeMeshData::Attribute::PositionSemantic, 0,
+                           QSSGMesh::Mesh::ComponentType::Float32);
+    geometry->addAttribute(QSSGMesh::RuntimeMeshData::Attribute::IndexSemantic, 0,
+                           QSSGMesh::Mesh::ComponentType::UnsignedInt16);
+    geometry->setPrimitiveType(QSSGMesh::Mesh::DrawMode::Lines);
+#endif
     geometry->setVertexData(vertexData);
     geometry->setIndexData(indexData);
-    geometry->setPrimitiveType(QSSGRenderGeometry::Lines);
     geometry->setBounds(minBounds, maxBounds);
 
     return node;
@@ -183,7 +185,7 @@ void CameraGeometry::fillVertexData(QByteArray &vertexData, QByteArray &indexDat
 {
     const int vertexSize = int(sizeof(float)) * 8 * 3; // 8 vertices, 3 floats/vert
     vertexData.resize(vertexSize);
-    const int indexSize = int(sizeof(quint16)) * 12 * 2; // 16 lines, 2 vert/line
+    const int indexSize = int(sizeof(quint16)) * 12 * 2; // 12 lines, 2 vert/line
     indexData.resize(indexSize);
 
     auto dataPtr = reinterpret_cast<float *>(vertexData.data());
@@ -192,13 +194,16 @@ void CameraGeometry::fillVertexData(QByteArray &vertexData, QByteArray &indexDat
     QMatrix4x4 m;
     QSSGRenderCamera *camera = m_camera->cameraNode();
     if (camera) {
+        QRectF rect = m_viewPortRect;
+        if (rect.isNull())
+             rect = QRectF(0, 0, 1000, 1000); // Let's have some visualization for null viewports
         if (qobject_cast<QQuick3DOrthographicCamera *>(m_camera)) {
             // For some reason ortho cameras show double what projection suggests,
             // so give them doubled viewport to match visualization to actual camera view
-            camera->calculateGlobalVariables(QRectF(0, 0, m_viewPortRect.width() * 2.0,
-                                               m_viewPortRect.height() * 2.0));
+            camera->calculateGlobalVariables(QRectF(0, 0, rect.width() * 2.0,
+                                                    rect.height() * 2.0));
         } else {
-            camera->calculateGlobalVariables(m_viewPortRect);
+            camera->calculateGlobalVariables(rect);
         }
         m = camera->projection.inverted();
     }

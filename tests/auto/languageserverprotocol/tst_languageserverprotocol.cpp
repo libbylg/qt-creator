@@ -29,6 +29,7 @@
 #include <utils/mimetypes/mimetype.h>
 #include <utils/mimetypes/mimedatabase.h>
 
+#include <QTextCodec>
 #include <QtTest>
 
 using namespace LanguageServerProtocol;
@@ -573,14 +574,15 @@ void tst_LanguageServerProtocol::jsonObject()
     ErrorHierarchy errorHierarchy;
     QVERIFY(!obj.check<int>(&errorHierarchy, "doesNotExist"));
     ErrorHierarchy errorDoesNotExists;
-    errorDoesNotExists.setError(obj.errorString(QJsonValue::Double, QJsonValue::Undefined));
+    errorDoesNotExists.setError(
+                JsonTestObject::errorString(QJsonValue::Double, QJsonValue::Undefined));
     errorDoesNotExists.prependMember("doesNotExist");
     QCOMPARE(errorHierarchy, errorDoesNotExists);
     errorHierarchy.clear();
 
     QVERIFY(!obj.check<int>(&errorHierarchy, "bool"));
     ErrorHierarchy errorWrongType;
-    errorWrongType.setError(obj.errorString(QJsonValue::Double, QJsonValue::Bool));
+    errorWrongType.setError(JsonTestObject::errorString(QJsonValue::Double, QJsonValue::Bool));
     errorWrongType.prependMember("bool");
     QCOMPARE(errorHierarchy, errorWrongType);
     errorHierarchy.clear();

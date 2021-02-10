@@ -33,7 +33,6 @@ SOURCES += texteditorplugin.cpp \
     findinfiles.cpp \
     basefilefind.cpp \
     texteditorsettings.cpp \
-    codecselector.cpp \
     findincurrentfile.cpp \
     findinopenfiles.cpp \
     colorscheme.cpp \
@@ -41,7 +40,6 @@ SOURCES += texteditorplugin.cpp \
     texteditoroverlay.cpp \
     textdocumentlayout.cpp \
     completionsettings.cpp \
-    normalindenter.cpp \
     textindenter.cpp \
     quickfix.cpp \
     syntaxhighlighter.cpp \
@@ -121,7 +119,6 @@ HEADERS += texteditorplugin.h \
     findinfiles.h \
     basefilefind.h \
     texteditorsettings.h \
-    codecselector.h \
     findincurrentfile.h \
     findinopenfiles.h \
     colorscheme.h \
@@ -129,7 +126,6 @@ HEADERS += texteditorplugin.h \
     texteditoroverlay.h \
     textdocumentlayout.h \
     completionsettings.h \
-    normalindenter.h \
     textindenter.h \
     quickfix.h \
     syntaxhighlighter.h \

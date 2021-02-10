@@ -32,6 +32,7 @@
 
 #include <utils/filesystemwatcher.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 
 #include <QDateTime>
 #include <QFont>
@@ -150,6 +151,11 @@ public:
         return fn;
     }
 
+    QString fullRef(bool includePrefix = false) const
+    {
+        return fullName(includePrefix).join('/');
+    }
+
     void insert(const QStringList &path, BranchNode *n)
     {
         BranchNode *current = this;
@@ -186,7 +192,7 @@ public:
             }
             return names;
         }
-        return {fullName().join('/')};
+        return {fullRef()};
     }
 
     int rowOf(BranchNode *node)
@@ -346,7 +352,7 @@ QVariant BranchModel::data(const QModelIndex &index, int role) const
         return res;
     }
     case Qt::EditRole:
-        return index.column() == 0 ? node->fullName().join('/') : QVariant();
+        return index.column() == 0 ? node->fullRef() : QVariant();
     case Qt::ToolTipRole:
         if (!node->isLeaf())
             return QVariant();
@@ -381,7 +387,7 @@ bool BranchModel::setData(const QModelIndex &index, const QVariant &value, int r
     if (newName.isEmpty())
         return false;
 
-    const QString oldName = node->fullName().join('/');
+    const QString oldName = node->fullRef();
     if (oldName == newName)
         return false;
 
@@ -525,7 +531,7 @@ QString BranchModel::fullName(const QModelIndex &idx, bool includePrefix) const
         return QString();
     if (node == d->headNode)
         return QString("HEAD");
-    return node->fullName(includePrefix).join('/');
+    return node->fullRef(includePrefix);
 }
 
 QStringList BranchModel::localBranchNames() const
@@ -642,7 +648,7 @@ bool BranchModel::branchIsMerged(const QModelIndex &idx)
         VcsOutputWindow::appendError(errorMessage);
     }
 
-    const QStringList lines = output.split('\n', QString::SkipEmptyParts);
+    const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
     for (const QString &l : lines) {
         QString currentBranch = l.mid(2); // remove first letters (those are either
                                           // "  " or "* " depending on whether it is
@@ -778,7 +784,7 @@ void BranchModel::Private::parseOutputLine(const QString &line, bool force)
     if (strDateTime.isEmpty())
         strDateTime = lineParts.at(4);
     if (!strDateTime.isEmpty()) {
-        const qint64 timeT = strDateTime.leftRef(strDateTime.indexOf(' ')).toLongLong();
+        const qint64 timeT = strDateTime.left(strDateTime.indexOf(' ')).toLongLong();
         dateTime = QDateTime::fromSecsSinceEpoch(timeT);
     }
 
@@ -901,7 +907,8 @@ void BranchModel::updateUpstreamStatus(BranchNode *node)
 {
     if (node->tracking.isEmpty())
         return;
-    VcsCommand *command = d->client->asyncUpstreamStatus(d->workingDirectory, node->name, node->tracking);
+    VcsCommand *command = d->client->asyncUpstreamStatus(
+                d->workingDirectory, node->fullRef(), node->tracking);
     QObject::connect(command, &VcsCommand::stdOutText, node, [this, node](const QString &text) {
         const QStringList split = text.trimmed().split('\t');
         QTC_ASSERT(split.size() == 2, return);

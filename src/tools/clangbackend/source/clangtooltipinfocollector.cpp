@@ -149,6 +149,28 @@ Utf8String sizeInBytes(const Cursor &cursor)
     return Utf8String();
 }
 
+QVariant value(const Cursor &cursor)
+{
+    if (!clang_isDeclaration(cursor.cx().kind) && !clang_isExpression(cursor.cx().kind))
+        return {};
+    const CXEvalResult evalResult = clang_Cursor_Evaluate(cursor.cx());
+    QVariant v;
+    switch (clang_EvalResult_getKind(evalResult)) {
+    case CXEval_Int:
+        v = clang_EvalResult_isUnsignedInt(evalResult)
+                ? QVariant::fromValue(clang_EvalResult_getAsUnsigned(evalResult))
+                : QVariant::fromValue(clang_EvalResult_getAsLongLong(evalResult));
+        break;
+    case CXEval_Float:
+        v = QVariant::fromValue(clang_EvalResult_getAsDouble(evalResult));
+        break;
+    default:
+        break;
+    }
+    clang_EvalResult_dispose(evalResult);
+    return v;
+}
+
 Cursor referencedCursor(const Cursor &cursor)
 {
     // Query the referenced cursor directly instead of first testing with cursor.isReference().
@@ -229,9 +251,6 @@ Utf8String ToolTipInfoCollector::text(const Cursor &cursor, const Cursor &refere
 
     if (referenced.isFunctionLike() || referenced.kind() == CXCursor_Constructor)
         return textForFunctionLike(referenced);
-
-    if (referenced.type().canonical().isBuiltinType())
-        return referenced.type().canonical().builtinTypeToString();
 
     if (referenced.kind() == CXCursor_VarDecl)
         return referenced.type().spelling(); // e.g. "Zii<int>"
@@ -493,9 +512,25 @@ Utf8String ToolTipInfoCollector::lineRange(const Utf8String &filePath,
 
 ToolTipInfo ToolTipInfoCollector::collect(uint line, uint column) const
 {
-    const Cursor cursor = clang_getCursor(m_cxTranslationUnit, toCXSourceLocation(line, column));
+    Cursor cursor = clang_getCursor(m_cxTranslationUnit, toCXSourceLocation(line, column));
+    if (!cursor.isValid()) { // QTCREATORBUG-21194
+        Tokens tokens(Cursor(clang_getTranslationUnitCursor(m_cxTranslationUnit)).sourceRange());
+        if (!tokens.size())
+            return {};
+
+        // TODO: Only annotate the tokens up until the location we are interested in?
+        //       Same goes for FollowSymbol.
+        const std::vector<Cursor> cursors = tokens.annotate();
+
+        const int tokenIndex = tokens.getTokenIndex(m_cxTranslationUnit, line, column);
+        QTC_ASSERT(tokenIndex >= 0, return {});
+        const Utf8String tokenSpelling = tokens[tokenIndex].spelling();
+        if (tokenSpelling.isEmpty())
+            return {};
+        cursor = cursors[tokenIndex];
+    }
     if (!cursor.isValid())
-        return ToolTipInfo(); // E.g. cursor on ifdeffed out range
+        return {};
 
     const Cursor referenced = referencedCursor(cursor);
     QTC_CHECK(referenced.isValid());
@@ -503,6 +538,7 @@ ToolTipInfo ToolTipInfoCollector::collect(uint line, uint column) const
     ToolTipInfo info;
     info.text = text(cursor, referenced);
     info.briefComment = referenced.briefComment();
+    info.value = value(cursor);
 
     {
         ToolTipInfo qDocToolTipInfo = qDocInfo(referenced);

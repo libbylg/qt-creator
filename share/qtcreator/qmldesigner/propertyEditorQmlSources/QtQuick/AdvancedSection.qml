@@ -33,18 +33,21 @@ Section {
     caption: qsTr("Advanced")
 
     SectionLayout {
-        rows: 4
+        columns: 2
 
         Label {
             text: qsTr("Origin")
+            disabledState: !backendValues.transformOrigin.isAvailable
         }
 
         OriginControl {
             backendValue: backendValues.transformOrigin
+            enabled: backendValues.transformOrigin.isAvailable
         }
 
         Label {
             text: qsTr("Scale")
+            disabledState: !backendValues.scale.isAvailable
         }
 
         SecondColumnLayout {
@@ -57,12 +60,14 @@ Section {
                 minimumValue: -10
                 maximumValue: 10
                 Layout.preferredWidth: 140
+                enabled: backendValues.scale.isAvailable
             }
             ExpandingSpacer {
             }
         }
         Label {
             text: qsTr("Rotation")
+            disabledState: !backendValues.rotation.isAvailable
         }
         SecondColumnLayout {
             SpinBox {
@@ -73,6 +78,7 @@ Section {
                 minimumValue: -360
                 maximumValue: 360
                 Layout.preferredWidth: 140
+                enabled: backendValues.rotation.isAvailable
             }
             ExpandingSpacer {
             }
@@ -94,6 +100,22 @@ Section {
         }
 
         Label {
+            text: qsTr("State")
+        }
+        SecondColumnLayout {
+
+            ComboBox {
+                Layout.fillWidth: true
+                backendValue: backendValues.state
+                model: allStateNames
+                valueType: ComboBox.String
+            }
+
+            ExpandingSpacer {
+            }
+        }
+
+        Label {
             visible: majorQtQuickVersion > 1
             text: qsTr("Enabled")
         }
@@ -110,12 +132,14 @@ Section {
         Label {
             visible: majorQtQuickVersion > 1
             text: qsTr("Smooth")
+            disabledState: !backendValues.smooth.isAvailable
         }
         SecondColumnLayout {
             visible: majorQtQuickVersion > 1
             CheckBox {
                 backendValue: backendValues.smooth
                 text: qsTr("Smooth sampling active")
+                enabled: backendValues.smooth.isAvailable
             }
             ExpandingSpacer {
             }
@@ -124,16 +148,67 @@ Section {
         Label {
             visible: majorQtQuickVersion > 1
             text: qsTr("Antialiasing")
+            disabledState: !backendValues.antialiasing.isAvailable
         }
         SecondColumnLayout {
             visible: majorQtQuickVersion > 1
             CheckBox {
                 backendValue: backendValues.antialiasing
                 text: qsTr("Anti-aliasing active")
+                enabled: backendValues.antialiasing.isAvailable
             }
             ExpandingSpacer {
             }
         }
 
+        Label {
+            text: qsTr("Focus")
+            tooltip: qsTr("Sets focus on the item within the enclosing focus scope.")
+            disabledState: !backendValues.focus.isAvailable
+        }
+        SecondColumnLayout {
+            CheckBox {
+                backendValue: backendValues.focus
+                text: backendValues.focus.valueToString
+                enabled: backendValues.focus.isAvailable
+            }
+            ExpandingSpacer {
+            }
+        }
+
+        Label {
+            text: qsTr("Active focus on tab")
+            tooltip: qsTr("Adds the item to the tab focus chain.")
+            disabledState: !backendValues.activeFocusOnTab.isAvailable
+        }
+        SecondColumnLayout {
+            CheckBox {
+                backendValue: backendValues.activeFocusOnTab
+                text: backendValues.activeFocusOnTab.valueToString
+                enabled: backendValues.activeFocusOnTab.isAvailable
+            }
+            ExpandingSpacer {
+            }
+        }
+
+        Label {
+            text: qsTr("Baseline offset")
+            tooltip: qsTr("Position of the item's baseline in local coordinates.")
+            disabledState: !backendValues.baselineOffset.isAvailable
+        }
+        SecondColumnLayout {
+            SpinBox {
+                sliderIndicatorVisible: true
+                backendValue: backendValues.baselineOffset
+                hasSlider: true
+                decimals: 0
+                minimumValue: -1000
+                maximumValue: 1000
+                Layout.preferredWidth: 140
+                enabled: backendValues.baselineOffset.isAvailable
+            }
+            ExpandingSpacer {
+            }
+        }
     }
 }

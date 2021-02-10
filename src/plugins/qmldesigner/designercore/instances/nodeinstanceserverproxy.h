@@ -48,27 +48,22 @@ namespace QmlDesigner {
 class NodeInstanceClientInterface;
 class NodeInstanceView;
 class NodeInstanceClientProxy;
+class ConnectionManagerInterface;
 
 class NodeInstanceServerProxy : public NodeInstanceServerInterface
 {
+    friend class BaseConnectionManager;
     Q_OBJECT
 
 public:
-    enum PuppetStreamType {
-        FirstPuppetStream,
-        SecondPuppetStream,
-        ThirdPuppetStream,
-    };
-
     explicit NodeInstanceServerProxy(NodeInstanceView *nodeInstanceView,
-                                     RunModus runModus,
-                                     ProjectExplorer::Target *target);
+                                     ProjectExplorer::Target *target,
+                                     ConnectionManagerInterface &connectionManager);
     ~NodeInstanceServerProxy() override;
     void createInstances(const CreateInstancesCommand &command) override;
     void changeFileUrl(const ChangeFileUrlCommand &command) override;
     void createScene(const CreateSceneCommand &command) override;
     void update3DViewState(const Update3dViewStateCommand &command) override;
-    void enable3DView(const Enable3DViewCommand &command) override;
     void clearScene(const ClearSceneCommand &command) override;
     void removeInstances(const RemoveInstancesCommand &command) override;
     void changeSelection(const ChangeSelectionCommand &command) override;
@@ -84,53 +79,25 @@ public:
     void token(const TokenCommand &command) override;
     void removeSharedMemory(const RemoveSharedMemoryCommand &command) override;
     void benchmark(const QString &message) override;
+    void inputEvent(const InputEventCommand &command) override;
+    void view3DAction(const View3DActionCommand &command) override;
+    void requestModelNodePreviewImage(const RequestModelNodePreviewImageCommand &command) override;
+    void changeLanguage(const ChangeLanguageCommand &command) override;
+    void changePreviewImageSize(const ChangePreviewImageSizeCommand &command) override;
+    void dispatchCommand(const QVariant &command) override;
+
+    NodeInstanceView *nodeInstanceView() const { return m_nodeInstanceView; }
+
+    QString qrcMappingString() const;
 
 protected:
     void writeCommand(const QVariant &command);
-    void dispatchCommand(const QVariant &command, PuppetStreamType puppetStreamType);
     NodeInstanceClientInterface *nodeInstanceClient() const;
-    void puppetAlive(PuppetStreamType puppetStreamType);
-    QString qrcMappingString() const;
 
-signals:
-    void processCrashed();
-
-private slots:
-    void processFinished();
-    void puppetTimeout(PuppetStreamType puppetStreamType);
-    void processFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void readFirstDataStream();
-    void readSecondDataStream();
-    void readThirdDataStream();
-
-    void printEditorProcessOutput();
-    void printPreviewProcessOutput();
-    void printRenderProcessOutput();
-    void showCannotConnectToPuppetWarningAndSwitchToEditMode();
 private:
-    QFile m_captureFileForTest;
-    QTimer m_firstTimer;
-    QTimer m_secondTimer;
-    QTimer m_thirdTimer;
-    QPointer<QLocalServer> m_localServer;
-    QPointer<QLocalSocket> m_firstSocket;
-    QPointer<QLocalSocket> m_secondSocket;
-    QPointer<QLocalSocket> m_thirdSocket;
-    QPointer<NodeInstanceView> m_nodeInstanceView;
-    QPointer<QProcess> m_qmlPuppetEditorProcess;
-    QPointer<QProcess> m_qmlPuppetPreviewProcess;
-    QPointer<QProcess> m_qmlPuppetRenderProcess;
-    quint32 m_firstBlockSize = 0;
-    quint32 m_secondBlockSize = 0;
-    quint32 m_thirdBlockSize = 0;
-    quint32 m_writeCommandCounter = 0;
-    quint32 m_firstLastReadCommandCounter = 0;
-    quint32 m_secondLastReadCommandCounter = 0;
-    quint32 m_thirdLastReadCommandCounter = 0;
-    RunModus m_runModus;
-    int m_synchronizeId = -1;
+    NodeInstanceView *m_nodeInstanceView{};
     QElapsedTimer m_benchmarkTimer;
-    bool m_destructing = false;
+    ConnectionManagerInterface &m_connectionManager;
 };
 
 } // namespace QmlDesigner

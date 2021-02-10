@@ -24,17 +24,17 @@
 ****************************************************************************/
 
 #include "plaintexteditorfactory.h"
-#include "texteditor.h"
+#include "basehoverhandler.h"
 #include "textdocument.h"
-#include "normalindenter.h"
+#include "texteditor.h"
 #include "texteditoractionhandler.h"
 #include "texteditorconstants.h"
 #include "texteditorplugin.h"
 #include "texteditorsettings.h"
-#include "basehoverhandler.h"
+#include "textindenter.h"
 
 #include <coreplugin/coreconstants.h>
-#include <coreplugin/infobar.h>
+#include <utils/infobar.h>
 #include <utils/qtcassert.h>
 
 #include <QCoreApplication>
@@ -65,7 +65,6 @@ PlainTextEditorFactory::PlainTextEditorFactory()
 
     setDocumentCreator([]() { return new TextDocument(Core::Constants::K_DEFAULT_TEXT_EDITOR_ID); });
     setEditorWidgetCreator([]() { return new PlainTextEditorWidget; });
-    setIndenterCreator([](QTextDocument *doc) { return new NormalIndenter(doc); });
     setUseGenericHighlighter(true);
 
     setEditorActionHandlers(TextEditorActionHandler::Format |

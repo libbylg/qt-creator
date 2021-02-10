@@ -173,8 +173,6 @@ private:
     CppTools::CppProjectUpdaterInterface *m_cppCodeModelUpdater = nullptr;
 
     Utils::FileSystemWatcher m_deployFileWatcher;
-
-    ParseGuard m_guard;
 };
 
 
@@ -263,7 +261,6 @@ GenericBuildSystem::~GenericBuildSystem()
 
 void GenericBuildSystem::triggerParsing()
 {
-    m_guard = guardParsingRun();
     refresh(Everything);
 }
 
@@ -305,7 +302,7 @@ bool GenericBuildSystem::saveRawList(const QStringList &rawList, const QString &
             stream << filePath << '\n';
         saver.setResult(&stream);
     }
-    bool result = saver.finalize(ICore::mainWindow());
+    bool result = saver.finalize(ICore::dialogParent());
     return result;
 }
 
@@ -445,7 +442,7 @@ void GenericBuildSystem::parse(RefreshOptions options)
 FilePath GenericBuildSystem::findCommonSourceRoot()
 {
     if (m_files.isEmpty())
-        return FilePath::fromFileInfo(QFileInfo(m_filesFileName).absolutePath());
+        return FilePath::fromFileInfo(QFileInfo(m_filesFileName));
 
     QString root = m_files.front();
     for (const QString &item : qAsConst(m_files)) {
@@ -565,8 +562,8 @@ void GenericBuildSystem::refreshCppCodeModel()
     rpp.setQtVersion(kitInfo.projectPartQtVersion);
     rpp.setHeaderPaths(m_projectIncludePaths);
     rpp.setConfigFileName(m_configFileName);
-    rpp.setFlagsForCxx({nullptr, m_cxxflags});
-    rpp.setFlagsForC({nullptr, m_cflags});
+    rpp.setFlagsForCxx({nullptr, m_cxxflags, projectDirectory().toString()});
+    rpp.setFlagsForC({nullptr, m_cflags, projectDirectory().toString()});
     rpp.setFiles(m_files);
 
     m_cppCodeModelUpdater->update({project(), kitInfo, activeParseEnvironment(), {rpp}});
@@ -601,7 +598,8 @@ void GenericBuildSystem::updateDeploymentData()
 void GenericBuildSystem::removeFiles(const QStringList &filesToRemove)
 {
     if (removeFiles(nullptr, filesToRemove, nullptr) == RemovedFilesFromProject::Error) {
-        TaskHub::addTask(BuildSystemTask(Task::Error, tr("Project files list update failed."),
+        TaskHub::addTask(BuildSystemTask(Task::Error,
+                                         GenericProject::tr("Project files list update failed."),
                                          filesFilePath()));
     }
 }
@@ -644,9 +642,7 @@ bool GenericProjectFile::reload(QString *errorString, IDocument::ReloadFlag flag
 {
     Q_UNUSED(errorString)
     Q_UNUSED(flag)
-    if (type == TypePermissions)
-        return true;
-
+    Q_UNUSED(type)
     if (Target *t = m_project->activeTarget())
         static_cast<GenericBuildSystem *>(t->buildSystem())->refresh(m_options);
 
@@ -657,7 +653,7 @@ void GenericProject::editFilesTriggered()
 {
     SelectableFilesDialogEditFiles sfd(projectDirectory(),
                                        files(Project::AllFiles),
-                                       ICore::mainWindow());
+                                       ICore::dialogParent());
     if (sfd.exec() == QDialog::Accepted) {
         if (Target *t = activeTarget()) {
             auto bs = static_cast<GenericBuildSystem *>(t->buildSystem());

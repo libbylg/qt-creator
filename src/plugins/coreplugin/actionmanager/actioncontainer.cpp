@@ -28,7 +28,6 @@
 
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/icontext.h>
-#include <coreplugin/id.h>
 
 #include <utils/qtcassert.h>
 
@@ -45,6 +44,7 @@ namespace Core {
 
 /*!
     \class Core::ActionContainer
+    \inheaderfile coreplugin/actionmanager/actioncontainer.h
     \ingroup mainclasses
     \inmodule QtCreator
 
@@ -64,13 +64,13 @@ namespace Core {
 
     You can specify whether the menu represented by this action container should
     be automatically disabled or hidden whenever it only contains disabled items
-    and submenus by setting the corresponding
-    \l{ActionContainer::setOnAllDisabledBehavior()}{OnAllDisabledBehavior}. The default is
-    ActionContainer::Disable for menus, and ActionContainer::Show for menu bars.
+    and submenus by setting the corresponding \l setOnAllDisabledBehavior(). The
+    default is ActionContainer::Disable for menus, and ActionContainer::Show for
+    menu bars.
 */
 
 /*!
-    \enum ActionContainer::OnAllDisabledBehavior
+    \enum Core::ActionContainer::OnAllDisabledBehavior
     Defines what happens when the represented menu is empty or contains only
     disabled or invisible items.
     \value Disable
@@ -82,7 +82,7 @@ namespace Core {
 */
 
 /*!
-    \fn ActionContainer::setOnAllDisabledBehavior(OnAllDisabledBehavior behavior)
+    \fn Core::ActionContainer::setOnAllDisabledBehavior(OnAllDisabledBehavior behavior)
     Defines the \a behavior of the menu represented by this action container for the case
     whenever it only contains disabled items and submenus.
     The default is ActionContainer::Disable for menus, and ActionContainer::Show for menu bars.
@@ -91,39 +91,39 @@ namespace Core {
 */
 
 /*!
-    \fn ActionContainer::onAllDisabledBehavior() const
+    \fn Core::ActionContainer::onAllDisabledBehavior() const
     Returns the behavior of the menu represented by this action container for the case
     whenever it only contains disabled items and submenus.
     The default is ActionContainer::Disable for menus, and ActionContainer::Show for menu bars.
-    \sa ActionContainer::OnAllDisabledBehavior
-    \sa ActionContainer::setOnAllDisabledBehavior()
+    \sa OnAllDisabledBehavior
+    \sa setOnAllDisabledBehavior()
 */
 
 /*!
-    \fn int ActionContainer::id() const
+    \fn int Core::ActionContainer::id() const
     \internal
 */
 
 /*!
-    \fn QMenu *ActionContainer::menu() const
+    \fn QMenu *Core::ActionContainer::menu() const
     Returns the QMenu instance that is represented by this action container, or
     0 if this action container represents a menu bar.
 */
 
 /*!
-    \fn QMenuBar *ActionContainer::menuBar() const
+    \fn QMenuBar *Core::ActionContainer::menuBar() const
     Returns the QMenuBar instance that is represented by this action container, or
     0 if this action container represents a menu.
 */
 
 /*!
-    \fn QAction *ActionContainer::insertLocation(Id group) const
+    \fn QAction *Core::ActionContainer::insertLocation(Utils::Id group) const
     Returns an action representing the \a group,
     that could be used with \c{QWidget::insertAction}.
 */
 
 /*!
-    \fn void ActionContainer::appendGroup(Id group)
+    \fn void Core::ActionContainer::appendGroup(Utils::Id group)
     Adds \a group to the action container.
 
     Use groups to segment your action container into logical parts. You can add
@@ -133,7 +133,7 @@ namespace Core {
 */
 
 /*!
-    \fn void ActionContainer::addAction(Command *action, Id group = Id())
+    \fn void Core::ActionContainer::addAction(Core::Command *action, Utils::Id group = Id())
     Add the \a action as a menu item to this action container. The action is added as the
     last item of the specified \a group.
     \sa appendGroup()
@@ -141,7 +141,7 @@ namespace Core {
 */
 
 /*!
-    \fn void ActionContainer::addMenu(ActionContainer *menu, Id group = Id())
+    \fn void Core::ActionContainer::addMenu(Core::ActionContainer *menu, Utils::Id group = Utils::Id())
     Add the \a menu as a submenu to this action container. The menu is added as the
     last item of the specified \a group.
     \sa appendGroup()
@@ -149,7 +149,7 @@ namespace Core {
 */
 
 /*!
-    \fn void ActionContainer::addMenu(ActionContainer *before, ActionContainer *menu)
+    \fn void Core::ActionContainer::addMenu(Core::ActionContainer *before, Core::ActionContainer *menu)
     Add \a menu as a submenu to this action container before the menu specified
     by \a before.
     \sa appendGroup()
@@ -157,7 +157,7 @@ namespace Core {
 */
 
 /*!
-    \fn ActionContainer::clear()
+    \fn Core::ActionContainer::clear()
 
     Clears this menu and submenus from all actions and submenus. However, does
     does not destroy the submenus and commands, just removes them from their
@@ -165,20 +165,20 @@ namespace Core {
 */
 
 /*!
-    \fn ActionContainer::insertGroup(Id before, Id group)
+    \fn Core::ActionContainer::insertGroup(Utils::Id before, Utils::Id group)
 
     Inserts \a group to the action container before the group specified by
     \a before.
 */
 
 /*!
-    \fn virtual Utils::TouchBar *ActionContainer::touchBar() const
+    \fn virtual Utils::TouchBar *Core::ActionContainer::touchBar() const
 
     Returns the touch bar that is represented by this action container.
 */
 
 /*!
-    \fn ActionContainer::addSeparator(const Context &context, Id group, QAction **outSeparator)
+    \fn Core::ActionContainer::addSeparator(const Core::Context &context, Utils::Id group, QAction **outSeparator)
 
     Adds a separator to the end of the given \a group to the action container,
     which is enabled for a given \a context. Returns the created separator
@@ -398,7 +398,7 @@ TouchBar *ActionContainerPrivate::touchBar() const
     return nullptr;
 }
 
-bool ActionContainerPrivate::canAddAction(Command *action) const
+bool ActionContainerPrivate::canAddAction(Command *action)
 {
     return action && action->action();
 }
@@ -408,7 +408,7 @@ void ActionContainerPrivate::scheduleUpdate()
     if (m_updateRequested)
         return;
     m_updateRequested = true;
-    QTimer::singleShot(0, this, &ActionContainerPrivate::update);
+    QMetaObject::invokeMethod(this, &ActionContainerPrivate::update, Qt::QueuedConnection);
 }
 
 void ActionContainerPrivate::update()

@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -24,14 +24,13 @@
 ****************************************************************************/
 
 /*!
-    \contentspage {Qt Creator Manual}
     \page quick-states.html
     \if defined(qtdesignstudio)
     \previouspage quick-property-bindings.html
     \else
     \previouspage quick-connections-backend.html
     \endif
-    \nextpage qmldesigner-pathview-editor.html
+    \nextpage studio-3d.html
 
     \title Adding States
 
@@ -56,56 +55,117 @@
     \list
         \li Show some UI items and hide others.
         \li Present different available actions to the user.
-        \li Start, stop or pause animations.
+        \li Start, stop, or pause animations.
         \li Execute some script required in the new state.
         \li Change a property value for a particular item.
         \li Show a different view.
     \endlist
 
-    The \uicontrol States pane displays the different \l{State}{states}
-    of the component in the Design mode. The \uicontrol States pane is
-    collapsed by default to save space. Select \uicontrol Expand in
-    the context menu to view the whole pane.
+    \section1 Creating States
 
-    \image qmldesigner-transitions.png "States pane"
+    To open the \uicontrol States view, select \uicontrol View >
+    \uicontrol Views > \uicontrol States. To collapse or expand
+    the open view, select \uicontrol {Toggle States} or press
+    \key {Ctr+Alt+S}. You can also right-click the view and select
+    \uicontrol Collapse or \uicontrol Expand.
 
-    To add states, click the \inlineimage plus.png
-    button. Then modify the new state in the editor. For example, to change the
-    appearance of a button, you can hide the button image and show another image
-    in its place. Or, to add movement to the view, you can change the position
-    of an object on the canvas and then add animation to the change between the
-    states.
+    The \uicontrol States view displays the different \l{State}{states}
+    of a UI, beginning with a \e {base state}.
 
-    To determine when the state should be applied, select
-    \uicontrol {Set when Condition} in the menu and specify a
-    \l [QtQuick]{State::when}{when} property for the state.
-    Set the value of the property to an expression that
-    evaluates to \c true when you want the state to be applied.
-    In the binding editor, select the component and property to
-    create the expression. For example, to change the state when
-    a button is pressed, you could select a button component and
-    its pressed property.
+    \image qmldesigner-transitions.png "States view"
 
-    \image qtquick-states-binding-editor.png "Binding editor in States pane"
+    To add states, select \uicontrol {Create New State}. Click the new state to
+    switch to it in \uicontrol {Form Editor}, and then modify the properties of
+    components in \uicontrol Properties.
 
-    You can preview the states in the \uicontrol States pane and click them to
-    switch between states on the canvas.
-
-    \section1 Using States
-
-    QML states typically describe user interface configurations, such as the UI
-    controls, their properties and behavior and the available actions. For
-    example, you can use states to create two views.
-
-    To add states, click the empty slot in the \uicontrol States pane.
-    Then modify the new state in the \uicontrol {Form Editor} or the
-    \uicontrol Properties pane.
-
-    \image qmldesigner-states.png "States pane"
+    For example, to change the appearance of a button, you can hide the button
+    image and show another image in its place. Or, to add movement to the view,
+    you can change the position of an object in \uicontrol {Form Editor}
+    and then add animation to the change between the states.
 
     The properties that you change in a state are highlighted with blue color.
-    In the \uicontrol {Text Editor}, you can see the changes recorded as changes
+    In \uicontrol {Text Editor}, you can see the changes recorded as changes
     to the base state.
+
+    \image qmldesigner-states.png "States and Properties views"
+
+    \note If you have \l{Locking Items}{locked an item} in \uicontrol Navigator,
+    and you attempt to remove states where you change the values of its
+    properties, you are prompted to confirm the removal.
+
+    For more information, watch the following video:
+
+    \youtube FzmLuRHQXaw
+
+    \section1 Setting the Default State
+
+    To determine the startup state of the application,
+    select \inlineimage icons/action-icon.png
+    to open the \uicontrol Actions menu, and then select
+    \uicontrol {Set as Default}.
+
+    To reset the state later, select \uicontrol Actions >
+    \uicontrol {Reset Default}.
+
+    \section1 Applying States
+
+    To determine when a state should be applied, select \uicontrol Actions >
+    \uicontrol {Set when Condition}. In \uicontrol {Binding Editor}, specify
+    a \l [QtQuick]{State::when}{when} property for the state. Set the value of
+    the property to a boolean expression that evaluates to \c true when you want
+    the state to be applied.
+
+    This enables you to evaluate the truthfulness of several components'
+    properties and move the UI to the state in which these conditions apply.
+    You can evaluate whether something is true or false, greater than or equal
+    to something else, and so on. You can also use operators, such as AND or
+    OR, to evaluate the truthfulness of several components.
+
+    The when conditions are evaluated from left to right and in order of
+    appearance in the code. Therefore, if you have two conditions for two
+    different states that both evaluate to \c true, the first state is applied.
+
+    In \uicontrol {Binding Editor}, select the component and property to
+    create the expression. For example, to change the state when a button is
+    pressed, you could select a button component and its pressed property.
+
+    \image qtquick-states-binding-editor.png "Binding Editor in States view"
+
+    When you compose the expressions in \uicontrol {Binding Editor}, the
+    \l{Completing Code}{code completion} feature lists the components and
+    their properties you can use in the expressions.
+
+    \include creator-logical-operators.qdocinc logical operators
+
+    \section2 Examples of when Conditions
+
+    To apply a state to a button when the button is pressed, you could simply
+    write:
+
+    \badcode
+    when: control.pressed
+    \endcode
+
+    To apply a state when the button is not pressed, select the \uicontrol NOT
+    check box.
+
+    \image qtquick-states-binding-editor-not.png "NOT check box in Binding Editor"
+
+    To apply a state when the button is not pressed, selected, nor hovered on,
+    you could combine conditions, as follows:
+
+    \badcode
+    when: !control.pressed && !control.checked && !control.hovered
+    \endcode
+
+    To apply a state when the button is pressed or selected, but not hovered on,
+    you could write:
+
+    \badcode
+    when: control.pressed || control.checked && !control.hovered
+    \endcode
+
+    \section1 Using States
 
     To keep the QML code clean, you should create a base state that contains all
     the types you will need in the application. You can then create states,
@@ -125,51 +185,28 @@
 
     To create views for an application by using states:
 
+    \image qmldesigner-screen-design.png "Designing views"
+
     \list 1
         \li In the base state, add all items you will need in the application
             (1). While you work on one view, you can click the
             \inlineimage eye_open.png
             icon to hide items on the canvas that are not part of a view.
-        \li In the \uicontrol States pane, click the empty slot to create a
+        \li In \uicontrol States, click the empty slot to create a
             new state and give it a name. For example, \c Normal.
-        \li In the \uicontrol Properties pane (2), deselect the
-            \uicontrol Visibility check box or set \uicontrol Opacity to 0
-            for each item that is not needed in this view. If you specify
-            the setting for the parent item, all child items inherit it and
-            are also hidden.
-            \image qmldesigner-screen-design.png "Designing views"
+        \li In \uicontrol Properties (2), deselect the \uicontrol Visibility
+            check box or set \uicontrol Opacity to 0 for each item that is not
+            needed in this view. If you specify the setting for the parent item,
+            all child items inherit it and are also hidden.
         \li Create additional states for each view and set the visibility
             or opacity of the items in the view.
-        \li To determine which view opens when the application starts, use the
-            \uicontrol {Text Editor} to set the state of the root item of the
-           .qml file, as specified by the following code snippet:
-            \qml
-            Item {
-                state: "Normal"
-            }
-            \endqml
-        \endlist
+        \li To determine which state is applied when the application starts,
+            select \uicontrol Actions > \uicontrol {Set as Default}.
+    \endlist
 
     \if defined(qtcreator)
     \include qtquick-states-scxml.qdocinc scxml state machines
     \endif
 
-    \section1 Animating Transitions Between States
-
-    To make movement between states smooth, you can specify transitions. You can
-    use different types of animated transitions. For example, you can animate
-    changes to property values and colors. You can use rotation animation to
-    control the direction of rotation. For more information, see
-    \l{Animation and Transitions in Qt Quick}.
-
-    You can use the \c ParallelAnimation type to start several animations at
-    the same time. Or use the \c SequentialAnimation type to run them one
-    after another.
-
-    You can use the \uicontrol {Text Editor} to specify transitions. For more
-    information, see \l{Transition}.
-
-    Alternatively, you can use the \uicontrol Timeline view to animate the
-    properties of UI components and to bind the animations to states. For more
-    information, see \l {Binding Animations to States}.
+    \include qtquick-transition-editor.qdocinc transition editor
 */

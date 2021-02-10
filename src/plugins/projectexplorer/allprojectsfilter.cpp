@@ -31,7 +31,6 @@
 #include <utils/algorithm.h>
 
 #include <QMutexLocker>
-#include <QTimer>
 
 using namespace Core;
 using namespace ProjectExplorer;
@@ -41,8 +40,8 @@ AllProjectsFilter::AllProjectsFilter()
 {
     setId("Files in any project");
     setDisplayName(tr("Files in Any Project"));
-    setShortcutString(QString(QLatin1Char('a')));
-    setIncludedByDefault(true);
+    setDefaultShortcutString("a");
+    setDefaultIncludedByDefault(true);
 
     connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::fileListChanged,
             this, &AllProjectsFilter::markFilesAsOutOfDate);
@@ -69,5 +68,5 @@ void AllProjectsFilter::prepareSearch(const QString &entry)
 void AllProjectsFilter::refresh(QFutureInterface<void> &future)
 {
     Q_UNUSED(future)
-    QTimer::singleShot(0, this, &AllProjectsFilter::markFilesAsOutOfDate);
+    QMetaObject::invokeMethod(this, &AllProjectsFilter::markFilesAsOutOfDate, Qt::QueuedConnection);
 }

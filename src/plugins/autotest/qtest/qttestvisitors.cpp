@@ -57,7 +57,8 @@ bool TestVisitor::visit(Class *symbol)
         Symbol *member = symbol->memberAt(i);
         Type *type = member->type().type();
 
-        const QString className = o.prettyName(lc.fullyQualifiedName(member->enclosingClass()));
+        const QString className = o.prettyName(CPlusPlus::LookupContext::fullyQualifiedName(
+                                                   member->enclosingClass()));
         if (className != m_className)
             continue;
 
@@ -91,7 +92,7 @@ bool TestVisitor::visit(Class *symbol)
         }
         for (int counter = 0, end = symbol->baseClassCount(); counter < end; ++counter) {
             if (BaseClass *base = symbol->baseClassAt(counter)) {
-                const QString &baseClassName = o.prettyName(lc.fullyQualifiedName(base));
+                const QString &baseClassName = o.prettyName(CPlusPlus::LookupContext::fullyQualifiedName(base));
                 if (baseClassName != "QObject")
                     m_baseClasses.insert(baseClassName);
             }
@@ -179,7 +180,8 @@ bool TestDataFunctionVisitor::visit(FunctionDefinitionAST *ast)
             return false;
 
         LookupContext lc;
-        const QString prettyName = m_overview.prettyName(lc.fullyQualifiedName(ast->symbol));
+        const QString prettyName =
+                m_overview.prettyName(CPlusPlus::LookupContext::fullyQualifiedName(ast->symbol));
         // do not handle functions that aren't real test data functions
         if (!prettyName.endsWith("_data"))
             return false;
@@ -226,6 +228,9 @@ bool TestDataFunctionVisitor::visit(CallAST *ast)
                     bool ok = false;
                     QString name = extractNameFromAST(stringLiteral, &ok);
                     if (ok) {
+                        // if it's a format string we skip as we cannot assure correct tag name
+                        if (name.contains('%') && expressionListAST->next != nullptr)
+                            return true;
                         int line = 0;
                         int column = 0;
                         m_currentDoc->translationUnit()->getTokenStartPosition(
@@ -279,10 +284,12 @@ bool TestDataFunctionVisitor::newRowCallFound(CallAST *ast, unsigned *firstToken
             return false;
 
         if (const auto qualifiedNameAST = exp->name->asQualifiedName()) {
-            found = m_overview.prettyName(qualifiedNameAST->name) == "QTest::newRow";
+            const QString name = m_overview.prettyName(qualifiedNameAST->name);
+            found = (name == "QTest::newRow" || name == "QTest::addRow");
             *firstToken = qualifiedNameAST->firstToken();
         } else if (m_insideUsingQTest) {
-            found = m_overview.prettyName(exp->name->name) == "newRow";
+            const QString name = m_overview.prettyName(exp->name->name);
+            found = (name == "newRow" || name == "addRow");
             *firstToken = exp->name->firstToken();
         }
     }

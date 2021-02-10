@@ -35,7 +35,6 @@
 #include <qfile.h>
 #include <qfileinfo.h>
 #include <qlist.h>
-#include <qregexp.h>
 #include <qset.h>
 #include <qstack.h>
 #include <qstring.h>
@@ -88,6 +87,17 @@ QMakeGlobals::QMakeGlobals()
 QMakeGlobals::~QMakeGlobals()
 {
     qDeleteAll(baseEnvs);
+}
+
+void QMakeGlobals::killProcesses()
+{
+#ifdef PROEVALUATOR_THREAD_SAFE
+    QMutexLocker lock(&mutex);
+    canceled = true;
+    for (QProcess * const proc : runningProcs)
+        proc->kill();
+    runningProcs.clear();
+#endif
 }
 
 QString QMakeGlobals::cleanSpec(QMakeCmdLineParserState &state, const QString &spec)

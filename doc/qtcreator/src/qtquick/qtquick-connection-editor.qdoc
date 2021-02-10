@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -24,8 +24,7 @@
 ****************************************************************************/
 
 /*!
-    \contentspage index.html
-    \previouspage quick-states.html
+    \previouspage studio-timeline.html
     \page qmldesigner-connections.html
     \nextpage quick-signals.html
 
@@ -51,7 +50,7 @@
     until it is explicitly assigned a new value. However, to make the fullest
     use of QML and its built-in support for dynamic object behaviors, most QML
     types use property bindings. This means that you can specify relationships
-    between different object properties so that when a property's sependencies
+    between different object properties so that when a property's dependencies
     change in value, the property's value is automatically updated accordingly.
 
     Behind the scenes, the QML engine monitors the property's dependencies (that

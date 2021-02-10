@@ -46,6 +46,7 @@
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
 
+#include <QDebug>
 #include <QTextDocument>
 #include <QThreadPool>
 
@@ -163,6 +164,11 @@ protected:
 
         return false;
     }
+
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth while visitin AST in CollectStateNames");
+    }
 };
 
 class CollectionTask : protected Visitor
@@ -229,7 +235,7 @@ protected:
         m_scopeBuilder.pop();
     }
 
-    void processName(const QStringRef &name, SourceLocation location)
+    void processName(const QStringView &name, SourceLocation location)
     {
         if (name.isEmpty())
             return;
@@ -263,8 +269,11 @@ protected:
             }
         }
 
-        if (type != SemanticHighlighter::UnknownType)
-            addUse(location, type);
+        if (type != SemanticHighlighter::UnknownType) {
+            // do not add uses of length 0 - this messes up highlighting (e.g. anon functions)
+            if (location.length != 0)
+                addUse(location, type);
+        }
     }
 
     void processTypeId(UiQualifiedId *typeId)
@@ -395,7 +404,7 @@ protected:
                 length = end-begin;
             }
 
-            const TextEditor::FontSettings &fontSettings = TextEditor::TextEditorSettings::instance()->fontSettings();
+            const TextEditor::FontSettings &fontSettings = TextEditor::TextEditorSettings::fontSettings();
 
             QTextCharFormat format;
             if (d.isWarning())
@@ -432,7 +441,7 @@ protected:
                 length = end-begin;
             }
 
-            const TextEditor::FontSettings &fontSettings = TextEditor::TextEditorSettings::instance()->fontSettings();
+            const TextEditor::FontSettings &fontSettings = TextEditor::TextEditorSettings::fontSettings();
 
             QTextCharFormat format;
             if (d.severity == Severity::Warning
@@ -451,6 +460,11 @@ protected:
             collectRanges(begin, length, format);
             addDelayedUse(SemanticHighlighter::Use(line, column, length, addFormat(format)));
         }
+    }
+
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit Maximum recursion depth when visiting AST in CollectionTask");
     }
 
 private:
@@ -610,7 +624,7 @@ void SemanticHighlighter::reportMessagesInfo(const QVector<QTextLayout::FormatRa
     // but will use them only after a signal sent by that same thread, maybe we should transfer
     // them more explicitly
     m_extraFormats = formats;
-    m_extraFormats.unite(m_formats);
+    Utils::addToHash(&m_extraFormats, m_formats);
     m_diagnosticRanges = diagnosticRanges;
 }
 

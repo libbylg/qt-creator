@@ -39,12 +39,13 @@ class CORE_EXPORT CommandLocator : public ILocatorFilter
     Q_OBJECT
 
 public:
-    CommandLocator(Id id, const QString &displayName,
+    CommandLocator(Utils::Id id, const QString &displayName,
                    const QString &shortCutString, QObject *parent = nullptr);
     ~CommandLocator() override;
 
     void appendCommand(Command *cmd);
 
+    void prepareSearch(const QString &entry) override;
     QList<LocatorFilterEntry> matchesFor(QFutureInterface<LocatorFilterEntry> &future,
                                          const QString &entry) override;
     void accept(LocatorFilterEntry selection,

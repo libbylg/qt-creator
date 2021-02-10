@@ -27,8 +27,10 @@
 
 #include "cpptools_global.h"
 
-#include <coreplugin/id.h>
+#include <utils/id.h>
 
+#include <QHash>
+#include <QMap>
 #include <QStringList>
 #include <QVector>
 
@@ -42,8 +44,8 @@ namespace CppTools {
 class CPPTOOLS_EXPORT ClangDiagnosticConfig
 {
 public:
-    Core::Id id() const;
-    void setId(const Core::Id &id);
+    Utils::Id id() const;
+    void setId(const Utils::Id &id);
 
     QString displayName() const;
     void setDisplayName(const QString &displayName);
@@ -69,9 +71,16 @@ public:
     void setClangTidyMode(TidyMode mode);
 
     QString clangTidyChecks() const;
+    QString clangTidyChecksAsJson() const;
     void setClangTidyChecks(const QString &checks);
 
     bool isClangTidyEnabled() const;
+
+    using TidyCheckOptions = QMap<QString, QString>;
+    void setTidyCheckOptions(const QString &check, const TidyCheckOptions &options);
+    TidyCheckOptions tidyCheckOptions(const QString &check) const;
+    void setTidyChecksOptionsFromSettings(const QVariant &options);
+    QVariant tidyChecksOptionsForSettings() const;
 
     // Clazy
     enum class ClazyMode
@@ -91,11 +100,12 @@ public:
     bool operator!=(const ClangDiagnosticConfig &other) const;
 
 private:
-    Core::Id m_id;
+    Utils::Id m_id;
     QString m_displayName;
     QStringList m_clangOptions;
     TidyMode m_clangTidyMode = TidyMode::UseDefaultChecks;
     QString m_clangTidyChecks;
+    QHash<QString, TidyCheckOptions> m_tidyChecksOptions;
     QString m_clazyChecks;
     ClazyMode m_clazyMode = ClazyMode::UseDefaultChecks;
     bool m_isReadOnly = false;

@@ -26,40 +26,20 @@
 #include "cmakeproject.h"
 
 #include "cmakebuildconfiguration.h"
+#include "cmakebuildsystem.h"
 #include "cmakebuildstep.h"
 #include "cmakekitinformation.h"
 #include "cmakeprojectconstants.h"
+#include "cmakeprojectimporter.h"
 #include "cmakeprojectnodes.h"
-#include "cmakeprojectmanager.h"
+#include "cmaketool.h"
 
-#include <coreplugin/progressmanager/progressmanager.h>
-#include <cpptools/cppprojectupdater.h>
-#include <cpptools/cpptoolsconstants.h>
-#include <cpptools/generatedcodemodelsupport.h>
-#include <cpptools/projectinfo.h>
+#include <coreplugin/icontext.h>
+#include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildsteplist.h>
-#include <projectexplorer/buildtargetinfo.h>
-#include <projectexplorer/deploymentdata.h>
-#include <projectexplorer/headerpath.h>
 #include <projectexplorer/kitinformation.h>
-#include <projectexplorer/kitmanager.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/target.h>
-#include <projectexplorer/toolchain.h>
-#include <qmljs/qmljsmodelmanagerinterface.h>
-#include <qtsupport/baseqtversion.h>
-#include <qtsupport/qtcppkitinfo.h>
-#include <qtsupport/qtkitinformation.h>
-
-#include <utils/algorithm.h>
-#include <utils/qtcassert.h>
-#include <utils/qtcprocess.h>
-#include <utils/stringutils.h>
-#include <utils/hostosinfo.h>
-
-#include <QDir>
-#include <QElapsedTimer>
-#include <QSet>
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -77,9 +57,9 @@ using namespace Internal;
   \class CMakeProject
 */
 CMakeProject::CMakeProject(const FilePath &fileName)
-    : Project(Constants::CMAKEMIMETYPE, fileName)
+    : Project(Constants::CMAKE_MIMETYPE, fileName)
 {
-    setId(CMakeProjectManager::Constants::CMAKEPROJECT_ID);
+    setId(CMakeProjectManager::Constants::CMAKE_PROJECT_ID);
     setProjectLanguages(Core::Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setDisplayName(projectDirectory().fileName());
     setCanBuildProducts();
@@ -87,7 +67,10 @@ CMakeProject::CMakeProject(const FilePath &fileName)
     setHasMakeInstallEquivalent(true);
 }
 
-CMakeProject::~CMakeProject() = default;
+CMakeProject::~CMakeProject()
+{
+    delete m_projectImporter;
+}
 
 Tasks CMakeProject::projectIssues(const Kit *k) const
 {
@@ -105,8 +88,8 @@ Tasks CMakeProject::projectIssues(const Kit *k) const
 ProjectImporter *CMakeProject::projectImporter() const
 {
     if (!m_projectImporter)
-        m_projectImporter = std::make_unique<CMakeProjectImporter>(projectFilePath());
-    return m_projectImporter.get();
+        m_projectImporter = new CMakeProjectImporter(projectFilePath());
+    return m_projectImporter;
 }
 
 bool CMakeProject::setupTarget(Target *t)
@@ -138,7 +121,25 @@ MakeInstallCommand CMakeProject::makeInstallCommand(const Target *target,
                 cmd.command = tool->cmakeExecutable();
         }
     }
-    cmd.arguments << "--build" << "." << "--target" << "install";
+
+    QString installTarget = "install";
+    QStringList config;
+
+    auto bs = qobject_cast<CMakeBuildSystem*>(target->buildSystem());
+    auto bc = qobject_cast<CMakeBuildConfiguration*>(target->activeBuildConfiguration());
+    if (bs && bc) {
+        if (bs->usesAllCapsTargets())
+            installTarget = "INSTALL";
+        if (bs->isMultiConfig())
+            config << "--config" << bc->cmakeBuildType();
+    }
+
+    QString buildDirectory = ".";
+    if (bc)
+        buildDirectory = bc->buildDirectory().toString();
+
+    cmd.arguments << "--build" << buildDirectory << "--target" << installTarget << config;
+
     cmd.environment.set("DESTDIR", QDir::toNativeSeparators(installRoot));
     return cmd;
 }

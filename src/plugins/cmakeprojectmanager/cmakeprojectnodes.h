@@ -71,12 +71,13 @@ public:
 
     void build() override;
 
-    QVariant data(Core::Id role) const override;
+    QVariant data(Utils::Id role) const override;
     void setConfig(const CMakeConfig &config);
 
 private:
     QString m_tooltip;
     Utils::FilePath m_buildDirectory;
+    Utils::FilePath m_artifact;
     CMakeConfig m_config;
 };
 

@@ -24,8 +24,10 @@
 ****************************************************************************/
 
 #include "graphicsview.h"
+#include "axis.h"
 #include "curveeditormodel.h"
 #include "curveitem.h"
+#include "navigation2d.h"
 #include "treeitem.h"
 #include "utils.h"
 
@@ -35,15 +37,18 @@
 #include <QScrollBar>
 
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 GraphicsView::GraphicsView(CurveEditorModel *model, QWidget *parent)
     : QGraphicsView(parent)
+    , m_dragging(false)
     , m_zoomX(0.0)
     , m_zoomY(0.0)
     , m_transform()
-    , m_scene()
+    , m_scene(new GraphicsScene())
     , m_model(model)
     , m_playhead(this)
     , m_selector()
@@ -52,7 +57,7 @@ GraphicsView::GraphicsView(CurveEditorModel *model, QWidget *parent)
 {
     model->setGraphicsView(this);
 
-    setScene(&m_scene);
+    setScene(m_scene);
     setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     setResizeAnchor(QGraphicsView::NoAnchor);
     setRenderHint(QPainter::Antialiasing, true);
@@ -68,13 +73,25 @@ GraphicsView::GraphicsView(CurveEditorModel *model, QWidget *parent)
         m_model->setCurve(id, curve);
     };
 
-    connect(&m_scene, &GraphicsScene::curveChanged, itemSlot);
+    connect(m_scene, &GraphicsScene::curveChanged, itemSlot);
 
-    auto pinSlot = [this](PropertyTreeItem *pti) { m_scene.setPinned(pti->id(), pti->pinned()); };
-    connect(m_model, &CurveEditorModel::curveChanged, pinSlot);
+    QmlDesigner::Navigation2dFilter *filter = new QmlDesigner::Navigation2dFilter(this);
+    auto zoomChanged = &QmlDesigner::Navigation2dFilter::zoomChanged;
+    connect(filter, zoomChanged, [this](double scale, const QPointF &pos) {
+        applyZoom(m_zoomX + scale, m_zoomY, mapToGlobal(pos.toPoint()));
+    });
+    installEventFilter(filter);
 
     applyZoom(m_zoomX, m_zoomY);
     update();
+}
+
+GraphicsView::~GraphicsView()
+{
+    if (m_scene) {
+        delete m_scene;
+        m_scene = nullptr;
+    }
 }
 
 CurveEditorModel *GraphicsView::model() const
@@ -87,48 +104,31 @@ CurveEditorStyle GraphicsView::editorStyle() const
     return m_style;
 }
 
-bool GraphicsView::hasActiveItem() const
+bool GraphicsView::dragging() const
 {
-    return m_scene.hasActiveItem();
-}
-
-bool GraphicsView::hasActiveHandle() const
-{
-    return m_scene.hasActiveHandle();
-}
-
-bool GraphicsView::hasSelectedKeyframe() const
-{
-    const auto itemList = items();
-    for (auto *item : itemList) {
-        if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(item)) {
-            if (curveItem->hasSelection())
-                return true;
-        }
-    }
-    return false;
+    return m_dragging;
 }
 
 double GraphicsView::minimumTime() const
 {
-    bool check = m_model->minimumTime() < m_scene.minimumTime();
-    return check ? m_model->minimumTime() : m_scene.minimumTime();
+    bool check = m_model->minimumTime() < m_scene->minimumTime();
+    return check ? m_model->minimumTime() : m_scene->minimumTime();
 }
 
 double GraphicsView::maximumTime() const
 {
-    bool check = m_model->maximumTime() > m_scene.maximumTime();
-    return check ? m_model->maximumTime() : m_scene.maximumTime();
+    bool check = m_model->maximumTime() > m_scene->maximumTime();
+    return check ? m_model->maximumTime() : m_scene->maximumTime();
 }
 
 double GraphicsView::minimumValue() const
 {
-    return m_scene.empty() ? -1.0 : m_scene.minimumValue();
+    return m_scene->empty() ? CurveEditorStyle::defaultValueMin : m_scene->minimumValue();
 }
 
 double GraphicsView::maximumValue() const
 {
-    return m_scene.empty() ? 1.0 : m_scene.maximumValue();
+    return m_scene->empty() ? CurveEditorStyle::defaultValueMax : m_scene->maximumValue();
 }
 
 double GraphicsView::zoomX() const
@@ -163,9 +163,8 @@ QRectF GraphicsView::timeScaleRect() const
 QRectF GraphicsView::valueScaleRect() const
 {
     QRect vp(viewport()->rect());
-    QPoint tl = vp.topLeft() + QPoint(0, m_style.timeAxisHeight);
     QPoint br = vp.bottomLeft() + QPoint(m_style.valueAxisWidth, 0);
-    return mapToScene(QRect(tl, br)).boundingRect();
+    return mapToScene(QRect(vp.topLeft(), br)).boundingRect();
 }
 
 QRectF GraphicsView::defaultRasterRect() const
@@ -179,24 +178,68 @@ void GraphicsView::setStyle(const CurveEditorStyle &style)
 {
     m_style = style;
 
-    const auto itemList = items();
-    for (auto *item : itemList) {
-        if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(item))
-            curveItem->setStyle(style);
-    }
+    const auto curves = m_scene->curves();
+    for (auto *curve : curves)
+        curve->setStyle(style);
 
     applyZoom(m_zoomX, m_zoomY);
     viewport()->update();
 }
 
-void GraphicsView::setLocked(PropertyTreeItem *item)
+void GraphicsView::setLocked(TreeItem *item)
 {
-    const auto itemList = items();
-    for (auto *gitem : itemList) {
-        if (auto *citem = qgraphicsitem_cast<CurveItem *>(gitem))
-            if (item->id() == citem->id())
-                citem->setLocked(item->locked());
+    if (item->asNodeItem()) {
+        for (auto *ci : item->children())
+            setLocked(ci);
+    } else if (item->asPropertyItem()) {
+        if (CurveItem *curve = m_scene->findCurve(item->id())) {
+            if (item->locked() || item->implicitlyLocked()) {
+                curve->setLocked(true);
+                m_scene->moveToBottom(curve);
+            } else {
+                curve->setLocked(false);
+                m_scene->moveToTop(curve);
+            }
+        }
     }
+}
+
+void GraphicsView::setPinned(TreeItem *item)
+{
+    auto pin = [this](PropertyTreeItem *pitem, bool pinned) {
+        if (pinned) {
+            if (CurveItem *curve = m_scene->findCurve(pitem->id()))
+                curve->setPinned(pinned);
+            else if (CurveItem *citem = TreeModel::curveItem(pitem))
+                m_scene->addCurveItem(citem);
+        } else if (!pinned) {
+            if (!m_model->isSelected(pitem) && !pitem->pinned())
+                m_scene->removeCurveItem(pitem->id());
+            else if (CurveItem *curve = m_scene->findCurve(pitem->id()))
+                curve->setPinned(pinned);
+        }
+    };
+
+    if (auto *pitem = item->asPropertyItem()) {
+        pin(pitem, pitem->pinned() || pitem->implicitlyPinned());
+    } else if (auto *nitem = item->asNodeItem()) {
+        bool pinned = nitem->pinned();
+        if (!pinned && m_model->isSelected(nitem)) {
+            for (auto *i : nitem->children()) {
+                if (CurveItem *curve = m_scene->findCurve(i->id()))
+                    curve->setPinned(pinned);
+            }
+            return;
+        }
+
+        for (auto *i : nitem->children()) {
+            if (auto *pitem = i->asPropertyItem())
+                pin(pitem, pinned);
+        }
+    }
+
+    applyZoom(m_zoomX, m_zoomY);
+    viewport()->update();
 }
 
 void GraphicsView::setZoomX(double zoom, const QPoint &pivot)
@@ -214,53 +257,61 @@ void GraphicsView::setZoomY(double zoom, const QPoint &pivot)
 void GraphicsView::setCurrentFrame(int frame, bool notify)
 {
     int clampedFrame = clamp(frame, m_model->minimumTime(), m_model->maximumTime());
+
     m_playhead.moveToFrame(clampedFrame, this);
     viewport()->update();
 
-    if (notify)
-        notifyFrameChanged(frame);
+    currentFrameChanged(clampedFrame, notify);
 }
 
 void GraphicsView::scrollContent(double x, double y)
 {
     QScrollBar *hs = horizontalScrollBar();
     QScrollBar *vs = verticalScrollBar();
-    hs->setValue(hs->value() + x);
-    vs->setValue(vs->value() + y);
+    hs->setValue(hs->value() + static_cast<int>(x));
+    vs->setValue(vs->value() + static_cast<int>(y));
 }
 
 void GraphicsView::reset(const std::vector<CurveItem *> &items)
 {
-    const std::vector<CurveItem *> pinnedItems = m_scene.takePinnedItems();
-    auto notPinned = [pinnedItems](CurveItem *item) {
-        for (auto *pinned : pinnedItems) {
-            if (pinned->id() == item->id())
-                return false;
-        }
-        return true;
-    };
-
-    m_scene.clear();
-    for (auto *item : items) {
-        if (notPinned(item))
-            m_scene.addCurveItem(item);
-    }
-
-    for (auto *item : pinnedItems)
-        m_scene.addCurveItem(item);
+    m_scene->reset();
+    for (auto *item : items)
+        m_scene->addCurveItem(item);
 
     applyZoom(m_zoomX, m_zoomY);
     viewport()->update();
 }
 
+void GraphicsView::updateSelection()
+{
+    std::vector<CurveItem *> preservedItems = m_scene->takePinnedItems();
+    std::vector<CurveItem *> deleteItems;
+    for (auto *curve : m_model->selectedCurves()) {
+        auto finder = [curve](CurveItem *item) { return curve->id() == item->id(); };
+        auto iter = std::find_if(preservedItems.begin(), preservedItems.end(), finder);
+        if (iter == preservedItems.end())
+            preservedItems.push_back(curve);
+        else
+            deleteItems.push_back(curve);
+    }
+    freeClear(deleteItems);
+    reset(preservedItems);
+}
+
 void GraphicsView::setInterpolation(Keyframe::Interpolation interpol)
 {
-    const auto itemList = items();
-    for (auto *item : itemList) {
-        if (auto *citem = qgraphicsitem_cast<CurveItem *>(item))
-            if (citem->hasSelection())
-                citem->setInterpolation(interpol);
-    }
+    const auto selectedCurves = m_scene->selectedCurves();
+    for (auto *curve : selectedCurves)
+        curve->setInterpolation(interpol);
+
+    viewport()->update();
+}
+
+void GraphicsView::toggleUnified()
+{
+    const auto selectedCurves = m_scene->selectedCurves();
+    for (auto *curve : selectedCurves)
+        curve->toggleUnified();
 
     viewport()->update();
 }
@@ -277,24 +328,28 @@ void GraphicsView::keyPressEvent(QKeyEvent *event)
     if (shortcut == m_style.shortcuts.frameAll)
         applyZoom(0.0, 0.0);
     else if (shortcut == m_style.shortcuts.deleteKeyframe)
-        deleteSelectedKeyframes();
+        m_scene->deleteSelectedKeyframes();
 }
 
 void GraphicsView::mousePressEvent(QMouseEvent *event)
 {
-    if (m_playhead.mousePress(globalToScene(event->globalPos())))
+    if (m_playhead.mousePress(globalToScene(event->globalPos()))) {
+        m_dragging = true;
         return;
+    }
 
     Shortcut shortcut(event);
     if (shortcut == m_style.shortcuts.insertKeyframe) {
-        insertKeyframe(globalToRaster(event->globalPos()).x());
+        m_scene->insertKeyframe(globalToRaster(event->globalPos()).x());
         return;
     }
 
     if (shortcut == Shortcut(Qt::LeftButton)) {
         QPointF pos = mapToScene(event->pos());
         if (timeScaleRect().contains(pos)) {
-            setCurrentFrame(std::round(mapXtoTime(pos.x())));
+            m_dragging = true;
+            double t = mapXtoTime(static_cast<int>(pos.x()));
+            setCurrentFrame(roundToInt(t));
             m_playhead.setMoving(true);
             event->accept();
             return;
@@ -303,7 +358,7 @@ void GraphicsView::mousePressEvent(QMouseEvent *event)
 
     QGraphicsView::mousePressEvent(event);
 
-    m_selector.mousePress(event, this);
+    m_selector.mousePress(event, this, m_scene);
 }
 
 void GraphicsView::mouseMoveEvent(QMouseEvent *event)
@@ -313,7 +368,7 @@ void GraphicsView::mouseMoveEvent(QMouseEvent *event)
 
     QGraphicsView::mouseMoveEvent(event);
 
-    m_selector.mouseMove(event, this, m_playhead);
+    m_selector.mouseMove(event, this, m_scene, m_playhead);
 }
 
 void GraphicsView::mouseReleaseEvent(QMouseEvent *event)
@@ -321,8 +376,9 @@ void GraphicsView::mouseReleaseEvent(QMouseEvent *event)
     QGraphicsView::mouseReleaseEvent(event);
 
     m_playhead.mouseRelease(this);
-    m_selector.mouseRelease(event, this);
+    m_selector.mouseRelease(event, m_scene);
     this->viewport()->update();
+    m_dragging = false;
 }
 
 void GraphicsView::wheelEvent(QWheelEvent *event)
@@ -347,18 +403,21 @@ void GraphicsView::contextMenuEvent(QContextMenuEvent *event)
         connect(openEditorAction, &QAction::triggered, openStyleEditor);
     }
 
+    QPointF rasterPos = globalToRaster(event->globalPos());
+
     menu.addSeparator();
-    auto insertKeyframes = [this, event]() {
-        insertKeyframe(globalToRaster(event->globalPos()).x(), true);
-    };
+    auto insertKeyframes = [this, rasterPos]() { m_scene->insertKeyframe(rasterPos.x(), true); };
     QAction *insertKeyframeAction = menu.addAction(tr("Insert Keyframe"));
     connect(insertKeyframeAction, &QAction::triggered, insertKeyframes);
 
-    auto deleteKeyframes = [this, event] { deleteSelectedKeyframes(); };
+    if (!m_scene->hasEditableSegment(rasterPos.x()))
+        insertKeyframeAction->setEnabled(false);
+
+    auto deleteKeyframes = [this] { m_scene->deleteSelectedKeyframes(); };
     QAction *deleteKeyframeAction = menu.addAction(tr("Delete Selected Keyframes"));
     connect(deleteKeyframeAction, &QAction::triggered, deleteKeyframes);
 
-    if (!hasSelectedKeyframe())
+    if (!m_scene->hasSelectedKeyframe())
         deleteKeyframeAction->setEnabled(false);
 
     menu.exec(event->globalPos());
@@ -370,14 +429,13 @@ void GraphicsView::drawForeground(QPainter *painter, const QRectF &rect)
     if (abscissa.isValid())
         drawTimeScale(painter, abscissa);
 
-    auto ordinate = valueScaleRect();
-    if (ordinate.isValid())
-        drawValueScale(painter, ordinate);
+    painter->fillRect(QRectF(rect.topLeft(), abscissa.bottomLeft()), m_style.backgroundAlternateBrush);
 
     m_playhead.paint(painter, this);
 
-    painter->fillRect(QRectF(rect.topLeft(), abscissa.bottomLeft()),
-                      m_style.backgroundAlternateBrush);
+    auto ordinate = valueScaleRect();
+    if (ordinate.isValid())
+        drawValueScale(painter, ordinate);
 
     m_selector.paint(painter);
 }
@@ -385,19 +443,18 @@ void GraphicsView::drawForeground(QPainter *painter, const QRectF &rect)
 void GraphicsView::drawBackground(QPainter *painter, const QRectF &rect)
 {
     painter->fillRect(rect, m_style.backgroundBrush);
-    painter->fillRect(scene()->sceneRect(), m_style.backgroundAlternateBrush);
 
-    drawGrid(painter, rect);
+    drawGrid(painter);
 }
 
 int GraphicsView::mapTimeToX(double time) const
 {
-    return std::round(time * scaleX(m_transform));
+    return roundToInt(time * scaleX(m_transform));
 }
 
 int GraphicsView::mapValueToY(double y) const
 {
-    return std::round(y * scaleY(m_transform));
+    return roundToInt(y * scaleY(m_transform));
 }
 
 double GraphicsView::mapXtoTime(int x) const
@@ -417,12 +474,14 @@ QPointF GraphicsView::globalToScene(const QPoint &point) const
 
 QPointF GraphicsView::globalToRaster(const QPoint &point) const
 {
-    QPointF scene = globalToScene(point);
+    QPoint scene = globalToScene(point).toPoint();
     return QPointF(mapXtoTime(scene.x()), mapYtoValue(scene.y()));
 }
 
 void GraphicsView::applyZoom(double x, double y, const QPoint &pivot)
 {
+    m_scene->doNotMoveItems(true);
+
     QPointF pivotRaster(globalToRaster(pivot));
 
     m_zoomX = clamp(x, 0.0, 1.0);
@@ -445,9 +504,9 @@ void GraphicsView::applyZoom(double x, double y, const QPoint &pivot)
     double scaleY = lerp(clamp(m_zoomY, 0.0, 1.0), -yZoomedOut, -yZoomedIn);
 
     m_transform = QTransform::fromScale(scaleX, scaleY);
-    m_scene.setComponentTransform(m_transform);
+    m_scene->setComponentTransform(m_transform);
 
-    QRectF sr = m_scene.sceneRect().adjusted(
+    QRectF sr = m_scene->rect().adjusted(
         -m_style.valueAxisWidth - m_style.canvasMargin,
         -m_style.timeAxisHeight - m_style.canvasMargin,
         m_style.canvasMargin,
@@ -461,46 +520,27 @@ void GraphicsView::applyZoom(double x, double y, const QPoint &pivot)
         QPointF deltaTransformed = pivotRaster - globalToRaster(pivot);
         scrollContent(mapTimeToX(deltaTransformed.x()), mapValueToY(deltaTransformed.y()));
     }
+
+    m_scene->doNotMoveItems(false);
 }
 
-void GraphicsView::insertKeyframe(double time, bool allVisibleCurves)
+void GraphicsView::drawGrid(QPainter *painter)
 {
-    const auto itemList = items();
-    for (auto *item : itemList) {
-        if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(item)) {
-            if (allVisibleCurves)
-                curveItem->insertKeyframeByTime(std::round(time));
-            else if (curveItem->isUnderMouse())
-                curveItem->insertKeyframeByTime(std::round(time));
-        }
-    }
-}
-
-void GraphicsView::deleteSelectedKeyframes()
-{
-    const auto itemList = items();
-    for (auto *item : itemList) {
-        if (auto *curveItem = qgraphicsitem_cast<CurveItem *>(item))
-            curveItem->deleteSelectedKeyframes();
-    }
-}
-
-void GraphicsView::drawGrid(QPainter *painter, const QRectF &rect)
-{
-    QRectF gridRect = rect.adjusted(m_style.valueAxisWidth + m_style.canvasMargin,
-                                    m_style.timeAxisHeight + m_style.canvasMargin,
-                                    -m_style.canvasMargin,
-                                    -m_style.canvasMargin);
+    QRectF gridRect = scene()->sceneRect();
 
     if (!gridRect.isValid())
         return;
 
     auto drawVerticalLine = [painter, gridRect](double position) {
-        painter->drawLine(position, gridRect.top(), position, gridRect.bottom());
+        QPointF p1(position, gridRect.top());
+        QPointF p2(position, gridRect.bottom());
+        painter->drawLine(p1, p2);
     };
 
     painter->save();
     painter->setPen(m_style.gridColor);
+
+    painter->fillRect(gridRect, m_style.backgroundAlternateBrush);
 
     double timeIncrement = timeLabelInterval(painter, m_model->maximumTime());
     for (double i = minimumTime(); i <= maximumTime(); i += timeIncrement)
@@ -525,7 +565,7 @@ void GraphicsView::drawExtremaX(QPainter *painter, const QRectF &rect)
 
 void GraphicsView::drawExtremaY(QPainter *painter, const QRectF &rect)
 {
-    if (m_scene.empty())
+    if (m_scene->empty())
         return;
 
     auto drawHorizontalLine = [rect, painter](double position) {
@@ -534,12 +574,45 @@ void GraphicsView::drawExtremaY(QPainter *painter, const QRectF &rect)
 
     painter->save();
     painter->setPen(Qt::blue);
-    drawHorizontalLine(mapValueToY(m_scene.minimumValue()));
-    drawHorizontalLine(mapValueToY(m_scene.maximumValue()));
+    drawHorizontalLine(mapValueToY(m_scene->minimumValue()));
+    drawHorizontalLine(mapValueToY(m_scene->maximumValue()));
 
     painter->restore();
 }
 #endif
+
+void GraphicsView::drawRangeBar(QPainter *painter, const QRectF &rect)
+{
+    painter->save();
+
+    QFontMetrics fm(painter->font());
+    QRectF labelRect = fm.boundingRect(QString("0"));
+    labelRect.moveCenter(rect.center());
+
+    qreal bTick = rect.bottom() - 2;
+    qreal tTick = labelRect.bottom() + 2;
+    QRectF activeRect = QRectF(QPointF(mapTimeToX(m_model->minimumTime()), tTick),
+                               QPointF(mapTimeToX(m_model->maximumTime()), bTick));
+
+    painter->fillRect(activeRect, m_style.rangeBarColor);
+
+    QColor handleColor(m_style.rangeBarCapsColor);
+    painter->setBrush(handleColor);
+    painter->setPen(handleColor);
+
+    const qreal radius = 5.;
+    QRectF minHandle = rangeMinHandle(rect);
+    painter->drawRoundedRect(minHandle, radius, radius);
+    minHandle.setLeft(minHandle.center().x());
+    painter->fillRect(minHandle, handleColor);
+
+    QRectF maxHandle = rangeMaxHandle(rect);
+    painter->drawRoundedRect(maxHandle, radius, radius);
+    maxHandle.setRight(maxHandle.center().x());
+    painter->fillRect(maxHandle, handleColor);
+
+    painter->restore();
+}
 
 void GraphicsView::drawTimeScale(QPainter *painter, const QRectF &rect)
 {
@@ -561,6 +634,8 @@ void GraphicsView::drawTimeScale(QPainter *painter, const QRectF &rect)
         painter->drawLine(position, rect.bottom() - 2, position, textRect.bottom() + 2);
     };
 
+    drawRangeBar(painter, rect);
+
     double timeIncrement = timeLabelInterval(painter, maximumTime());
     for (double i = minimumTime(); i <= maximumTime(); i += timeIncrement)
         paintLabeledTick(i);
@@ -576,17 +651,24 @@ void GraphicsView::drawValueScale(QPainter *painter, const QRectF &rect)
 
     QFontMetrics fm(painter->font());
     auto paintLabeledTick = [this, painter, rect, fm](double value) {
+        std::stringstream sstr;
+        sstr << std::fixed << std::setprecision(10) << value;
+        sstr >> value;
+
         QString valueText = QString("%1").arg(value);
-
         int position = mapValueToY(value);
-
         QRect textRect = fm.boundingRect(valueText);
         textRect.moveCenter(QPoint(rect.center().x(), position));
+
         painter->drawText(textRect, Qt::AlignCenter, valueText);
     };
 
-    paintLabeledTick(minimumValue());
-    paintLabeledTick(maximumValue());
+    double density = 1. / (static_cast<double>(fm.height()) * m_style.labelDensityY);
+    Axis axis = Axis::compute(minimumValue(), maximumValue(), rect.height(), density);
+    const double eps = 1.0e-10;
+    for (double i = axis.lmin; i <= axis.lmax + eps; i += axis.lstep)
+        paintLabeledTick(i);
+
     painter->restore();
 }
 
@@ -601,7 +683,7 @@ double GraphicsView::timeLabelInterval(QPainter *painter, double maxTime)
     double tickDistance = mapTimeToX(deltaTime);
 
     while (true) {
-        if (tickDistance == 0 && deltaTime >= maxTime)
+        if (qFuzzyCompare(tickDistance, 0.) && deltaTime >= maxTime)
             return maxTime;
 
         if (tickDistance > minTextSpacing)
@@ -619,4 +701,31 @@ double GraphicsView::timeLabelInterval(QPainter *painter, double maxTime)
     return deltaTime;
 }
 
-} // End namespace DesignTools.
+QRectF GraphicsView::rangeMinHandle(const QRectF &rect)
+{
+    QRectF labelRect = fontMetrics().boundingRect(QString("0"));
+    labelRect.moveCenter(rect.center());
+
+    qreal top = rect.bottom() - 2.;
+    qreal bottom = labelRect.bottom() + 2.;
+    QSize size(10, roundToInt(top - bottom));
+
+    int handle = mapTimeToX(m_model->minimumTime()) - size.width();
+    return QRectF(QPointF(handle, bottom), size);
+}
+
+QRectF GraphicsView::rangeMaxHandle(const QRectF &rect)
+{
+    QRectF labelRect = fontMetrics().boundingRect(QString("0"));
+    labelRect.moveCenter(rect.center());
+
+    qreal bottom = rect.bottom() - 2.;
+    qreal top = labelRect.bottom() + 2.;
+
+    QSize size(10, roundToInt(top - bottom));
+    int handle = mapTimeToX(m_model->maximumTime());
+
+    return QRectF(QPointF(handle, bottom), size);
+}
+
+} // End namespace QmlDesigner.

@@ -2,7 +2,9 @@ QTC_PLUGIN_NAME = QmlDesigner
 QTC_LIB_DEPENDS += \
     utils \
     qmljs \
-    qmleditorwidgets
+    qmleditorwidgets \
+    advanceddockingsystem \
+    sqlite
 QTC_PLUGIN_DEPENDS += \
     coreplugin \
     texteditor \
@@ -10,6 +12,7 @@ QTC_PLUGIN_DEPENDS += \
     qtsupport \
     projectexplorer \
     qmakeprojectmanager \
+    qmlprojectmanager \
     resourceeditor
 
 INCLUDEPATH *= \
@@ -22,6 +25,7 @@ INCLUDEPATH *= \
     $$PWD/components/componentcore \
     $$PWD/components/importmanager \
     $$PWD/components/itemlibrary \
+    $$PWD/components/edit3d \
     $$PWD/components/formeditor \
     $$PWD/components/navigator \
     $$PWD/components/stateseditor \

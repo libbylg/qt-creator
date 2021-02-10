@@ -49,12 +49,13 @@ const char M_FILE[]                = "QtCreator.Menu.File";
 const char M_FILE_RECENTFILES[]    = "QtCreator.Menu.File.RecentFiles";
 const char M_EDIT[]                = "QtCreator.Menu.Edit";
 const char M_EDIT_ADVANCED[]       = "QtCreator.Menu.Edit.Advanced";
+const char M_VIEW[]                = "QtCreator.Menu.View";
+const char M_VIEW_MODESTYLES[]     = "QtCreator.Menu.View.ModeStyles";
+const char M_VIEW_VIEWS[]          = "QtCreator.Menu.View.Views";
+const char M_VIEW_PANES[]          = "QtCreator.Menu.View.Panes";
 const char M_TOOLS[]               = "QtCreator.Menu.Tools";
 const char M_TOOLS_EXTERNAL[]      = "QtCreator.Menu.Tools.External";
 const char M_WINDOW[]              = "QtCreator.Menu.Window";
-const char M_WINDOW_PANES[]        = "QtCreator.Menu.Window.Panes";
-const char M_WINDOW_MODESTYLES[]   = "QtCreator.Menu.Window.ModeStyles";
-const char M_WINDOW_VIEWS[]        = "QtCreator.Menu.Window.Views";
 const char M_HELP[]                = "QtCreator.Menu.Help";
 
 // Contexts
@@ -133,6 +134,7 @@ const char GOTOLASTEDIT[]          = "QtCreator.GotoLastEdit";
 const char ABOUT_QTCREATOR[]       = "QtCreator.AboutQtCreator";
 const char ABOUT_PLUGINS[]         = "QtCreator.AboutPlugins";
 const char S_RETURNTOEDITOR[]      = "QtCreator.ReturnToEditor";
+const char SHOWINGRAPHICALSHELL[]  = "QtCreator.ShowInGraphicalShell";
 
 // Default groups
 const char G_DEFAULT_ONE[]         = "QtCreator.Group.Default.One";
@@ -174,12 +176,15 @@ const char G_EDIT_BLOCKS[]         = "QtCreator.Group.Edit.Blocks";
 const char G_EDIT_FONT[]           = "QtCreator.Group.Edit.Font";
 const char G_EDIT_EDITOR[]         = "QtCreator.Group.Edit.Editor";
 
+// View menu groups
+const char G_VIEW_VIEWS[]          = "QtCreator.Group.View.Views";
+const char G_VIEW_PANES[]          = "QtCreator.Group.View.Panes";
+
+// Tools menu groups
 const char G_TOOLS_OPTIONS[]       = "QtCreator.Group.Tools.Options";
 
 // Window menu groups
 const char G_WINDOW_SIZE[]         = "QtCreator.Group.Window.Size";
-const char G_WINDOW_PANES[]        = "QtCreator.Group.Window.Panes";
-const char G_WINDOW_VIEWS[]        = "QtCreator.Group.Window.Views";
 const char G_WINDOW_SPLIT[]        = "QtCreator.Group.Window.Split";
 const char G_WINDOW_NAVIGATE[]     = "QtCreator.Group.Window.Navigate";
 const char G_WINDOW_LIST[]         = "QtCreator.Group.Window.List";
@@ -215,6 +220,7 @@ const char SETTINGS_DEFAULT_LINE_TERMINATOR[] = "General/DefaultLineTerminator";
 
 const char SETTINGS_THEME[] = "Core/CreatorTheme";
 const char DEFAULT_THEME[] = "flat";
+const char DEFAULT_DARK_THEME[] = "flat-dark";
 
 const char TR_CLEAR_MENU[]         = QT_TRANSLATE_NOOP("Core", "Clear Menu");
 

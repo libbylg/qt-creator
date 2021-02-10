@@ -25,6 +25,8 @@
 
 #include "androidsdkdownloader.h"
 
+#include <coreplugin/icore.h>
+
 #include <QDir>
 #include <QDirIterator>
 #include <QLoggingCategory>
@@ -42,9 +44,9 @@ namespace Internal {
  * @class SdkDownloader
  * @brief Download Android SDK tools package from within Qt Creator.
  */
-AndroidSdkDownloader::AndroidSdkDownloader(const QUrl &sdkUrl, const QByteArray &sha256) :
-    m_sdkUrl(sdkUrl), m_sha256(sha256)
+AndroidSdkDownloader::AndroidSdkDownloader()
 {
+    m_androidConfig = AndroidConfigurations::currentConfig();
     connect(&m_manager, &QNetworkAccessManager::finished, this, &AndroidSdkDownloader::downloadFinished);
 }
 
@@ -73,20 +75,21 @@ static void setSdkFilesExecPermission( const QString &sdkExtractPath)
 
 void AndroidSdkDownloader::downloadAndExtractSdk(const QString &jdkPath, const QString &sdkExtractPath)
 {
-    if (m_sdkUrl.isEmpty()) {
+    if (m_androidConfig.sdkToolsUrl().isEmpty()) {
         logError(tr("The SDK Tools download URL is empty."));
         return;
     }
 
-    QNetworkRequest request(m_sdkUrl);
+    QNetworkRequest request(m_androidConfig.sdkToolsUrl());
     m_reply = m_manager.get(request);
 
 #if QT_CONFIG(ssl)
     connect(m_reply, &QNetworkReply::sslErrors, this, &AndroidSdkDownloader::sslErrors);
 #endif
 
-    m_progressDialog = new QProgressDialog(tr("Downloading SDK Tools package..."), tr("Cancel"), 0, 100);
-    m_progressDialog->setWindowModality(Qt::WindowModal);
+    m_progressDialog = new QProgressDialog(tr("Downloading SDK Tools package..."), tr("Cancel"),
+                                           0, 100, Core::ICore::dialogParent());
+    m_progressDialog->setWindowModality(Qt::ApplicationModal);
     m_progressDialog->setWindowTitle(dialogTitle());
     m_progressDialog->setFixedSize(m_progressDialog->sizeHint());
 
@@ -115,14 +118,13 @@ bool AndroidSdkDownloader::extractSdk(const QString &jdkPath, const QString &sdk
         }
     }
 
-    QProcess *jarExtractProc = new QProcess();
-    jarExtractProc->setWorkingDirectory(sdkExtractPath);
+    QProcess jarExtractProc;
+    jarExtractProc.setWorkingDirectory(sdkExtractPath);
     QString jarCmdPath(jdkPath + "/bin/jar");
-    jarExtractProc->start(jarCmdPath, {"xf", m_sdkFilename});
-    jarExtractProc->waitForFinished();
-    jarExtractProc->close();
+    jarExtractProc.start(jarCmdPath, {"xf", m_sdkFilename});
+    jarExtractProc.waitForFinished();
 
-    return jarExtractProc->exitCode() ? false : true;
+    return jarExtractProc.exitCode() ? false : true;
 }
 
 bool AndroidSdkDownloader::verifyFileIntegrity()
@@ -131,7 +133,7 @@ bool AndroidSdkDownloader::verifyFileIntegrity()
     if (f.open(QFile::ReadOnly)) {
         QCryptographicHash hash(QCryptographicHash::Sha256);
         if (hash.addData(&f)) {
-            return hash.result() == m_sha256;
+            return hash.result() == m_androidConfig.getSdkToolsSha256();
         }
     }
     return false;
@@ -149,7 +151,7 @@ void AndroidSdkDownloader::cancel()
         m_reply->deleteLater();
     }
     if (m_progressDialog)
-        m_progressDialog->hide();
+        m_progressDialog->cancel();
 }
 
 void AndroidSdkDownloader::cancelWithError(const QString &error)

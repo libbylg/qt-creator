@@ -42,6 +42,8 @@ const Icon LOCKED({
         {QLatin1String(":/utils/images/locked.png"), Theme::PanelTextColorDark}}, Icon::Tint);
 const Icon UNLOCKED_TOOLBAR({
         {QLatin1String(":/utils/images/unlocked.png"), Theme::IconsBaseColor}});
+const Icon UNLOCKED({
+        {QLatin1String(":/utils/images/unlocked.png"), Theme::PanelTextColorDark}}, Icon::Tint);
 const Icon PINNED({
         {QLatin1String(":/utils/images/pinned.png"), Theme::PanelTextColorDark}}, Icon::Tint);
 const Icon NEXT({
@@ -196,11 +198,12 @@ const Icon SORT_ALPHABETICALLY_TOOLBAR({
         {QLatin1String(":/utils/images/sort_alphabetically.png"), Theme::IconsBaseColor}});
 const Icon TOGGLE_PROGRESSDETAILS_TOOLBAR({
     {QLatin1String(":/utils/images/toggleprogressdetails.png"), Theme::IconsBaseColor}});
+const Icon ONLINE({
+        {QLatin1String(":/utils/images/online.png"), Theme::PanelTextColorMid}}, Icon::Tint);
 const Icon ONLINE_TOOLBAR({
         {QLatin1String(":/utils/images/online.png"), Theme::IconsBaseColor}});
 const Icon DOWNLOAD({
-        {QLatin1String(":/utils/images/download_arrow.png"), Theme::IconsRunColor},
-        {QLatin1String(":/utils/images/download_base.png"), Theme::PanelTextColorDark}}, Icon::Tint);
+        {QLatin1String(":/utils/images/download.png"), Theme::PanelTextColorMid}}, Icon::Tint);
 
 const Icon WARNING({
         {QLatin1String(":/utils/images/warningfill.png"), Theme::BackgroundColorNormal},
@@ -262,6 +265,20 @@ const Icon OVERLAY_WARNING({
 const Icon OVERLAY_ERROR({
         {":/utils/images/iconoverlay_error_background.png", Theme::BackgroundColorNormal},
         {":/utils/images/iconoverlay_error.png", Theme::IconsErrorColor}}, Icon::Tint);
+const Icon RUN_FILE({
+        {":/utils/images/run_small.png", Theme::IconsRunColor},
+        {":/utils/images/run_file.png", Theme::PanelTextColorMid}}, Icon::MenuTintedStyle);
+const Icon RUN_FILE_TOOLBAR({
+        {":/utils/images/run_small.png", Theme::IconsRunToolBarColor},
+        {":/utils/images/run_file.png", Theme::IconsBaseColor}});
+const Icon RUN_SELECTED({
+        {":/utils/images/run_small.png", Theme::IconsRunColor},
+        {":/utils/images/runselected_boxes.png", Theme::PanelTextColorMid},
+        {":/utils/images/runselected_tickmarks.png", Theme::PanelTextColorMid}}, Icon::MenuTintedStyle);
+const Icon RUN_SELECTED_TOOLBAR({
+        {":/utils/images/run_small.png", Theme::IconsRunToolBarColor},
+        {":/utils/images/runselected_boxes.png", Theme::IconsBaseColor},
+        {":/utils/images/runselected_tickmarks.png", Theme::IconsBaseColor}});
 
 const Icon CODEMODEL_ERROR({
         {":/utils/images/codemodelerror.png", Theme::IconsErrorColor}}, Icon::Tint);

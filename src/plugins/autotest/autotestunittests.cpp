@@ -23,9 +23,9 @@
 **
 ****************************************************************************/
 
+#include "autotestunittests.h"
 #include "autotestconstants.h"
 #include "autotestplugin.h"
-#include "autotestunittests.h"
 #include "testcodeparser.h"
 #include "testsettings.h"
 #include "testtreemodel.h"
@@ -61,20 +61,26 @@ AutoTestUnitTests::AutoTestUnitTests(TestTreeModel *model, QObject *parent)
 void AutoTestUnitTests::initTestCase()
 {
     const QList<Kit *> allKits = KitManager::kits();
-    if (allKits.count() != 1)
-        QSKIP("This test requires exactly one kit to be present");
-    if (auto qtVersion = QtSupport::QtKitAspect::qtVersion(allKits.first()))
+    if (allKits.count() == 0)
+        QSKIP("This test requires at least one kit to be present");
+
+    m_kit = findOr(allKits, nullptr, [](Kit *k) {
+            return k->isValid() && QtSupport::QtKitAspect::qtVersion(k) != nullptr;
+    });
+    if (!m_kit)
+        QSKIP("The test requires at least one valid kit with a valid Qt");
+
+    if (auto qtVersion = QtSupport::QtKitAspect::qtVersion(m_kit))
         m_isQt4 = qtVersion->qtVersionString().startsWith('4');
     else
         QSKIP("Could not figure out which Qt version is used for default kit.");
-    const ToolChain * const toolchain = ToolChainKitAspect::toolChain(allKits.first(),
-                                                                           ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+    const ToolChain * const toolchain = ToolChainKitAspect::cxxToolChain(m_kit);
     if (!toolchain)
         QSKIP("This test requires that there is a kit with a toolchain.");
 
     m_tmpDir = new CppTools::Tests::TemporaryCopiedDir(":/unit_test");
 
-    if (!qgetenv("BOOST_INCLUDE_DIR").isEmpty()) {
+    if (!qEnvironmentVariableIsEmpty("BOOST_INCLUDE_DIR")) {
         m_checkBoost = true;
     } else {
         if (Utils::HostOsInfo::isLinuxHost()
@@ -100,7 +106,7 @@ void AutoTestUnitTests::testCodeParser()
     QFETCH(int, expectedDataTagsCount);
 
     CppTools::Tests::ProjectOpenerAndCloser projectManager;
-    const CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePath, true);
+    const CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePath, true, m_kit);
     QVERIFY(projectInfo.isValid());
 
     QSignalSpy parserSpy(m_model->parser(), SIGNAL(parsingFinished()));
@@ -151,7 +157,7 @@ void AutoTestUnitTests::testCodeParserSwitchStartup()
     CppTools::Tests::ProjectOpenerAndCloser projectManager;
     for (int i = 0; i < projectFilePaths.size(); ++i) {
         qDebug() << "Opening project" << projectFilePaths.at(i);
-        CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePaths.at(i), true);
+        CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePaths.at(i), true, m_kit);
         QVERIFY(projectInfo.isValid());
 
         QSignalSpy parserSpy(m_model->parser(), SIGNAL(parsingFinished()));
@@ -194,12 +200,12 @@ void AutoTestUnitTests::testCodeParserSwitchStartup_data()
 
 void AutoTestUnitTests::testCodeParserGTest()
 {
-    if (qgetenv("GOOGLETEST_DIR").isEmpty())
+    if (qEnvironmentVariableIsEmpty("GOOGLETEST_DIR"))
         QSKIP("This test needs googletest - set GOOGLETEST_DIR (point to googletest repository)");
 
     QFETCH(QString, projectFilePath);
     CppTools::Tests::ProjectOpenerAndCloser projectManager;
-    CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePath, true);
+    CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePath, true, m_kit);
     QVERIFY(projectInfo.isValid());
 
     QSignalSpy parserSpy(m_model->parser(), SIGNAL(parsingFinished()));
@@ -246,8 +252,9 @@ void AutoTestUnitTests::testCodeParserBoostTest()
         QSKIP("This test needs boost - set BOOST_INCLUDE_DIR (or have it installed)");
 
     QFETCH(QString, projectFilePath);
+    QFETCH(QString, extension);
     CppTools::Tests::ProjectOpenerAndCloser projectManager;
-    CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePath, true);
+    CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePath, true, m_kit);
     QVERIFY(projectInfo.isValid());
 
     QSignalSpy parserSpy(m_model->parser(), SIGNAL(parsingFinished()));
@@ -257,17 +264,26 @@ void AutoTestUnitTests::testCodeParserBoostTest()
 
     QCOMPARE(m_model->boostTestNamesCount(), 5);
 
-    QMultiMap<QString, int> expectedSuitesAndTests;
-    expectedSuitesAndTests.insert(QStringLiteral("Master Test Suite"), 2); // decorators w/o suite
-    expectedSuitesAndTests.insert(QStringLiteral("Master Test Suite"), 2); // fixtures
-    expectedSuitesAndTests.insert(QStringLiteral("Master Test Suite"), 3); // functions
-    expectedSuitesAndTests.insert(QStringLiteral("Suite1"), 4);
-    expectedSuitesAndTests.insert(QStringLiteral("SuiteOuter"), 5); // 2 sub suites + 3 tests
+    QString basePath;
+    if (auto project = projectInfo.project())
+        basePath = project->projectFilePath().toFileInfo().absolutePath();
+    QVERIFY(!basePath.isEmpty());
 
-    QMultiMap<QString, int> foundNamesAndSets = m_model->boostTestSuitesAndTests();
+    QMap<QString, int> expectedSuitesAndTests;
+
+    auto pathConstructor = [basePath, extension](const QString &name, const QString &subPath) {
+        return QString(name + '|' + basePath + subPath + extension);
+    };
+    expectedSuitesAndTests.insert(pathConstructor("Master Test Suite", "/tests/deco/deco"), 2); // decorators w/o suite
+    expectedSuitesAndTests.insert(pathConstructor("Master Test Suite", "/tests/fix/fix"), 2); // fixtures
+    expectedSuitesAndTests.insert(pathConstructor("Master Test Suite", "/tests/params/params"), 3); // functions
+    expectedSuitesAndTests.insert(pathConstructor("Suite1", "/tests/deco/deco"), 4);
+    expectedSuitesAndTests.insert(pathConstructor("SuiteOuter", "/tests/deco/deco"), 5); // 2 sub suites + 3 tests
+
+    QMap<QString, int> foundNamesAndSets = m_model->boostTestSuitesAndTests();
     QCOMPARE(expectedSuitesAndTests.size(), foundNamesAndSets.size());
     for (const QString &name : expectedSuitesAndTests.keys())
-        QCOMPARE(expectedSuitesAndTests.values(name), foundNamesAndSets.values(name));
+        QCOMPARE(expectedSuitesAndTests.value(name), foundNamesAndSets.value(name));
 
     // check also that no Qt related tests have been found
     QCOMPARE(m_model->autoTestsCount(), 0);
@@ -280,10 +296,11 @@ void AutoTestUnitTests::testCodeParserBoostTest()
 void AutoTestUnitTests::testCodeParserBoostTest_data()
 {
     QTest::addColumn<QString>("projectFilePath");
+    QTest::addColumn<QString>("extension");
     QTest::newRow("simpleBoostTest")
-        << QString(m_tmpDir->path() + "/simple_boost/simple_boost.pro");
+        << QString(m_tmpDir->path() + "/simple_boost/simple_boost.pro") << QString(".pro");
     QTest::newRow("simpleBoostTestQbs")
-        << QString(m_tmpDir->path() + "/simple_boost/simple_boost.qbs");
+        << QString(m_tmpDir->path() + "/simple_boost/simple_boost.qbs") << QString(".qbs");
 }
 
 } // namespace Internal

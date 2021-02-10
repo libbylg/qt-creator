@@ -29,6 +29,8 @@
 #include "itemlibraryresourceview.h"
 
 #include <utils/fancylineedit.h>
+#include <utils/dropsupport.h>
+#include <previewtooltip/previewtooltipbackend.h>
 
 #include <QFrame>
 #include <QToolButton>
@@ -36,6 +38,8 @@
 #include <QQuickWidget>
 #include <QQmlPropertyMap>
 #include <QTimer>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 class QStackedWidget;
@@ -52,6 +56,9 @@ class CustomFileSystemModel;
 
 class ItemLibraryModel;
 class ItemLibraryResourceView;
+class SynchronousImageCache;
+class AsynchronousImageCache;
+class ImageCacheCollector;
 
 class ItemLibraryWidget : public QFrame
 {
@@ -63,7 +70,10 @@ class ItemLibraryWidget : public QFrame
     };
 
 public:
-    ItemLibraryWidget(QWidget *parent = nullptr);
+    ItemLibraryWidget(AsynchronousImageCache &imageCache,
+                      AsynchronousImageCache &asynchronousFontImageCache,
+                      SynchronousImageCache &synchronousFontImageCache);
+    ~ItemLibraryWidget();
 
     void setItemLibraryInfo(ItemLibraryInfo *itemLibraryInfo);
     QList<QToolButton *> createToolBarWidgets();
@@ -98,7 +108,8 @@ private:
     void removeImport(const QString &name);
     void addImport(const QString &name, const QString &version);
     void addPossibleImport(const QString &name);
-    void addResources();
+    void addResources(const QStringList &files);
+    void importDroppedFiles(const QList<Utils::DropSupport::FileSpec> &files);
 
     QTimer m_compressionTimer;
     QSize m_itemIconSize;
@@ -115,12 +126,14 @@ private:
     QScopedPointer<ItemLibraryResourceView> m_resourcesView;
     QScopedPointer<QWidget> m_importTagsWidget;
     QScopedPointer<QWidget> m_addResourcesWidget;
+    std::unique_ptr<PreviewTooltipBackend> m_previewTooltipBackend;
 
     QShortcut *m_qmlSourceUpdateShortcut;
-
+    AsynchronousImageCache &m_imageCache;
     QPointer<Model> m_model;
     FilterChangeFlag m_filterFlag;
     ItemLibraryEntry m_currentitemLibraryEntry;
+    bool m_updateRetry = false;
 };
 
 }

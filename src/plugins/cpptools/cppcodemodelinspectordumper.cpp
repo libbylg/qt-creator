@@ -158,6 +158,7 @@ QString Utils::toString(::Utils::QtVersion qtVersion)
         CASE_QTVERSION(None);
         CASE_QTVERSION(Qt4);
         CASE_QTVERSION(Qt5);
+        CASE_QTVERSION(Qt6);
         // no default to get a compiler warning if anything is added
     }
 #undef CASE_QTVERSION
@@ -341,6 +342,7 @@ QString Utils::toString(CPlusPlus::Kind kind)
     TOKEN_AND_ALIASES(T___ATTRIBUTE__, T___ATTRIBUTE);
     TOKEN(T___THREAD);
     TOKEN_AND_ALIASES(T___TYPEOF__, T_TYPEOF/T___TYPEOF);
+    TOKEN_AND_ALIASES(T___DECLSPEC, T__DECLSPEC);
     TOKEN(T_AT_CATCH);
     TOKEN(T_AT_CLASS);
     TOKEN(T_AT_COMPATIBILITY_ALIAS);

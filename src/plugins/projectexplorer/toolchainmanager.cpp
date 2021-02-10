@@ -54,7 +54,7 @@ namespace Internal {
 
 struct LanguageDisplayPair
 {
-    Core::Id id;
+    Utils::Id id;
     QString displayName;
 };
 
@@ -68,6 +68,7 @@ public:
     QList<ToolChain *> m_toolChains; // prioritized List
     QVector<LanguageDisplayPair> m_languages;
     ToolchainDetectionSettings m_detectionSettings;
+    bool m_loaded = false;
 };
 
 ToolChainManagerPrivate::~ToolChainManagerPrivate()
@@ -104,7 +105,8 @@ ToolChainManager::ToolChainManager(QObject *parent) :
     connect(this, &ToolChainManager::toolChainUpdated, this, &ToolChainManager::toolChainsChanged);
 
     QSettings * const s = Core::ICore::settings();
-    d->m_detectionSettings.detectX64AsX32 = s->value(DETECT_X64_AS_X32_KEY, false).toBool();
+    d->m_detectionSettings.detectX64AsX32
+        = s->value(DETECT_X64_AS_X32_KEY, ToolchainDetectionSettings().detectX64AsX32).toBool();
 }
 
 ToolChainManager::~ToolChainManager()
@@ -127,6 +129,7 @@ void ToolChainManager::restoreToolChains()
     for (ToolChain *tc : d->m_accessor->restoreToolChains(Core::ICore::dialogParent()))
         registerToolChain(tc);
 
+    d->m_loaded = true;
     emit m_instance->toolChainsLoaded();
 }
 
@@ -135,8 +138,10 @@ void ToolChainManager::saveToolChains()
     QTC_ASSERT(d->m_accessor, return);
 
     d->m_accessor->saveToolChains(d->m_toolChains, Core::ICore::dialogParent());
-    QSettings * const s = Core::ICore::settings();
-    s->setValue(DETECT_X64_AS_X32_KEY, d->m_detectionSettings.detectX64AsX32);
+    QtcSettings *const s = Core::ICore::settings();
+    s->setValueWithDefault(DETECT_X64_AS_X32_KEY,
+                           d->m_detectionSettings.detectX64AsX32,
+                           ToolchainDetectionSettings().detectX64AsX32);
 }
 
 QList<ToolChain *> ToolChainManager::toolChains(const ToolChain::Predicate &predicate)
@@ -187,7 +192,7 @@ ToolChain *ToolChainManager::findToolChain(const QByteArray &id)
 
 bool ToolChainManager::isLoaded()
 {
-    return bool(d->m_accessor);
+    return d->m_loaded;
 }
 
 void ToolChainManager::notifyAboutUpdate(ToolChain *tc)
@@ -225,12 +230,12 @@ void ToolChainManager::deregisterToolChain(ToolChain *tc)
     delete tc;
 }
 
-QSet<Core::Id> ToolChainManager::allLanguages()
+QList<Id> ToolChainManager::allLanguages()
 {
-    return Utils::transform<QSet>(d->m_languages, &LanguageDisplayPair::id);
+    return Utils::transform<QList>(d->m_languages, &LanguageDisplayPair::id);
 }
 
-bool ToolChainManager::registerLanguage(const Core::Id &language, const QString &displayName)
+bool ToolChainManager::registerLanguage(const Utils::Id &language, const QString &displayName)
 {
     QTC_ASSERT(language.isValid(), return false);
     QTC_ASSERT(!isLanguageSupported(language), return false);
@@ -239,7 +244,7 @@ bool ToolChainManager::registerLanguage(const Core::Id &language, const QString 
     return true;
 }
 
-QString ToolChainManager::displayNameOfLanguageId(const Core::Id &id)
+QString ToolChainManager::displayNameOfLanguageId(const Utils::Id &id)
 {
     QTC_ASSERT(id.isValid(), return tr("None"));
     auto entry = Utils::findOrDefault(d->m_languages, Utils::equal(&LanguageDisplayPair::id, id));
@@ -247,16 +252,15 @@ QString ToolChainManager::displayNameOfLanguageId(const Core::Id &id)
     return entry.displayName;
 }
 
-bool ToolChainManager::isLanguageSupported(const Core::Id &id)
+bool ToolChainManager::isLanguageSupported(const Utils::Id &id)
 {
     return Utils::contains(d->m_languages, Utils::equal(&LanguageDisplayPair::id, id));
 }
 
 void ToolChainManager::aboutToShutdown()
 {
-#ifdef Q_OS_WIN
-    MsvcToolChain::cancelMsvcToolChainDetection();
-#endif
+    if (HostOsInfo::isWindowsHost())
+        MsvcToolChain::cancelMsvcToolChainDetection();
 }
 
 ToolchainDetectionSettings ToolChainManager::detectionSettings()

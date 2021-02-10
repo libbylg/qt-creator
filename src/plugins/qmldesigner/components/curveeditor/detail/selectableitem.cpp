@@ -26,13 +26,63 @@
 #include "selectableitem.h"
 #include "keyframeitem.h"
 
-namespace DesignTools {
+namespace QmlDesigner {
+
+CurveEditorItem::CurveEditorItem(QGraphicsItem *parent)
+    : QGraphicsObject(parent)
+    , m_locked(false)
+    , m_pinned(false)
+    , m_underMouse(false)
+{
+    setAcceptHoverEvents(true);
+}
+
+void CurveEditorItem::lockedCallback() {}
+void CurveEditorItem::pinnedCallback() {}
+void CurveEditorItem::underMouseCallback() {}
+
+bool CurveEditorItem::locked() const
+{
+    return m_locked;
+}
+
+bool CurveEditorItem::pinned() const
+{
+    return m_pinned;
+}
+
+bool CurveEditorItem::isUnderMouse() const
+{
+    return m_underMouse;
+}
+
+void CurveEditorItem::setLocked(bool locked)
+{
+    m_locked = locked;
+    lockedCallback();
+    update();
+}
+
+void CurveEditorItem::setPinned(bool pinned)
+{
+    m_pinned = pinned;
+    pinnedCallback();
+    update();
+}
+
+void CurveEditorItem::setIsUnderMouse(bool under)
+{
+    if (under != m_underMouse) {
+        m_underMouse = under;
+        underMouseCallback();
+        update();
+    }
+}
 
 SelectableItem::SelectableItem(QGraphicsItem *parent)
-    : QGraphicsObject(parent)
+    : CurveEditorItem(parent)
     , m_active(false)
     , m_selected(false)
-    , m_locked(false)
     , m_preSelected(SelectionMode::Undefined)
 {
     setFlag(QGraphicsItem::ItemIsSelectable, false);
@@ -44,11 +94,12 @@ SelectableItem::SelectableItem(QGraphicsItem *parent)
 
 SelectableItem::~SelectableItem() {}
 
-void SelectableItem::setLocked(bool locked)
+void SelectableItem::lockedCallback()
 {
-    setPreselected(SelectionMode::Clear);
-    applyPreselection();
-    m_locked = locked;
+    m_preSelected = SelectionMode::Undefined;
+    m_selected = false;
+    m_active = false;
+    selectionCallback();
 }
 
 bool SelectableItem::activated() const
@@ -76,19 +127,25 @@ bool SelectableItem::selected() const
     return false;
 }
 
-bool SelectableItem::locked() const
-{
-    return m_locked;
-}
-
 void SelectableItem::setActivated(bool active)
 {
+    if (locked())
+        return;
+
     m_active = active;
+}
+
+void SelectableItem::setSelected(bool selected)
+{
+    if (locked())
+        return;
+
+    m_selected = selected;
 }
 
 void SelectableItem::setPreselected(SelectionMode mode)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     m_preSelected = mode;
@@ -101,20 +158,23 @@ void SelectableItem::applyPreselection()
     m_preSelected = SelectionMode::Undefined;
 }
 
+void SelectableItem::activationCallback() {}
+
 void SelectableItem::selectionCallback() {}
 
 void SelectableItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     m_active = true;
     QGraphicsObject::mousePressEvent(event);
+    activationCallback();
 }
 
 void SelectableItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     if (type() == KeyframeItem::Type && !selected())
@@ -125,11 +185,12 @@ void SelectableItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 
 void SelectableItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     m_active = false;
     QGraphicsObject::mouseReleaseEvent(event);
+    activationCallback();
 }
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

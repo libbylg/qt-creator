@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -24,12 +24,7 @@
 ****************************************************************************/
 
 /*!
-    \contentspage {Qt Design Studio Manual}
-    \if defined(qtdesignstudio)
-    \previouspage studio-adding-dynamics.html
-    \else
-    \previouspage qtquick-properties.html
-    \endif
+    \previouspage qtquick-adding-dynamics.html
     \page studio-timeline.html
     \nextpage qmldesigner-connections.html
 
@@ -51,21 +46,23 @@
     you can associate with an item to define how its properties will animate
     when they change due to a state change.
 
+    Each component in a scene or a project can have its own timeline and its own
+    set of states. We recommend that you place your timelines inside the
+    components and precompose them. Each component's timeline runs independently
+    of the rest of the scene, allowing for time-independent animations.
+    Additionally, separate states allow common functionality to be factored out
+    and reused across the scene. Do note, however, that adding states and
+    timelines to your components will increase the file size and runtime memory
+    requirements of your UI.
+
     You can find a video tutorial about creating timelines and adding keyframes
     \l{https://resources.qt.io/development-topic-ui-design/qtdesignstudio-clustertutorial-parttwo}
     {here}.
 
     \if defined(qtcreator)
-    \section1 Enabling the Timeline Editor
-
-    The \uicontrol Timeline view is not visible in \QC by default. To enable
-    it, select \uicontrol Tools > \uicontrol Options > \uicontrol {Qt Quick} >
-    \uicontrol {Qt Quick Designer} > \uicontrol {Enable Timeline editor}. You
-    need to restart \QC for the \uicontrol Timeline view to appear.
-
     To be able to create timelines, you also need the \l {Qt Quick Timeline}
-    module, which is delivered with Qt 5.14, and later. For more
-   information about adding the module to an older Qt version, see
+    add-on module, which you can install with Qt 5.14, and later. For more
+    information about adding the module to an older Qt version, see
     \l{Adding Qt Quick Timeline Module to Qt Installations}.
     \endif
 
@@ -80,9 +77,7 @@
 
     \list 1
         \li In the \uicontrol Navigator, select the item to animate.
-        \li Select the \uicontrol Timeline tab to open the \uicontrol Timeline
-            view.
-        \li Select the \inlineimage plus.png
+        \li In the \uicontrol Timeline view, select the \inlineimage plus.png
             (\uicontrol {Add Timeline (A)}) button, or press \key {A} to
             specify settings for the timeline and running the animation
             in the \uicontrol {Timeline Settings} dialog.
@@ -147,7 +142,7 @@
     \section1 Managing Keyframes
 
     To animate components in the \uicontrol Timeline view, move to a frame
-    on the timeline and specify changes in the values of a property. \QDS
+    on the timeline and specify changes in the values of a property. \QC
     automatically adds keyframes between two keyframes, and sets their values
     evenly to create an appearance of movement or transformation.
 
@@ -163,7 +158,8 @@
         \li Select the \uicontrol {To Start (Home)}, \uicontrol {Previous (,)},
             or \uicontrol {Next (.)} buttons (3), or use the keyboard shortcuts
             to move to the first, previous, or next frame on the timeline.
-        \li Enter the number of a frame in the field (4) to move to that frame.
+        \li Enter the number of a frame in the current keyframe field (4) to
+            move to that frame.
         \li Select the \uicontrol Previous and \uicontrol Next buttons next to
             a property name on the timeline (5) to move to the previous or next
             keyframe for that property.
@@ -234,13 +230,11 @@
     You can view the animation on the canvas by moving the playhead along the
     timeline.
 
-    \if defined(qtdesignstudio)
     To preview the animation, select the \uicontrol {Play (Space)}
     button or press \key Space. To preview the whole UI, select the
     \inlineimage live_preview.png
     (\uicontrol {Show Live Preview}) button on the canvas toolbar
     or press \key {Alt+P}.
-    \endif
 
     \section1 Editing Easing Curves
 
@@ -250,7 +244,7 @@
     timeline are \e linear, which means that they move from the beginning to
     the end at a constant speed. You can use the \uicontrol {Easing Curve Editor}
     to edit the easing curve between two keyframes. You can also use the more
-    advanced \uicontrol {Curve Editor (C)} to edit the curves for the whole
+    advanced \uicontrol {Curve Editor} to edit the curves for the whole
     animation.
 
     \section2 Attaching Easing Curves to Keyframes
@@ -290,7 +284,7 @@
     To customize easing curves:
 
     \list 1
-        \li In the \uicontrol {Easing Curve Editor}, select an easing curve in
+        \li In \uicontrol {Easing Curve Editor}, select an easing curve in
             the \uicontrol Presets tab.
         \li Drag the curve handlers to modify the curve.
         \li Right-click in the editor, and select \uicontrol {Add Point} to add
@@ -304,17 +298,21 @@
             \uicontrol Custom tab.
     \endlist
 
-    To paste easing curve definitions to the easing curve editor as text, select
-    the \uicontrol Text tab.
+    To paste easing curve definitions to \uicontrol {Easing Curve Editor} as
+    text, select the \uicontrol Text tab.
 
     \section1 Editing Animation Curves
 
-    In the curve editor, you can view and modify the whole animation curve. You
-    can insert keyframes to the curve and drag them and the point handlers to
-    modify the curve. You can modify the appearance of the curve in the style
-    editor.
+    In \uicontrol {Curve Editor}, you can view and modify the whole animation
+    curve. You can insert keyframes to the curve and drag them and the point
+    handlers to modify the curve. You can modify the appearance of the curve
+    in the style editor.
 
-    You can also edit easing curves that you added with the easing curve editor.
+    You can also edit easing curves that you added in
+    \uicontrol {Easing Curve Editor}. If the item that
+    contains the easing curves has been locked in
+    \uicontrol Navigator, you can select \inlineimage icons/lockon.png
+    to unlock it. You can also lock individual easing curves for editing.
 
     \image studio-curve-editor.png "Curve Editor"
 
@@ -322,23 +320,26 @@
 
     \list 1
         \li In the \uicontrol Timeline view, insert at least one keyframe.
-        \li Select \inlineimage curveGraphIcon.png
-            (\uicontrol {Curve Editor (C)} on the toolbar or press \key C
-            to open the curve editor.
-        \li Right-click in the curve editor, and select
+        \li Select \uicontrol View > \uicontrol Views >
+            \uicontrol {Curve Editor} to open the animation curve editor.
+        \li Right-click in the animation curve editor, and select
             \uicontrol {Insert Keyframe} to add a keyframe.
         \li Select keyframes to display the easing curves attached to them.
             To select multiple keyframes, press and hold \key Ctrl.
+        \li To lock an easing curve, hover the mouse over the keyframe in the
+            list, and then select the lock icon.
+        \li To pin an easing curve, hover the mouse over the keyframe in the
+            list, and then select the pin icon.
     \endlist
 
-    Your changes are automatically saved when you close the editor.
+    Your changes are automatically saved when you close the view.
 
     \section1 Rotating Items
 
     To animate components that rotate around a central point, you can use the
-    \l Item QML type as a parent for the rotating component. Then create a
-    timeline for the Item and set the rotation property for the start and end
-    keyframes.
+    \l {basic-item}{Item} QML type as a parent for the rotating component. Then
+    create a timeline for the Item and set the rotation property for the start
+    and end keyframes.
 
     \if defined(qtdesignstudio)
     \section1 Animating Shapes

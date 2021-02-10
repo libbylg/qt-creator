@@ -30,6 +30,7 @@
 #include "ui_clangbasechecks.h"
 
 #include <utils/executeondestruction.h>
+#include <utils/stringutils.h>
 #include <utils/treemodel.h>
 
 #include <QInputDialog>
@@ -61,8 +62,8 @@ public:
         : Utils::StaticTreeItem(text)
     {}
 
-    Qt::ItemFlags flags(int) const { return {}; }
-    QVariant data(int column, int role) const
+    Qt::ItemFlags flags(int) const final { return {}; }
+    QVariant data(int column, int role) const final
     {
         if (role == Qt::ForegroundRole) {
             // Avoid disabled color.
@@ -108,13 +109,13 @@ public:
         m_customRoot->appendChild(new ConfigNode(config));
     }
 
-    void removeConfig(const Core::Id &id)
+    void removeConfig(const Utils::Id &id)
     {
        ConfigNode *node = itemForConfigId(id);
        node->parent()->removeChildAt(node->indexInParent());
     }
 
-    ConfigNode *itemForConfigId(const Core::Id &id) const
+    ConfigNode *itemForConfigId(const Utils::Id &id) const
     {
         return findItemAtLevel<2>([id](const ConfigNode *node) {
             return node->config.id() == id;
@@ -127,7 +128,7 @@ private:
 };
 
 ClangDiagnosticConfigsWidget::ClangDiagnosticConfigsWidget(const ClangDiagnosticConfigs &configs,
-                                                           const Core::Id &configToSelect,
+                                                           const Utils::Id &configToSelect,
                                                            QWidget *parent)
     : QWidget(parent)
     , m_ui(new Ui::ClangDiagnosticConfigsWidget)
@@ -196,7 +197,7 @@ void ClangDiagnosticConfigsWidget::onRenameButtonClicked()
     bool dialogAccepted = false;
     const QString newName = QInputDialog::getText(this,
                                                   tr("Rename Diagnostic Configuration"),
-                                                  tr("New Name:"),
+                                                  tr("New name:"),
                                                   QLineEdit::Normal,
                                                   config.displayName(),
                                                   &dialogAccepted);
@@ -214,7 +215,7 @@ const ClangDiagnosticConfig ClangDiagnosticConfigsWidget::currentConfig() const
 
 void ClangDiagnosticConfigsWidget::onRemoveButtonClicked()
 {
-    const Core::Id configToRemove = currentConfig().id();
+    const Utils::Id configToRemove = currentConfig().id();
     if (m_configsModel->customConfigsCount() == 1)
         m_ui->configsView->setCurrentIndex(m_configsModel->fallbackConfigIndex());
     m_configsModel->removeConfig(configToRemove);
@@ -254,7 +255,7 @@ static QString validateDiagnosticOptions(const QStringList &options)
 
 static QStringList normalizeDiagnosticInputOptions(const QString &options)
 {
-    return options.simplified().split(QLatin1Char(' '), QString::SkipEmptyParts);
+    return options.simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
 }
 
 void ClangDiagnosticConfigsWidget::onClangOnlyOptionsChanged()

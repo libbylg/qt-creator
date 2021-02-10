@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "qlitehtml_global.h"
+
 #include <QAbstractScrollArea>
 #include <QTextDocument>
 
@@ -32,17 +34,19 @@
 
 class QLiteHtmlWidgetPrivate;
 
-class QLiteHtmlWidget : public QAbstractScrollArea
+class QLITEHTML_EXPORT QLiteHtmlWidget : public QAbstractScrollArea
 {
     Q_OBJECT
 public:
     explicit QLiteHtmlWidget(QWidget *parent = nullptr);
     ~QLiteHtmlWidget() override;
 
+    // declaring the getters Q_INVOKABLE to make them Squish-testable
     void setUrl(const QUrl &url);
-    QUrl url() const;
+    Q_INVOKABLE QUrl url() const;
     void setHtml(const QString &content);
-    QString title() const;
+    Q_INVOKABLE QString html() const;
+    Q_INVOKABLE QString title() const;
 
     void setZoomFactor(qreal scale);
     qreal zoomFactor() const;
@@ -60,7 +64,8 @@ public:
     using ResourceHandler = std::function<QByteArray(QUrl)>;
     void setResourceHandler(const ResourceHandler &handler);
 
-    QString selectedText() const;
+    // declaring this Q_INVOKABLE to make it Squish-testable
+    Q_INVOKABLE QString selectedText() const;
 
 signals:
     void linkClicked(const QUrl &url);
@@ -82,9 +87,7 @@ private:
     QPoint scrollPosition() const;
     void htmlPos(const QPoint &pos, QPoint *viewportPos, QPoint *htmlPos) const;
     QPoint toVirtual(const QPoint &p) const;
-    QPoint fromVirtual(const QPoint &p) const;
     QSize toVirtual(const QSize &s) const;
-    QSize fromVirtual(const QSize &s) const;
     QRect toVirtual(const QRect &r) const;
     QRect fromVirtual(const QRect &r) const;
 

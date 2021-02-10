@@ -34,6 +34,11 @@
 
 #include <utils/qtcassert.h>
 
+#include <cpptools/cpptoolsconstants.h>
+#include <texteditor/icodestylepreferencesfactory.h>
+#include <texteditor/textdocument.h>
+#include <texteditor/texteditorsettings.h>
+
 #include <QTextDocument>
 
 using namespace CPlusPlus;
@@ -42,6 +47,16 @@ namespace CppTools {
 
 class CppRefactoringChangesData : public TextEditor::RefactoringChangesData
 {
+    static std::unique_ptr<TextEditor::Indenter> createIndenter(const QString &fileName,
+                                                                QTextDocument *textDocument)
+    {
+        TextEditor::ICodeStylePreferencesFactory *factory
+            = TextEditor::TextEditorSettings::codeStyleFactory(CppTools::Constants::CPP_SETTINGS_ID);
+        std::unique_ptr<TextEditor::Indenter> indenter(factory->createIndenter(textDocument));
+        indenter->setFileName(Utils::FilePath::fromString(fileName));
+        return indenter;
+    }
+
 public:
     explicit CppRefactoringChangesData(const Snapshot &snapshot)
         : m_snapshot(snapshot)
@@ -53,23 +68,26 @@ public:
                          const QString &fileName,
                          const TextEditor::TextDocument *textDocument) const override
     {
-        const TextEditor::TabSettings &tabSettings =
-            ProjectExplorer::actualTabSettings(fileName, textDocument);
-
-        CppQtStyleIndenter indenter(selection.document());
-        indenter.indent(selection, QChar::Null, tabSettings);
+        if (textDocument) { // use the indenter from the textDocument if there is one, can be ClangFormat
+            textDocument->indenter()->indent(selection, QChar::Null, textDocument->tabSettings());
+        } else {
+            const auto &tabSettings = ProjectExplorer::actualTabSettings(fileName, textDocument);
+            auto indenter = createIndenter(fileName, selection.document());
+            indenter->indent(selection, QChar::Null, tabSettings);
+        }
     }
 
     void reindentSelection(const QTextCursor &selection,
                            const QString &fileName,
                            const TextEditor::TextDocument *textDocument) const override
     {
-        const TextEditor::TabSettings &tabSettings =
-            ProjectExplorer::actualTabSettings(fileName, textDocument);
-
-        CppQtStyleIndenter indenter(selection.document());
-        indenter.reindent(selection,
-                          tabSettings);
+        if (textDocument) { // use the indenter from the textDocument if there is one, can be ClangFormat
+            textDocument->indenter()->reindent(selection, textDocument->tabSettings());
+        } else {
+            const auto &tabSettings = ProjectExplorer::actualTabSettings(fileName, textDocument);
+            auto indenter = createIndenter(fileName, selection.document());
+            indenter->reindent(selection, tabSettings);
+        }
     }
 
     void fileChanged(const QString &fileName) override
@@ -195,7 +213,7 @@ Utils::ChangeSet::Range CppRefactoringFile::range(unsigned tokenIndex) const
     return {start, start + token.utf16chars()};
 }
 
-Utils::ChangeSet::Range CppRefactoringFile::range(AST *ast) const
+Utils::ChangeSet::Range CppRefactoringFile::range(const AST *ast) const
 {
     return {startOf(ast), endOf(ast)};
 }
@@ -209,7 +227,11 @@ int CppRefactoringFile::startOf(unsigned index) const
 
 int CppRefactoringFile::startOf(const AST *ast) const
 {
-    return startOf(ast->firstToken());
+    int firstToken = ast->firstToken();
+    const int lastToken = ast->lastToken();
+    while (tokenAt(firstToken).generated() && firstToken < lastToken)
+        ++firstToken;
+    return startOf(firstToken);
 }
 
 int CppRefactoringFile::endOf(unsigned index) const
@@ -221,9 +243,12 @@ int CppRefactoringFile::endOf(unsigned index) const
 
 int CppRefactoringFile::endOf(const AST *ast) const
 {
-    int end = ast->lastToken();
-    QTC_ASSERT(end > 0, return -1);
-    return endOf(end - 1);
+    int lastToken = ast->lastToken() - 1;
+    QTC_ASSERT(lastToken >= 0, return -1);
+    const int firstToken = ast->firstToken();
+    while (tokenAt(lastToken).generated() && lastToken > firstToken)
+        --lastToken;
+    return endOf(lastToken);
 }
 
 void CppRefactoringFile::startAndEndOf(unsigned index, int *start, int *end) const

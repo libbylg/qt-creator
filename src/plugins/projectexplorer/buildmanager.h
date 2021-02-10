@@ -91,6 +91,8 @@ public:
     static void setCompileOutputSettings(const Internal::CompileOutputSettings &settings);
     static const Internal::CompileOutputSettings &compileOutputSettings();
 
+    static QString displayNameForStepId(Utils::Id stepId);
+
 public slots:
     static void cancel();
     // Shows without focus
@@ -102,9 +104,6 @@ public slots:
 signals:
     void buildStateChanged(ProjectExplorer::Project *pro);
     void buildQueueFinished(bool success);
-    void tasksChanged();
-    void taskAdded(const ProjectExplorer::Task &task);
-    void tasksCleared();
 
 private:
     static void addToTaskWindow(const ProjectExplorer::Task &task, int linkedOutputLines, int skipLines);

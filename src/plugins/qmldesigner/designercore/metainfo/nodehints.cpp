@@ -165,6 +165,11 @@ bool NodeHints::canBeDroppedInNavigator() const
     return evaluateBooleanExpression("canBeDroppedInNavigator", true);
 }
 
+bool NodeHints::canBeDroppedInView3D() const
+{
+    return evaluateBooleanExpression("canBeDroppedInView3D", false);
+}
+
 bool NodeHints::isMovable() const
 {
     if (!isValid())
@@ -252,6 +257,37 @@ QString NodeHints::forceNonDefaultProperty() const
         return {};
 
     return Internal::evaluateExpression(expression, modelNode(), ModelNode()).toString();
+}
+
+QVariant parseValue(const QString &string)
+{
+    if (string == "true")
+        return true;
+    if (string == "false")
+        return false;
+    bool ok = false;
+    double d = string.toDouble(&ok);
+    if (ok)
+        return d;
+
+    return string;
+}
+
+QPair<QString, QVariant> NodeHints::setParentProperty() const
+{
+    const QString expression = m_hints.value("setParentProperty");
+
+    if (expression.isEmpty())
+        return {};
+
+    const QString str = Internal::evaluateExpression(expression, modelNode(), ModelNode()).toString();
+
+    QStringList list = str.split(":");
+
+    if (list.count() != 2)
+        return {};
+
+    return qMakePair(list.first().trimmed(), parseValue(list.last().trimmed()));
 }
 
 QHash<QString, QString> NodeHints::hints() const

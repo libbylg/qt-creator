@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -30,10 +30,13 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-editor-functions.html
     \page creator-coding-navigating.html
+    \if defined(qtdesignstudio)
+    \nextpage creator-sidebars.html
+    \else
     \nextpage creator-highlighting.html
+    \endif
 
     \title Working in Edit Mode
 
@@ -54,11 +57,17 @@
 
     \section2 Navigating Between Open Files and Symbols
 
-    Use the toolbar to navigate between open files and symbols in use. To browse
-    backward or forward through your location history, click
-    \inlineimage prev.png
+    Use the toolbar, \uicontrol Window menu items, or
+    \l{General Keyboard Shortcuts}{keyboard shortcuts}
+    to navigate between open files and symbols in use.
+
+    To browse backward or forward through your
+    location history, click \inlineimage prev.png
     (\uicontrol {Go Back}) and \inlineimage next.png
     (\uicontrol {Go Forward}).
+
+    To return to the last location where you made a change, select
+    \uicontrol Window > \uicontrol {Go to Last Edit}.
 
     To go to any open file, select it from the \uicontrol {Open files} drop-down
     menu (1). To open a context menu that contains commands for managing open
@@ -80,8 +89,7 @@
     number in the locator, separated by a colon (:).
 
     \note Other convenient ways of navigating in \QC are provided
-    by the \l{Keyboard Shortcuts} {keyboard shortcuts} and the
-    \l{Browsing Project Contents}{sidebar}.
+    by the \l{Browsing Project Contents}{sidebars}.
 
     \if defined(qtcreator)
     \section2 Selecting Parse Context
@@ -118,6 +126,17 @@
 
     To switch between Windows line endings (CRLF) and Unix line endings (LF),
     select the ending style on the editor toolbar (6).
+
+    To set the line endings to use for all projects by default, select
+    \uicontrol Tools > \uicontrol Options > \uicontrol {Text Editor} >
+    \uicontrol Behavior, and then select the ending style in the
+    \uicontrol {Default line endings} field.
+
+    To set the line endings to use for a project, select \uicontrol Projects >
+    \uicontrol {Project Settings} > \uicontrol Editor.
+    \if defined(qtcreator)
+    For more information, see \l {Specifying Editor Settings}.
+    \endif
 
     \section1 Splitting the Editor View
 
@@ -187,10 +206,10 @@
     the bookmark.
 
     To go to the previous bookmark in the current session, select
-    \uicontrol Tools \uicontrol Bookmarks > \uicontrol {Previous Bookmark}
+    \uicontrol Tools > \uicontrol Bookmarks > \uicontrol {Previous Bookmark}
     or press \key {Ctrl+,}.
 
-    To go to the next bookmark in the current session, select \uicontrol Tools
+    To go to the next bookmark in the current session, select \uicontrol Tools >
     \uicontrol Bookmarks > \uicontrol {Previous Bookmark} or press
     \key {Ctrl+.}.
 
@@ -265,10 +284,10 @@
 
     \section1 Inspecting the Code Model
 
-    When you report a bug that is related to the C++ code model, the \QC
-    developers might ask you to write information about the internal state of
-    the code model into a log file and to deliver the file to them for
-    inspection.
+    When you \l{https://bugreports.qt.io/}{report a bug} that is related to the
+    C++ code model, the \QC developers might ask you to write information about
+    the internal state of the code model into a log file and to deliver the file
+    to them for inspection.
 
     To view information about the C++ code model in the
     \uicontrol {C++ Code Model Inspector} dialog and write it to a log file,
@@ -280,5 +299,15 @@
     \QC underlines semantic errors in olive in the C++ code editor. To check the
     correct paths for includes that are not resolved or that are resolved to the
     wrong file, select \uicontrol {Project Parts} > \uicontrol {Header Paths}.
+    \endif
+
+    \if defined(qtdesignstudio)
+    \section1 Related Topics
+
+    \list
+        \li \l{Working with Sidebars}
+        \li \l{Browsing Project Contents}
+        \li \l{Viewing Output}
+    \endlist
     \endif
 */

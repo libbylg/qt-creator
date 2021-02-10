@@ -27,6 +27,7 @@
 
 #include "buildprogress.h"
 #include "buildsteplist.h"
+#include "buildsystem.h"
 #include "compileoutputwindow.h"
 #include "deployconfiguration.h"
 #include "kit.h"
@@ -46,7 +47,10 @@
 #include <coreplugin/progressmanager/futureprogress.h>
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <extensionsystem/pluginmanager.h>
+#include <utils/algorithm.h>
+#include <utils/outputformatter.h>
 #include <utils/runextensions.h>
+#include <utils/stringutils.h>
 
 #include <QApplication>
 #include <QElapsedTimer>
@@ -55,10 +59,12 @@
 #include <QList>
 #include <QMessageBox>
 #include <QPointer>
+#include <QSet>
 #include <QTime>
 #include <QTimer>
 
 using namespace Core;
+using namespace Utils;
 
 namespace ProjectExplorer {
 using namespace Internal;
@@ -139,7 +145,7 @@ static int queue(const QList<Project *> &projects, const QList<Id> &stepIds,
             bool stopThem = true;
             if (settings.prompToStopRunControl) {
                 QStringList names = Utils::transform(toStop, &RunControl::displayName);
-                if (QMessageBox::question(ICore::mainWindow(),
+                if (QMessageBox::question(ICore::dialogParent(),
                         BuildManager::tr("Stop Applications"),
                         BuildManager::tr("Stop these applications before building?")
                         + "\n\n" + names.join('\n'))
@@ -212,6 +218,7 @@ public:
     Internal::CompileOutputWindow *m_outputWindow = nullptr;
     Internal::TaskWindow *m_taskWindow = nullptr;
 
+    QMetaObject::Connection m_scheduledBuild;
     QList<BuildStep *> m_buildQueue;
     QList<bool> m_enabledState;
     QStringList m_stepNames;
@@ -264,9 +271,6 @@ BuildManager::BuildManager(QObject *parent, QAction *cancelBuildAction)
 
     connect(d->m_taskWindow, &Internal::TaskWindow::tasksChanged,
             this, &BuildManager::updateTaskCount);
-
-    connect(d->m_taskWindow, &Internal::TaskWindow::tasksCleared,
-            this,&BuildManager::tasksCleared);
 
     connect(&d->m_progressWatcher, &QFutureWatcherBase::canceled,
             this, &BuildManager::cancel);
@@ -443,8 +447,28 @@ const Internal::CompileOutputSettings &BuildManager::compileOutputSettings()
     return d->m_outputWindow->settings();
 }
 
+QString BuildManager::displayNameForStepId(Id stepId)
+{
+    if (stepId == Constants::BUILDSTEPS_CLEAN) {
+        //: Displayed name for a "cleaning" build step
+        return tr("Clean");
+    }
+    if (stepId == Constants::BUILDSTEPS_DEPLOY) {
+        //: Displayed name for a deploy step
+        return tr("Deploy");
+    }
+    //: Displayed name for a normal build step
+    return tr("Build");
+}
+
 void BuildManager::cancel()
 {
+    if (d->m_scheduledBuild) {
+        disconnect(d->m_scheduledBuild);
+        d->m_scheduledBuild = {};
+        clearBuildQueue();
+        return;
+    }
     if (d->m_running) {
         if (d->m_canceling)
             return;
@@ -457,23 +481,20 @@ void BuildManager::updateTaskCount()
 {
     const int errors = getErrorTaskCount();
     ProgressManager::setApplicationLabel(errors > 0 ? QString::number(errors) : QString());
-    emit m_instance->tasksChanged();
 }
 
 void BuildManager::finish()
 {
-    const QTime format = QTime(0, 0, 0, 0).addMSecs(d->m_elapsed.elapsed() + 500);
-    QString time = format.toString("h:mm:ss");
-    if (time.startsWith("0:"))
-        time.remove(0, 2); // Don't display zero hours
-    m_instance->addToOutputWindow(tr("Elapsed time: %1.") .arg(time), BuildStep::OutputFormat::NormalMessage);
+    const QString elapsedTime = Utils::formatElapsedTime(d->m_elapsed.elapsed());
+    addToOutputWindow(elapsedTime, BuildStep::OutputFormat::NormalMessage);
+    d->m_outputWindow->flush();
 
-    QApplication::alert(ICore::mainWindow(), 3000);
+    QApplication::alert(ICore::dialogParent(), 3000);
 }
 
 void BuildManager::emitCancelMessage()
 {
-    m_instance->addToOutputWindow(tr("Canceled build/deployment."), BuildStep::OutputFormat::ErrorMessage);
+    addToOutputWindow(tr("Canceled build/deployment."), BuildStep::OutputFormat::ErrorMessage);
 }
 
 void BuildManager::clearBuildQueue()
@@ -491,11 +512,13 @@ void BuildManager::clearBuildQueue()
     d->m_previousBuildStepProject = nullptr;
     d->m_currentBuildStep = nullptr;
 
-    d->m_progressFutureInterface->reportCanceled();
-    d->m_progressFutureInterface->reportFinished();
-    d->m_progressWatcher.setFuture(QFuture<void>());
-    delete d->m_progressFutureInterface;
-    d->m_progressFutureInterface = nullptr;
+    if (d->m_progressFutureInterface) {
+        d->m_progressFutureInterface->reportCanceled();
+        d->m_progressFutureInterface->reportFinished();
+        d->m_progressWatcher.setFuture(QFuture<void>());
+        delete d->m_progressFutureInterface;
+        d->m_progressFutureInterface = nullptr;
+    }
     d->m_futureProgress = nullptr;
     d->m_maxProgress = 0;
 
@@ -533,6 +556,28 @@ void BuildManager::startBuildQueue()
         emit m_instance->buildQueueFinished(true);
         return;
     }
+
+    // Delay if any of the involved build systems are currently parsing.
+    const auto buildSystems = transform<QSet<BuildSystem *>>(d->m_buildQueue,
+        [](const BuildStep *bs) { return bs->buildSystem(); });
+    for (const BuildSystem * const bs : buildSystems) {
+        if (!bs || !bs->isParsing())
+            continue;
+        d->m_scheduledBuild = QObject::connect(bs, &BuildSystem::parsingFinished,
+                                               BuildManager::instance(),
+                [](bool parsingSuccess) {
+            if (!d->m_scheduledBuild)
+                return;
+            QObject::disconnect(d->m_scheduledBuild);
+            d->m_scheduledBuild = {};
+            if (parsingSuccess)
+                startBuildQueue();
+            else
+                clearBuildQueue();
+        }, Qt::QueuedConnection);
+        return;
+    }
+
     if (!d->m_running) {
         d->m_elapsed.start();
         // Progress Reporting
@@ -658,7 +703,7 @@ void BuildManager::nextBuildQueue()
 void BuildManager::progressChanged(int percent, const QString &text)
 {
     if (d->m_progressFutureInterface)
-        d->m_progressFutureInterface->setProgressValueAndText(percent, text);
+        d->m_progressFutureInterface->setProgressValueAndText(percent + 100 * d->m_progress, text);
 }
 
 void BuildManager::nextStep()
@@ -686,14 +731,16 @@ void BuildManager::nextStep()
         }
 
         static const auto finishedHandler = [](bool success)  {
+            d->m_outputWindow->flush();
             d->m_lastStepSucceeded = success;
             disconnect(d->m_currentBuildStep, nullptr, instance(), nullptr);
             BuildManager::nextBuildQueue();
         };
-        connect(d->m_currentBuildStep, &BuildStep::finished, instance(), finishedHandler,
-                Qt::QueuedConnection);
+        connect(d->m_currentBuildStep, &BuildStep::finished, instance(), finishedHandler);
         connect(d->m_currentBuildStep, &BuildStep::progress,
                 instance(), &BuildManager::progressChanged);
+        d->m_outputWindow->reset();
+        d->m_currentBuildStep->setupOutputFormatter(d->m_outputWindow->outputFormatter());
         d->m_currentBuildStep->run();
     } else {
         d->m_running = false;
@@ -777,7 +824,7 @@ bool BuildManager::buildLists(const QList<BuildStepList *> bsls, const QStringLi
     QStringList stepListNames;
     for (BuildStepList *list : bsls) {
         steps.append(list->steps());
-        stepListNames.append(ProjectExplorerPlugin::displayNameForStepId(list->id()));
+        stepListNames.append(displayNameForStepId(list->id()));
         d->m_isDeploying = d->m_isDeploying || list->id() == Constants::BUILDSTEPS_DEPLOY;
     }
 
@@ -791,6 +838,7 @@ bool BuildManager::buildLists(const QList<BuildStepList *> bsls, const QStringLi
     bool success = buildQueueAppend(steps, names, preambelMessage);
     if (!success) {
         d->m_outputWindow->popup(IOutputPane::NoModeSwitch);
+        d->m_isDeploying = false;
         return false;
     }
 

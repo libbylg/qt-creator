@@ -106,8 +106,7 @@ void OpenEditorsWidget::activateEditor(const QModelIndex &index)
 
 void OpenEditorsWidget::closeDocument(const QModelIndex &index)
 {
-    EditorManager::closeDocument(
-                DocumentModel::entryAtRow(m_model->mapToSource(index).row()));
+    EditorManager::closeDocuments({DocumentModel::entryAtRow(m_model->mapToSource(index).row())});
     // work around selection changes
     updateCurrentItem(EditorManager::currentEditor());
 }
@@ -134,7 +133,8 @@ OpenEditorsViewFactory::OpenEditorsViewFactory()
 {
     setId("Open Documents");
     setDisplayName(OpenEditorsWidget::tr("Open Documents"));
-    setActivationSequence(QKeySequence(useMacShortcuts ? tr("Meta+O") : tr("Alt+O")));
+    setActivationSequence(QKeySequence(useMacShortcuts ? OpenEditorsWidget::tr("Meta+O")
+                                                       : OpenEditorsWidget::tr("Alt+O")));
     setPriority(200);
 }
 

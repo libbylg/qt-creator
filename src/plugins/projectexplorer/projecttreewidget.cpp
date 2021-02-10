@@ -152,11 +152,11 @@ public:
         setDragDropMode(QAbstractItemView::DragDrop);
         viewport()->setAcceptDrops(true);
         setDropIndicatorShown(true);
-        m_context = new IContext(this);
-        m_context->setContext(Context(ProjectExplorer::Constants::C_PROJECT_TREE));
-        m_context->setWidget(this);
+        auto context = new IContext(this);
+        context->setContext(Context(ProjectExplorer::Constants::C_PROJECT_TREE));
+        context->setWidget(this);
 
-        ICore::addContextObject(m_context);
+        ICore::addContextObject(context);
 
         connect(this, &ProjectTreeView::expanded,
                 this, &ProjectTreeView::invalidateSize);
@@ -204,12 +204,6 @@ public:
         NavigationTreeView::setModel(newModel);
     }
 
-    ~ProjectTreeView() override
-    {
-        ICore::removeContextObject(m_context);
-        delete m_context;
-    }
-
     int sizeHintForColumn(int column) const override
     {
         if (m_cachedSize < 0)
@@ -220,7 +214,6 @@ public:
 
 private:
     mutable int m_cachedSize = -1;
-    IContext *m_context;
 };
 
 /*!
@@ -365,29 +358,15 @@ Node *ProjectTreeWidget::nodeForFile(const FilePath &fileName)
     Node *bestNode = nullptr;
     int bestNodeExpandCount = INT_MAX;
 
-    // FIXME: Check that the values used make sense in the context.
-    auto priority = [](Node *node) {
-        if (node->asFileNode())
-            return 1;
-        if (node->isFolderNodeType())
-            return 2;
-        if (node->isVirtualFolderType())
-            return 3;
-        if (node->isProjectNodeType())
-            return 4;
-        QTC_CHECK(false);
-        return 1;
-    };
-
     // FIXME: Looks like this could be done with less cycles.
     for (Project *project : SessionManager::projects()) {
         if (ProjectNode *projectNode = project->rootProjectNode()) {
             projectNode->forEachGenericNode([&](Node *node) {
                 if (node->filePath() == fileName) {
-                    if (!bestNode || priority(node) < priority(bestNode)) {
+                    if (!bestNode || node->priority() < bestNode->priority()) {
                         bestNode = node;
                         bestNodeExpandCount = ProjectTreeWidget::expandedCount(node);
-                    } else if (priority(node) == priority(bestNode)) {
+                    } else if (node->priority() == bestNode->priority()) {
                         int nodeExpandCount = ProjectTreeWidget::expandedCount(node);
                         if (nodeExpandCount < bestNodeExpandCount) {
                             bestNode = node;
@@ -432,6 +411,20 @@ void ProjectTreeWidget::setAutoSynchronization(bool sync)
         syncFromDocumentManager();
 }
 
+void ProjectTreeWidget::expandNodeRecursively(const QModelIndex &index)
+{
+    const int rc = index.model()->rowCount(index);
+    for (int i = 0; i < rc; ++i)
+        expandNodeRecursively(index.model()->index(i, index.column(), index));
+    if (rc > 0)
+        m_view->expand(index);
+}
+
+void ProjectTreeWidget::expandCurrentNodeRecursively()
+{
+    expandNodeRecursively(m_view->currentIndex());
+}
+
 void ProjectTreeWidget::collapseAll()
 {
     m_view->collapseAll();
@@ -459,7 +452,7 @@ void ProjectTreeWidget::editCurrentItem()
         return;
 
     const QString text = editor->text();
-    const int dotIndex = text.lastIndexOf(QLatin1Char('.'));
+    const int dotIndex = text.lastIndexOf('.');
     if (dotIndex > 0)
         editor->setSelection(0, dotIndex);
 }
@@ -505,6 +498,7 @@ void ProjectTreeWidget::setCurrentItem(Node *node)
         }
     } else {
         m_view->clearSelection();
+        m_view->setCurrentIndex({});
     }
 }
 
@@ -628,26 +622,50 @@ NavigationView ProjectTreeWidgetFactory::createWidget()
     return n;
 }
 
-void ProjectTreeWidgetFactory::saveSettings(QSettings *settings, int position, QWidget *widget)
+const bool kProjectFilterDefault = false;
+const bool kHideGeneratedFilesDefault = true;
+const bool kHideDisabledFilesDefault = false;
+const bool kTrimEmptyDirsDefault = true;
+const bool kSyncDefault = true;
+const char kBaseKey[] = "ProjectTreeWidget.";
+const char kProjectFilterKey[] = ".ProjectFilter";
+const char kHideGeneratedFilesKey[] = ".GeneratedFilter";
+const char kHideDisabledFilesKey[] = ".DisabledFilesFilter";
+const char kTrimEmptyDirsKey[] = ".TrimEmptyDirsFilter";
+const char kSyncKey[] = ".SyncWithEditor";
+
+void ProjectTreeWidgetFactory::saveSettings(QtcSettings *settings, int position, QWidget *widget)
 {
     auto ptw = qobject_cast<ProjectTreeWidget *>(widget);
     Q_ASSERT(ptw);
-    const QString baseKey = QLatin1String("ProjectTreeWidget.") + QString::number(position);
-    settings->setValue(baseKey + QLatin1String(".ProjectFilter"), ptw->projectFilter());
-    settings->setValue(baseKey + QLatin1String(".GeneratedFilter"), ptw->generatedFilesFilter());
-    settings->setValue(baseKey + ".DisabledFilesFilter", ptw->disabledFilesFilter());
-    settings->setValue(baseKey + QLatin1String(".TrimEmptyDirsFilter"), ptw->trimEmptyDirectoriesFilter());
-    settings->setValue(baseKey + QLatin1String(".SyncWithEditor"), ptw->autoSynchronization());
+    const QString baseKey = kBaseKey + QString::number(position);
+    settings->setValueWithDefault(baseKey + kProjectFilterKey,
+                                  ptw->projectFilter(),
+                                  kProjectFilterDefault);
+    settings->setValueWithDefault(baseKey + kHideGeneratedFilesKey,
+                                  ptw->generatedFilesFilter(),
+                                  kHideGeneratedFilesDefault);
+    settings->setValueWithDefault(baseKey + kHideDisabledFilesKey,
+                                  ptw->disabledFilesFilter(),
+                                  kHideDisabledFilesDefault);
+    settings->setValueWithDefault(baseKey + kTrimEmptyDirsKey,
+                                  ptw->trimEmptyDirectoriesFilter(),
+                                  kTrimEmptyDirsDefault);
+    settings->setValueWithDefault(baseKey + kSyncKey, ptw->autoSynchronization(), kSyncDefault);
 }
 
 void ProjectTreeWidgetFactory::restoreSettings(QSettings *settings, int position, QWidget *widget)
 {
     auto ptw = qobject_cast<ProjectTreeWidget *>(widget);
     Q_ASSERT(ptw);
-    const QString baseKey = QLatin1String("ProjectTreeWidget.") + QString::number(position);
-    ptw->setProjectFilter(settings->value(baseKey + QLatin1String(".ProjectFilter"), false).toBool());
-    ptw->setGeneratedFilesFilter(settings->value(baseKey + QLatin1String(".GeneratedFilter"), true).toBool());
-    ptw->setDisabledFilesFilter(settings->value(baseKey + ".DisabledFilesFilter", false).toBool());
-    ptw->setTrimEmptyDirectories(settings->value(baseKey + QLatin1String(".TrimEmptyDirsFilter"), true).toBool());
-    ptw->setAutoSynchronization(settings->value(baseKey +  QLatin1String(".SyncWithEditor"), true).toBool());
+    const QString baseKey = kBaseKey + QString::number(position);
+    ptw->setProjectFilter(
+        settings->value(baseKey + kProjectFilterKey, kProjectFilterDefault).toBool());
+    ptw->setGeneratedFilesFilter(
+        settings->value(baseKey + kHideGeneratedFilesKey, kHideGeneratedFilesDefault).toBool());
+    ptw->setDisabledFilesFilter(
+        settings->value(baseKey + kHideDisabledFilesKey, kHideDisabledFilesDefault).toBool());
+    ptw->setTrimEmptyDirectories(
+        settings->value(baseKey + kTrimEmptyDirsKey, kTrimEmptyDirsDefault).toBool());
+    ptw->setAutoSynchronization(settings->value(baseKey + kSyncKey, kSyncDefault).toBool());
 }

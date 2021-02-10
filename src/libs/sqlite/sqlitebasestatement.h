@@ -27,11 +27,14 @@
 
 #include "sqliteglobal.h"
 
+#include "sqliteblob.h"
 #include "sqliteexception.h"
+#include "sqlitevalue.h"
 
 #include <utils/smallstringvector.h>
 
 #include <utils/optional.h>
+#include <utils/span.h>
 
 #include <cstdint>
 #include <memory>
@@ -48,6 +51,8 @@ namespace Sqlite {
 class Database;
 class DatabaseBackend;
 
+enum class Type : char { Invalid, Integer, Float, Text, Blob, Null };
+
 class SQLITE_EXPORT BaseStatement
 {
 public:
@@ -62,50 +67,49 @@ public:
     void step() const;
     void reset() const;
 
+    Type fetchType(int column) const;
     int fetchIntValue(int column) const;
     long fetchLongValue(int column) const;
     long long fetchLongLongValue(int column) const;
     double fetchDoubleValue(int column) const;
     Utils::SmallStringView fetchSmallStringViewValue(int column) const;
+    ValueView fetchValueView(int column) const;
+    BlobView fetchBlobValue(int column) const;
     template<typename Type>
     Type fetchValue(int column) const;
     int columnCount() const;
-    Utils::SmallStringVector columnNames() const;
 
-    void bind(int index, int fetchValue);
-    void bind(int index, long long fetchValue);
-    void bind(int index, double fetchValue);
-    void bind(int index, Utils::SmallStringView fetchValue);
+    void bind(int index, NullValue);
+    void bind(int index, int value);
+    void bind(int index, long long value);
+    void bind(int index, double value);
+    void bind(int index, void *pointer);
+    void bind(int index, Utils::span<int> values);
+    void bind(int index, Utils::span<long long> values);
+    void bind(int index, Utils::span<double> values);
+    void bind(int index, Utils::span<const char *> values);
+    void bind(int index, Utils::SmallStringView value);
+    void bind(int index, const Value &value);
+    void bind(int index, BlobView blobView);
 
-    void bind(int index, uint value)
-    {
-        bind(index, static_cast<long long>(value));
-    }
+    void bind(int index, uint value) { bind(index, static_cast<long long>(value)); }
 
     void bind(int index, long value)
     {
         bind(index, static_cast<long long>(value));
     }
 
-    template <typename Type>
-    void bind(Utils::SmallStringView name, Type fetchValue);
-
-    int bindingIndexForName(Utils::SmallStringView name) const;
-
     void prepare(Utils::SmallStringView sqlStatement);
     void waitForUnlockNotify() const;
 
     sqlite3 *sqliteDatabaseHandle() const;
-    TextEncoding databaseTextEncoding();
 
     [[noreturn]] void checkForStepError(int resultCode) const;
     [[noreturn]] void checkForResetError(int resultCode) const;
     [[noreturn]] void checkForPrepareError(int resultCode) const;
     [[noreturn]] void checkForBindingError(int resultCode) const;
     void setIfIsReadyToFetchValues(int resultCode) const;
-    void checkIfIsReadyToFetchValues() const;
-    void checkColumnsAreValid(const std::vector<int> &columns) const;
-    void checkColumnIsValid(int column) const;
+    void checkColumnCount(int columnCount) const;
     void checkBindingName(int index) const;
     void setBindingParameterCount();
     void setColumnCount();
@@ -113,7 +117,7 @@ public:
     [[noreturn]] void throwStatementIsBusy(const char *whatHasHappened) const;
     [[noreturn]] void throwStatementHasError(const char *whatHasHappened) const;
     [[noreturn]] void throwStatementIsMisused(const char *whatHasHappened) const;
-    [[noreturn]] void throwIoError(const char *whatHasHappened) const;
+    [[noreturn]] void throwInputOutputError(const char *whatHasHappened) const;
     [[noreturn]] void throwConstraintPreventsModification(const char *whatHasHappened) const;
     [[noreturn]] void throwNoValuesToFetch(const char *whatHasHappened) const;
     [[noreturn]] void throwInvalidColumnFetched(const char *whatHasHappened) const;
@@ -121,6 +125,16 @@ public:
     [[noreturn]] void throwWrongBingingName(const char *whatHasHappened) const;
     [[noreturn]] void throwUnknowError(const char *whatHasHappened) const;
     [[noreturn]] void throwBingingTooBig(const char *whatHasHappened) const;
+    [[noreturn]] void throwTooBig(const char *whatHasHappened) const;
+    [[noreturn]] void throwSchemaChangeError(const char *whatHasHappened) const;
+    [[noreturn]] void throwCannotWriteToReadOnlyConnection(const char *whatHasHappened) const;
+    [[noreturn]] void throwProtocolError(const char *whatHasHappened) const;
+    [[noreturn]] void throwDatabaseExceedsMaximumFileSize(const char *whatHasHappened) const;
+    [[noreturn]] void throwDataTypeMismatch(const char *whatHasHappened) const;
+    [[noreturn]] void throwConnectionIsLocked(const char *whatHasHappened) const;
+    [[noreturn]] void throwExecutionInterrupted(const char *whatHasHappened) const;
+    [[noreturn]] void throwDatabaseIsCorrupt(const char *whatHasHappened) const;
+    [[noreturn]] void throwCannotOpen(const char *whatHasHappened) const;
 
     QString columnName(int column) const;
 
@@ -130,18 +144,11 @@ protected:
     ~BaseStatement() = default;
 
 private:
-    std::unique_ptr<sqlite3_stmt, void (*)(sqlite3_stmt*)> m_compiledStatement;
+    std::unique_ptr<sqlite3_stmt, void (*)(sqlite3_stmt *)> m_compiledStatement;
     Database &m_database;
     int m_bindingParameterCount;
     int m_columnCount;
-    mutable bool m_isReadyToFetchValues;
 };
-
-extern template SQLITE_EXPORT void BaseStatement::bind(Utils::SmallStringView name, int value);
-extern template SQLITE_EXPORT void BaseStatement::bind(Utils::SmallStringView name, long value);
-extern template SQLITE_EXPORT void BaseStatement::bind(Utils::SmallStringView name, long long value);
-extern template SQLITE_EXPORT void BaseStatement::bind(Utils::SmallStringView name, double value);
-extern template SQLITE_EXPORT void BaseStatement::bind(Utils::SmallStringView name, Utils::SmallStringView text);
 
 template <> SQLITE_EXPORT int BaseStatement::fetchValue<int>(int column) const;
 template <> SQLITE_EXPORT long BaseStatement::fetchValue<long>(int column) const;
@@ -184,31 +191,20 @@ public:
         resetter.reset();
     }
 
-    template<typename... ValueType>
-    void bindNameValues(const ValueType&... values)
-    {
-        bindValuesByName(values...);
-    }
-
-    template<typename... ValueType>
-    void writeNamed(const ValueType&... values)
-    {
-        Resetter resetter{*this};
-        bindValuesByName(values...);
-        BaseStatement::next();
-        resetter.reset();
-    }
-
     template <typename ResultType,
               int ResultTypeCount = 1>
     std::vector<ResultType> values(std::size_t reserveSize)
     {
+        BaseStatement::checkColumnCount(ResultTypeCount);
+
         Resetter resetter{*this};
         std::vector<ResultType> resultValues;
-        resultValues.reserve(reserveSize);
+        resultValues.reserve(std::max(reserveSize, m_maximumResultCount));
 
         while (BaseStatement::next())
-           emplaceBackValues<ResultTypeCount>(resultValues);
+            emplaceBackValues<ResultTypeCount>(resultValues);
+
+        setMaximumResultCount(resultValues.size());
 
         resetter.reset();
 
@@ -220,14 +216,18 @@ public:
               typename... QueryTypes>
     std::vector<ResultType> values(std::size_t reserveSize, const QueryTypes&... queryValues)
     {
+        BaseStatement::checkColumnCount(ResultTypeCount);
+
         Resetter resetter{*this};
         std::vector<ResultType> resultValues;
-        resultValues.reserve(reserveSize);
+        resultValues.reserve(std::max(reserveSize, m_maximumResultCount));
 
         bindValues(queryValues...);
 
         while (BaseStatement::next())
-           emplaceBackValues<ResultTypeCount>(resultValues);
+            emplaceBackValues<ResultTypeCount>(resultValues);
+
+        setMaximumResultCount(resultValues.size());
 
         resetter.reset();
 
@@ -240,8 +240,10 @@ public:
     std::vector<ResultType> values(std::size_t reserveSize,
                                    const std::vector<QueryElementType> &queryValues)
     {
+        BaseStatement::checkColumnCount(ResultTypeCount);
+
         std::vector<ResultType> resultValues;
-        resultValues.reserve(reserveSize);
+        resultValues.reserve(std::max(reserveSize, m_maximumResultCount));
 
         for (const QueryElementType &queryValue : queryValues) {
             Resetter resetter{*this};
@@ -249,6 +251,8 @@ public:
 
             while (BaseStatement::next())
                 emplaceBackValues<ResultTypeCount>(resultValues);
+
+            setMaximumResultCount(resultValues.size());
 
             resetter.reset();
         }
@@ -262,9 +266,11 @@ public:
     std::vector<ResultType> values(std::size_t reserveSize,
                                    const std::vector<std::tuple<QueryElementTypes...>> &queryTuples)
     {
+        BaseStatement::checkColumnCount(ResultTypeCount);
+
         using Container = std::vector<ResultType>;
         Container resultValues;
-        resultValues.reserve(reserveSize);
+        resultValues.reserve(std::max(reserveSize, m_maximumResultCount));
 
         for (const auto &queryTuple : queryTuples) {
             Resetter resetter{*this};
@@ -272,6 +278,8 @@ public:
 
             while (BaseStatement::next())
                 emplaceBackValues<ResultTypeCount>(resultValues);
+
+            setMaximumResultCount(resultValues.size());
 
             resetter.reset();
         }
@@ -284,6 +292,8 @@ public:
               typename... QueryTypes>
     Utils::optional<ResultType> value(const QueryTypes&... queryValues)
     {
+        BaseStatement::checkColumnCount(ResultTypeCount);
+
         Resetter resetter{*this};
         Utils::optional<ResultType> resultValue;
 
@@ -301,6 +311,8 @@ public:
     static Type toValue(Utils::SmallStringView sqlStatement, Database &database)
     {
         StatementImplementation statement(sqlStatement, database);
+
+        statement.checkColumnCount(1);
 
         statement.next();
 
@@ -345,34 +357,17 @@ private:
     struct ValueGetter
     {
         ValueGetter(StatementImplementation &statement, int column)
-            : statement(statement),
-              column(column)
+            : statement(statement)
+            , column(column)
         {}
 
-        operator int()
-        {
-            return statement.fetchIntValue(column);
-        }
-
-        operator long()
-        {
-            return statement.fetchLongValue(column);
-        }
-
-        operator long long()
-        {
-            return statement.fetchLongLongValue(column);
-        }
-
-        operator double()
-        {
-            return statement.fetchDoubleValue(column);
-        }
-
-        operator Utils::SmallStringView()
-        {
-            return statement.fetchSmallStringViewValue(column);
-        }
+        operator int() { return statement.fetchIntValue(column); }
+        operator long() { return statement.fetchLongValue(column); }
+        operator long long() { return statement.fetchLongLongValue(column); }
+        operator double() { return statement.fetchDoubleValue(column); }
+        operator Utils::SmallStringView() { return statement.fetchSmallStringViewValue(column); }
+        operator BlobView() { return statement.fetchBlobValue(column); }
+        operator ValueView() { return statement.fetchValueView(column); }
 
         StatementImplementation &statement;
         int column;
@@ -419,19 +414,6 @@ private:
         bindValuesByIndex(index + 1, values...);
     }
 
-    template<typename ValueType>
-    void bindValuesByName(Utils::SmallStringView name, const ValueType &value)
-    {
-       BaseStatement::bind(BaseStatement::bindingIndexForName(name), value);
-    }
-
-    template<typename ValueType, typename... ValueTypes>
-    void bindValuesByName(Utils::SmallStringView name, const ValueType &value, const ValueTypes&... values)
-    {
-       BaseStatement::bind(BaseStatement::bindingIndexForName(name), value);
-       bindValuesByName(values...);
-    }
-
     template <typename TupleType, std::size_t... ColumnIndices>
     void bindTupleValuesElement(const TupleType &tuple, std::index_sequence<ColumnIndices...>)
     {
@@ -445,6 +427,13 @@ private:
         bindTupleValuesElement(element, ColumnIndices());
     }
 
+    void setMaximumResultCount(std::size_t count)
+    {
+        m_maximumResultCount = std::max(m_maximumResultCount, count);
+    }
+
+public:
+    std::size_t m_maximumResultCount = 0;
 };
 
 } // namespace Sqlite

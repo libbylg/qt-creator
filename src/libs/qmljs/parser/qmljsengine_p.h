@@ -37,13 +37,16 @@
 //
 
 #include "qmljsglobal_p.h"
-#include "qmljsastfwd_p.h"
-#include "qmljsmemorypool_p.h"
+
+#include "qmljs/parser/qmljsmemorypool_p.h"
+#include "qmljs/parser/qmljssourcelocation_p.h"
+#include <qmljs/qmljsconstants.h>
+
+#include <utils/porting.h>
 
 #include <QString>
 #include <QSet>
 
-#include <qmljs/qmljsconstants.h>
 QT_QML_BEGIN_NAMESPACE
 
 namespace QmlJS {
@@ -61,41 +64,20 @@ public:
 
     virtual void importFile(const QString &jsfile, const QString &module, int line, int column)
     {
-        Q_UNUSED(jsfile)
-        Q_UNUSED(module)
-        Q_UNUSED(line)
-        Q_UNUSED(column)
+        Q_UNUSED(jsfile);
+        Q_UNUSED(module);
+        Q_UNUSED(line);
+        Q_UNUSED(column);
     }
 
     virtual void importModule(const QString &uri, const QString &version, const QString &module, int line, int column)
     {
-        Q_UNUSED(uri)
-        Q_UNUSED(version)
-        Q_UNUSED(module)
-        Q_UNUSED(line)
-        Q_UNUSED(column)
+        Q_UNUSED(uri);
+        Q_UNUSED(version);
+        Q_UNUSED(module);
+        Q_UNUSED(line);
+        Q_UNUSED(column);
     }
-};
-
-
-class QML_PARSER_EXPORT DiagnosticMessage
-{
-public:
-
-    DiagnosticMessage() {}
-
-    DiagnosticMessage(Severity::Enum kind, const AST::SourceLocation &loc, const QString &message)
-        : kind(kind), loc(loc), message(message) {}
-
-    bool isWarning() const
-    { return kind == Severity::Warning; }
-
-    bool isError() const
-    { return kind == Severity::Error; }
-
-    Severity::Enum kind = Severity::Error;
-    AST::SourceLocation loc;
-    QString message;
 };
 
 class QML_PARSER_EXPORT Engine
@@ -103,8 +85,8 @@ class QML_PARSER_EXPORT Engine
     Lexer *_lexer;
     Directives *_directives;
     MemoryPool _pool;
-    QList<AST::SourceLocation> _comments;
-    QString _extraCode;
+    QList<SourceLocation> _comments;
+    QStringList _extraCode;
     QString _code;
 
 public:
@@ -115,7 +97,7 @@ public:
     const QString &code() const { return _code; }
 
     void addComment(int pos, int len, int line, int col);
-    QList<AST::SourceLocation> comments() const;
+    QList<SourceLocation> comments() const;
 
     Lexer *lexer() const;
     void setLexer(Lexer *lexer);
@@ -125,10 +107,13 @@ public:
 
     MemoryPool *pool();
 
-    inline QStringRef midRef(int position, int size) { return _code.midRef(position, size); }
+    inline QStringView midRef(int position, int size)
+    {
+        return Utils::midView(_code, position, size);
+    }
 
-    QStringRef newStringRef(const QString &s);
-    QStringRef newStringRef(const QChar *chars, int size);
+    QStringView newStringRef(const QString &s);
+    QStringView newStringRef(const QChar *chars, int size);
 };
 
 double integerFromString(const char *buf, int size, int radix);

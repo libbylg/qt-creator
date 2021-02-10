@@ -33,6 +33,7 @@
 #include "clangutils.h"
 
 #include <coreplugin/icore.h>
+#include <cpptools/cpptoolsconstants.h>
 #include <cpptools/clangdiagnosticconfigsmodel.h>
 #include <cpptools/cpptoolsreuse.h>
 #include <cpptools/cppcodemodelsettings.h>
@@ -71,14 +72,14 @@ bool isWarningOrNote(ClangBackEnd::DiagnosticSeverity severity)
     Q_UNREACHABLE();
 }
 
-static Core::Id categoryForSeverity(ClangBackEnd::DiagnosticSeverity severity)
+static Id categoryForSeverity(ClangBackEnd::DiagnosticSeverity severity)
 {
     return isWarningOrNote(severity) ? Constants::CLANG_WARNING : Constants::CLANG_ERROR;
 }
 
 ProjectExplorer::Project *projectForCurrentEditor()
 {
-    const QString filePath = Utils::currentCppEditorDocumentFilePath();
+    const QString filePath = currentCppEditorDocumentFilePath();
     if (filePath.isEmpty())
         return nullptr;
 
@@ -97,8 +98,8 @@ DiagnosticType diagnosticType(const ClangBackEnd::DiagnosticContainer &diagnosti
     if (!diagnostic.disableOption.isEmpty())
         return DiagnosticType::Clang;
 
-    const Utils::DiagnosticTextInfo textInfo(diagnostic.text);
-    if (Utils::DiagnosticTextInfo::isClazyOption(textInfo.option()))
+    const DiagnosticTextInfo textInfo(diagnostic.text);
+    if (DiagnosticTextInfo::isClazyOption(textInfo.option()))
         return DiagnosticType::Clazy;
     return DiagnosticType::Tidy;
 }
@@ -106,8 +107,6 @@ DiagnosticType diagnosticType(const ClangBackEnd::DiagnosticContainer &diagnosti
 void disableDiagnosticInConfig(ClangDiagnosticConfig &config,
                                const ClangBackEnd::DiagnosticContainer &diagnostic)
 {
-    using namespace ClangCodeModel::Utils;
-
     switch (diagnosticType(diagnostic)) {
     case DiagnosticType::Clang:
         config.setClangOptions(config.clangOptions() + QStringList(diagnostic.disableOption));
@@ -134,7 +133,7 @@ ClangDiagnosticConfig diagnosticConfig(const ClangProjectSettings &projectSettin
     QTC_ASSERT(project, return {});
 
     // Get config id
-    Core::Id currentConfigId = projectSettings.warningConfigId();
+    Id currentConfigId = projectSettings.warningConfigId();
     if (projectSettings.useGlobalConfig())
         currentConfigId = globalSettings.clangDiagnosticConfigId();
 
@@ -202,9 +201,9 @@ void disableDiagnosticInCurrentProjectConfig(const ClangBackEnd::DiagnosticConta
     const QString text
         = QCoreApplication::translate("ClangDiagnosticConfig",
                                       "Changes applied in Projects Mode > Clang Code Model");
-    ::Utils::FadingIndicator::showText(Core::ICore::mainWindow(),
-                                       text,
-                                       ::Utils::FadingIndicator::SmallText);
+    FadingIndicator::showText(Core::ICore::mainWindow(),
+                              text,
+                              FadingIndicator::SmallText);
 }
 
 } // anonymous namespace
@@ -212,13 +211,16 @@ void disableDiagnosticInCurrentProjectConfig(const ClangBackEnd::DiagnosticConta
 ClangTextMark::ClangTextMark(const FilePath &fileName,
                              const ClangBackEnd::DiagnosticContainer &diagnostic,
                              const RemovedFromEditorHandler &removedHandler,
-                             bool fullVisualization)
+                             bool fullVisualization, const ClangDiagnosticManager *diagMgr)
     : TextEditor::TextMark(fileName,
                            int(diagnostic.location.line),
                            categoryForSeverity(diagnostic.severity))
     , m_diagnostic(diagnostic)
     , m_removedFromEditorHandler(removedHandler)
+    , m_diagMgr(diagMgr)
 {
+    setSettingsPage(CppTools::Constants::CPP_CODE_MODEL_SETTINGS_ID);
+
     const bool warning = isWarningOrNote(diagnostic.severity);
     setDefaultToolTip(warning ? QApplication::translate("Clang Code Model Marks", "Code Model Warning")
                               : QApplication::translate("Clang Code Model Marks", "Code Model Error"));
@@ -226,15 +228,16 @@ ClangTextMark::ClangTextMark(const FilePath &fileName,
                         : TextEditor::TextMark::HighPriority);
     updateIcon();
     if (fullVisualization) {
-        setLineAnnotation(Utils::diagnosticCategoryPrefixRemoved(diagnostic.text.toString()));
-        setColor(warning ? ::Utils::Theme::CodeModel_Warning_TextMarkColor
-                         : ::Utils::Theme::CodeModel_Error_TextMarkColor);
+        setLineAnnotation(diagnosticCategoryPrefixRemoved(diagnostic.text.toString()));
+        setColor(warning ? Theme::CodeModel_Warning_TextMarkColor
+                         : Theme::CodeModel_Error_TextMarkColor);
     }
 
     // Copy to clipboard action
     QVector<QAction *> actions;
     QAction *action = new QAction();
-    action->setIcon(QIcon::fromTheme("edit-copy", ::Utils::Icons::COPY.icon()));
+    action->setIcon(QIcon::fromTheme("edit-copy", Icons::COPY.icon()));
+    action->setToolTip(tr("Copy to Clipboard"));
     QObject::connect(action, &QAction::triggered, [diagnostic]() {
         const QString text = ClangDiagnosticWidget::createText({diagnostic},
                                                                ClangDiagnosticWidget::InfoBar);
@@ -246,7 +249,8 @@ ClangTextMark::ClangTextMark(const FilePath &fileName,
     ProjectExplorer::Project *project = projectForCurrentEditor();
     if (project && isDiagnosticConfigChangable(project, diagnostic)) {
         action = new QAction();
-        action->setIcon(::Utils::Icons::BROKEN.icon());
+        action->setIcon(Icons::BROKEN.icon());
+        action->setToolTip(tr("Disable Diagnostic in Current Project"));
         QObject::connect(action, &QAction::triggered, [diagnostic]() {
             disableDiagnosticInCurrentProjectConfig(diagnostic);
         });
@@ -258,7 +262,7 @@ ClangTextMark::ClangTextMark(const FilePath &fileName,
 
 void ClangTextMark::updateIcon(bool valid)
 {
-    using namespace ::Utils::Icons;
+    using namespace Icons;
     if (isWarningOrNote(m_diagnostic.severity))
         setIcon(valid ? CODEMODEL_WARNING.icon() : CODEMODEL_DISABLED_WARNING.icon());
     else
@@ -267,8 +271,10 @@ void ClangTextMark::updateIcon(bool valid)
 
 bool ClangTextMark::addToolTipContent(QLayout *target) const
 {
-    QWidget *widget = ClangDiagnosticWidget::createWidget({m_diagnostic},
-                                                          ClangDiagnosticWidget::ToolTip);
+
+    QWidget *widget = ClangDiagnosticWidget::createWidget(
+                {m_diagnostic}, ClangDiagnosticWidget::ToolTip,
+                color() == Utils::Theme::Color::IconsDisabledColor ? nullptr : m_diagMgr);
     target->addWidget(widget);
 
     return true;
@@ -282,4 +288,3 @@ void ClangTextMark::removedFromEditor()
 
 } // namespace Internal
 } // namespace ClangCodeModel
-

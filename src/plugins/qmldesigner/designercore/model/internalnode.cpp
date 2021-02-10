@@ -159,7 +159,7 @@ bool InternalNode::hasId() const
 }
 
 
-uint qHash(const InternalNodePointer& node)
+Utils::QHashValueType qHash(const InternalNodePointer& node)
 {
     if (node.isNull())
         return ::qHash(-1);
@@ -187,7 +187,7 @@ bool InternalNode::hasAuxiliaryData(const PropertyName &name) const
     return m_auxiliaryDataHash.contains(name);
 }
 
-QHash<PropertyName, QVariant> InternalNode::auxiliaryData() const
+const QHash<PropertyName, QVariant> &InternalNode::auxiliaryData() const
 {
     return m_auxiliaryDataHash;
 }

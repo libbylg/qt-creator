@@ -24,7 +24,6 @@
 ****************************************************************************/
 
 #include "logchangedialog.h"
-#include "gitplugin.h"
 #include "gitclient.h"
 
 #include <vcsbase/vcsoutputwindow.h>
@@ -32,15 +31,16 @@
 
 #include <utils/qtcassert.h>
 
-#include <QTreeView>
-#include <QLabel>
-#include <QPushButton>
-#include <QStandardItemModel>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QItemSelectionModel>
-#include <QVBoxLayout>
-#include <QComboBox>
+#include <QLabel>
+#include <QModelIndex>
 #include <QPainter>
+#include <QPushButton>
+#include <QStandardItemModel>
+#include <QTreeView>
+#include <QVBoxLayout>
 
 using namespace VcsBase;
 
@@ -54,9 +54,36 @@ enum Columns
     ColumnCount
 };
 
+class LogChangeModel : public QStandardItemModel
+{
+public:
+    explicit LogChangeModel(LogChangeWidget *parent) : QStandardItemModel(0, ColumnCount, parent) {}
+
+    QVariant data(const QModelIndex &index, int role) const override
+    {
+        if (role == Qt::ToolTipRole) {
+            const QString revision = index.sibling(index.row(), Sha1Column).data(Qt::EditRole).toString();
+            const auto it = m_descriptions.constFind(revision);
+            if (it != m_descriptions.constEnd())
+                return *it;
+            const QString desc = QString::fromUtf8(
+                        GitClient::instance()->synchronousShow(
+                            m_workingDirectory, revision, VcsCommand::NoOutput));
+            m_descriptions[revision] = desc;
+            return desc;
+        }
+        return QStandardItemModel::data(index, role);
+    }
+
+    void setWorkingDirectory(const QString &workingDir) { m_workingDirectory = workingDir; }
+private:
+    QString m_workingDirectory;
+    mutable QHash<QString, QString> m_descriptions;
+};
+
 LogChangeWidget::LogChangeWidget(QWidget *parent)
     : Utils::TreeView(parent)
-    , m_model(new QStandardItemModel(0, ColumnCount, this))
+    , m_model(new LogChangeModel(this))
     , m_hasCustomDelegate(false)
 {
     QStringList headers;
@@ -69,18 +96,18 @@ LogChangeWidget::LogChangeWidget(QWidget *parent)
     setSelectionBehavior(QAbstractItemView::SelectRows);
     setActivationMode(Utils::DoubleClickActivation);
     connect(this, &LogChangeWidget::activated, this, &LogChangeWidget::emitCommitActivated);
+    setFocus();
 }
 
 bool LogChangeWidget::init(const QString &repository, const QString &commit, LogFlags flags)
 {
+    m_model->setWorkingDirectory(repository);
     if (!populateLog(repository, commit, flags))
         return false;
     if (m_model->rowCount() > 0)
         return true;
-    if (!(flags & Silent)) {
-        VcsOutputWindow::appendError(
-                    GitPlugin::client()->msgNoCommits(flags & IncludeRemotes));
-    }
+    if (!(flags & Silent))
+        VcsOutputWindow::appendError(GitClient::msgNoCommits(flags & IncludeRemotes));
     return false;
 }
 
@@ -155,12 +182,18 @@ bool LogChangeWidget::populateLog(const QString &repository, const QString &comm
     QStringList arguments;
     arguments << "--max-count=1000" << "--format=%h:%s %d";
     arguments << (commit.isEmpty() ? "HEAD" : commit);
-    if (!(flags & IncludeRemotes))
-        arguments << "--not" << "--remotes";
+    if (!(flags & IncludeRemotes)) {
+        QString remotesFlag("--remotes");
+        if (!m_excludedRemote.isEmpty())
+            remotesFlag += '=' + m_excludedRemote;
+        arguments << "--not" << remotesFlag;
+    }
     arguments << "--";
     QString output;
-    if (!GitPlugin::client()->synchronousLog(repository, arguments, &output, nullptr, VcsCommand::NoOutput))
+    if (!GitClient::instance()->synchronousLog(
+                repository, arguments, &output, nullptr, VcsCommand::NoOutput)) {
         return false;
+    }
     const QStringList lines = output.split('\n');
     for (const QString &line : lines) {
         const int colonPos = line.indexOf(':');
@@ -211,8 +244,8 @@ LogChangeDialog::LogChangeDialog(bool isReset, QWidget *parent) :
         m_resetTypeComboBox->addItem(tr("Hard"), "--hard");
         m_resetTypeComboBox->addItem(tr("Mixed"), "--mixed");
         m_resetTypeComboBox->addItem(tr("Soft"), "--soft");
-        m_resetTypeComboBox->setCurrentIndex(GitPlugin::client()->settings().intValue(
-                                                 GitSettings::lastResetIndexKey));
+        m_resetTypeComboBox->setCurrentIndex(
+                    GitClient::instance()->settings().intValue(GitSettings::lastResetIndexKey));
         popUpLayout->addWidget(m_resetTypeComboBox);
         popUpLayout->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Ignored));
     }
@@ -227,7 +260,6 @@ LogChangeDialog::LogChangeDialog(bool isReset, QWidget *parent) :
 
     connect(m_widget, &LogChangeWidget::activated, okButton, [okButton] { okButton->animateClick(); });
 
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     resize(600, 400);
 }
 
@@ -240,8 +272,8 @@ bool LogChangeDialog::runDialog(const QString &repository,
 
     if (QDialog::exec() == QDialog::Accepted) {
         if (m_resetTypeComboBox) {
-            GitPlugin::client()->settings().setValue(GitSettings::lastResetIndexKey,
-                                                     m_resetTypeComboBox->currentIndex());
+            GitClient::instance()->settings().setValue(
+                        GitSettings::lastResetIndexKey, m_resetTypeComboBox->currentIndex());
         }
         return true;
     }

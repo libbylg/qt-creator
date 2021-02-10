@@ -31,7 +31,6 @@
 #include "debuggersourcepathmappingwidget.h"
 
 #include <coreplugin/icore.h>
-#include <coreplugin/variablechooser.h>
 
 #include <app/app_version.h>
 
@@ -39,6 +38,7 @@
 #include <utils/pathchooser.h>
 #include <utils/qtcassert.h>
 #include <utils/savedaction.h>
+#include <utils/variablechooser.h>
 
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -82,6 +82,9 @@ public:
 
         auto checkBoxUseToolTipsInMainEditor = new QCheckBox(behaviorBox);
         checkBoxUseToolTipsInMainEditor->setText(tr("Use tooltips in main editor while debugging"));
+
+        auto checkBoxUseAnnotationsInMainEditor = new QCheckBox(behaviorBox);
+        checkBoxUseAnnotationsInMainEditor->setText(tr("Use annotations in main editor while debugging"));
 
         QString t = tr("Stopping and stepping in the debugger "
                        "will automatically open views associated with the current location.") + '\n';
@@ -146,13 +149,14 @@ public:
 
         auto gridLayout = new QGridLayout(behaviorBox);
         gridLayout->addWidget(checkBoxUseAlternatingRowColors, 0, 0, 1, 1);
-        gridLayout->addWidget(checkBoxUseToolTipsInMainEditor, 1, 0, 1, 1);
-        gridLayout->addWidget(checkBoxCloseSourceBuffersOnExit, 2, 0, 1, 1);
-        gridLayout->addWidget(checkBoxCloseMemoryBuffersOnExit, 3, 0, 1, 1);
-        gridLayout->addWidget(checkBoxBringToForegroundOnInterrrupt, 4, 0, 1, 1);
-        gridLayout->addWidget(checkBoxBreakpointsFullPath, 5, 0, 1, 1);
-        gridLayout->addWidget(checkBoxWarnOnReleaseBuilds, 6, 0, 1, 1);
-        gridLayout->addLayout(horizontalLayout, 7, 0, 1, 2);
+        gridLayout->addWidget(checkBoxUseAnnotationsInMainEditor, 1, 0, 1, 1);
+        gridLayout->addWidget(checkBoxUseToolTipsInMainEditor, 2, 0, 1, 1);
+        gridLayout->addWidget(checkBoxCloseSourceBuffersOnExit, 3, 0, 1, 1);
+        gridLayout->addWidget(checkBoxCloseMemoryBuffersOnExit, 4, 0, 1, 1);
+        gridLayout->addWidget(checkBoxBringToForegroundOnInterrrupt, 5, 0, 1, 1);
+        gridLayout->addWidget(checkBoxBreakpointsFullPath, 6, 0, 1, 1);
+        gridLayout->addWidget(checkBoxWarnOnReleaseBuilds, 7, 0, 1, 1);
+        gridLayout->addLayout(horizontalLayout, 8, 0, 1, 2);
 
         gridLayout->addWidget(checkBoxFontSizeFollowsEditor, 0, 1, 1, 1);
         gridLayout->addWidget(checkBoxSwitchModeOnExit, 1, 1, 1, 1);
@@ -167,6 +171,8 @@ public:
 
         m_group.insert(action(UseAlternatingRowColors),
                        checkBoxUseAlternatingRowColors);
+        m_group.insert(action(UseAnnotationsInMainEditor),
+                       checkBoxUseAnnotationsInMainEditor);
         m_group.insert(action(UseToolTipsInMainEditor),
                        checkBoxUseToolTipsInMainEditor);
         m_group.insert(action(CloseSourceBuffersOnExit),
@@ -203,7 +209,7 @@ public:
         if (HostOsInfo::isWindowsHost()) {
             SavedAction *registerAction = action(RegisterForPostMortem);
             m_group.insert(registerAction, checkBoxRegisterForPostMortem);
-            connect(registerAction, &QAction::toggled,
+            connect(registerAction->action(), &QAction::toggled,
                     checkBoxRegisterForPostMortem, &QAbstractButton::setChecked);
         } else {
             checkBoxRegisterForPostMortem->setVisible(false);
@@ -211,7 +217,7 @@ public:
 
         GlobalDebuggerOptions *options = Internal::globalDebuggerOptions();
         SourcePathMap allPathMap = options->sourcePathMap;
-        for (auto regExpMap : qAsConst(options->sourcePathRegExpMap))
+        for (const auto &regExpMap : qAsConst(options->sourcePathRegExpMap))
             allPathMap.insert(regExpMap.first.pattern(), regExpMap.second);
         m_sourceMappingWidget->setSourcePathMap(allPathMap);
     }
@@ -236,7 +242,7 @@ void CommonOptionsPageWidget::apply()
     for (auto it = allPathMap.begin(), end = allPathMap.end(); it != end; ++it) {
         const QString key = it.key();
         if (key.startsWith('('))
-            options->sourcePathRegExpMap.append(qMakePair(QRegExp(key), it.value()));
+            options->sourcePathRegExpMap.append(qMakePair(QRegularExpression(key), it.value()));
         else
             options->sourcePathMap.insert(key, it.value());
     }
@@ -296,7 +302,7 @@ public:
         label->setText("<html><head/><body>\n<p>"
            + tr("The debugging helpers are used to produce a nice "
                 "display of objects of certain types like QString or "
-                "std::map in the &quot;Locals and Expressions&quot; view.")
+                "std::map in the &quot;Locals&quot; and &quot;Expressions&quot; views.")
             + "</p></body></html>");
 
         auto groupBoxCustomDumperCommands = new QGroupBox(debuggingHelperGroupBox);
@@ -385,8 +391,8 @@ public:
         m_group.insert(action(MaximalStringLength), spinBoxMaximalStringLength);
     }
 
-    void apply() { m_group.apply(ICore::settings()); }
-    void finish() { m_group.finish(); }
+    void apply() final { m_group.apply(ICore::settings()); }
+    void finish() final { m_group.finish(); }
 
 private:
     Utils::SavedActionSet m_group;

@@ -177,7 +177,7 @@ QString FakeMetaMethod::describe(int baseIndent) const
     res += methodName();
     res += newLine;
     res += QLatin1String("  methodType:");
-    res += methodType();
+    res += QString::number(methodType());
     res += newLine;
     res += QLatin1String("  parameterNames:[");
     foreach (const QString &pName, parameterNames()) {
@@ -368,6 +368,11 @@ QString FakeMetaObject::attachedTypeName() const
 { return m_attachedTypeName; }
 void FakeMetaObject::setAttachedTypeName(const QString &name)
 { m_attachedTypeName = name; }
+
+QString FakeMetaObject::extensionTypeName() const
+{ return m_extensionTypeName; }
+void FakeMetaObject::setExtensionTypeName(const QString &name)
+{ m_extensionTypeName = name; }
 
 QByteArray FakeMetaObject::calculateFingerprint() const
 {

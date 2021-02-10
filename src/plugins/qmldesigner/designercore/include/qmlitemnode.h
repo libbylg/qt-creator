@@ -30,6 +30,7 @@
 #include "qmlobjectnode.h"
 #include "qmlstate.h"
 #include "qmlvisualnode.h"
+#include "qmlconnections.h"
 
 #include <QStringList>
 #include <QRectF>
@@ -61,11 +62,24 @@ public:
     static QmlItemNode createQmlItemNodeFromImage(AbstractView *view,
                                                   const QString &imageName,
                                                   const QPointF &position,
-                                                  QmlItemNode parentQmlItemNode);
+                                                  QmlItemNode parentQmlItemNode,
+                                                  bool executeInTransaction = true);
     static QmlItemNode createQmlItemNodeFromImage(AbstractView *view,
                                                   const QString &imageName,
                                                   const QPointF &position,
-                                                  NodeAbstractProperty parentproperty);
+                                                  NodeAbstractProperty parentproperty,
+                                                  bool executeInTransaction = true);
+
+    static QmlItemNode createQmlItemNodeFromFont(AbstractView *view,
+                                                 const QString &fontFamily,
+                                                 const QPointF &position,
+                                                 QmlItemNode parentQmlItemNode,
+                                                 bool executeInTransaction = true);
+    static QmlItemNode createQmlItemNodeFromFont(AbstractView *view,
+                                                 const QString &fontFamily,
+                                                 const QPointF &position,
+                                                 NodeAbstractProperty parentproperty,
+                                                 bool executeInTransaction = true);
 
     QList<QmlItemNode> children() const;
     QList<QmlObjectNode> resources() const;
@@ -88,6 +102,7 @@ public:
 
     bool modelIsMovable() const;
     bool modelIsResizable() const;
+    bool modelIsRotatable() const;
     bool modelIsInLayout() const;
 
     QRectF instanceBoundingRect() const;
@@ -121,15 +136,35 @@ public:
     bool isInLayout() const;
     bool canBereparentedTo(const ModelNode &potentialParent) const;
 
+    void setRotation(const qreal &angle);
+    qreal rotation() const;
+    QVariant transformOrigin();
+
     bool isInStackedContainer() const;
 
     bool isFlowView() const;
     bool isFlowItem() const;
     bool isFlowActionArea() const;
+    ModelNode rootModelNode() const;
 };
 
 class QmlFlowItemNode;
 class QmlFlowViewNode;
+
+class QMLDESIGNERCORE_EXPORT QmlFlowTargetNode : public QmlItemNode
+{
+public:
+    QmlFlowTargetNode(const ModelNode &modelNode)  : QmlItemNode(modelNode) {}
+    bool isValid() const override;
+
+    void assignTargetItem(const QmlFlowTargetNode &node);
+    void destroyTargets();
+    ModelNode targetTransition() const;
+    QmlFlowViewNode flowView() const;
+    ModelNode findSourceForDecisionNode() const;
+    static bool isFlowEditorTarget(const ModelNode &modelNode);
+    void removeTransitions();
+};
 
 class QMLDESIGNERCORE_EXPORT QmlFlowActionAreaNode : public QmlItemNode
 {
@@ -138,7 +173,7 @@ public:
     bool isValid() const override;
     static bool isValidQmlFlowActionAreaNode(const ModelNode &modelNode);
     ModelNode targetTransition() const;
-    void assignTargetFlowItem(const QmlFlowItemNode &flowItem);
+    void assignTargetFlowItem(const QmlFlowTargetNode &flowItem);
     QmlFlowItemNode flowItemParent() const;
     void destroyTarget();
 };
@@ -151,6 +186,8 @@ public:
     static bool isValidQmlFlowItemNode(const ModelNode &modelNode);
     QList<QmlFlowActionAreaNode> flowActionAreas() const;
     QmlFlowViewNode flowView() const;
+
+    static ModelNode decisionNodeForTransition(const ModelNode &transition);
 };
 
 class QMLDESIGNERCORE_EXPORT QmlFlowViewNode : public QmlItemNode
@@ -160,8 +197,23 @@ public:
     bool isValid() const override;
     static bool isValidQmlFlowViewNode(const ModelNode &modelNode);
     QList<QmlFlowItemNode> flowItems() const;
-    ModelNode addTransition(const QmlFlowItemNode &from, const QmlFlowItemNode &to);
+    ModelNode addTransition(const QmlFlowTargetNode &from, const QmlFlowTargetNode &to);
     QList<ModelNode> transitions() const;
+    QList<ModelNode> wildcards() const;
+    QList<ModelNode> decicions() const;
+    QList<ModelNode> transitionsForTarget(const ModelNode &modelNode);
+    QList<ModelNode> transitionsForSource(const ModelNode &modelNode);
+    void removeDanglingTransitions();
+    void removeAllTransitions();
+    void setStartFlowItem(const QmlFlowItemNode &flowItem);
+    ModelNode createTransition();
+
+    static PropertyNameList st_mouseSignals;
+    static QList<QmlConnections> getAssociatedConnections(const ModelNode &node);
+
+
+protected:
+    QList<ModelNode> transitionsForProperty(const PropertyName &propertyName, const ModelNode &modelNode);
 };
 
 

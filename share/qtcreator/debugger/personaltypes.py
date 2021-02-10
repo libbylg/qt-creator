@@ -43,7 +43,7 @@
 #
 # def qdump__MapNode(d, value):
 #    d.putValue("This is the value column contents")
-#    d.putNumChild(2)
+#    d.putExpandable()
 #    if d.isExpanded():
 #        with Children(d):
 #            # Compact simple case.
@@ -56,6 +56,6 @@
 # for more details or look at qttypes.py, stdtypes.py, boosttypes.py
 # for more complex examples.
 
-from dumper import *
+import dumper
 
 ######################## Your code below #######################

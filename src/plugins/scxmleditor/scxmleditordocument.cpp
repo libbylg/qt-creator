@@ -48,7 +48,7 @@ ScxmlEditorDocument::ScxmlEditorDocument(MainWidget *designWidget, QObject *pare
 {
     setMimeType(QLatin1String(ProjectExplorer::Constants::SCXML_MIMETYPE));
     setParent(parent);
-    setId(Core::Id(ScxmlEditor::Constants::K_SCXML_EDITOR_ID));
+    setId(Utils::Id(ScxmlEditor::Constants::K_SCXML_EDITOR_ID));
 
     // Designer needs UTF-8 regardless of settings.
     setCodec(QTextCodec::codecForName("UTF-8"));
@@ -136,19 +136,14 @@ bool ScxmlEditorDocument::isModified() const
 
 bool ScxmlEditorDocument::reload(QString *errorString, ReloadFlag flag, ChangeType type)
 {
-    if (flag == FlagIgnore) {
+    Q_UNUSED(type)
+    if (flag == FlagIgnore)
         return true;
-    } if (type == TypePermissions) {
-        emit changed();
-    } else {
-        emit aboutToReload();
-        emit reloadRequested(errorString, filePath().toString());
-        const bool success = errorString->isEmpty();
-        emit reloadFinished(success);
-        return success;
-    }
-
-    return true;
+    emit aboutToReload();
+    emit reloadRequested(errorString, filePath().toString());
+    const bool success = errorString->isEmpty();
+    emit reloadFinished(success);
+    return success;
 }
 
 QString ScxmlEditorDocument::designWidgetContents() const

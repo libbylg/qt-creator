@@ -39,7 +39,6 @@
 #include "vcsmanager.h"
 #include "versiondialog.h"
 #include "statusbarmanager.h"
-#include "id.h"
 #include "manhattanstyle.h"
 #include "navigationwidget.h"
 #include "rightpane.h"
@@ -58,6 +57,7 @@
 #include <coreplugin/dialogs/externaltoolconfig.h>
 #include <coreplugin/dialogs/newdialog.h>
 #include <coreplugin/dialogs/shortcutsettings.h>
+#include <coreplugin/editormanager/documentmodel_p.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/editormanager/editormanager_p.h>
 #include <coreplugin/editormanager/ieditor.h>
@@ -76,6 +76,7 @@
 #include <utils/stringutils.h>
 #include <utils/utilsicons.h>
 
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QColorDialog>
@@ -84,11 +85,11 @@
 #include <QFileInfo>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPrinter>
 #include <QSettings>
 #include <QStatusBar>
 #include <QStyleFactory>
-#include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 
@@ -147,7 +148,7 @@ MainWindow::MainWindow()
 
     QApplication::setStyle(new ManhattanStyle(baseName));
     m_generalSettings->setShowShortcutsInContextMenu(
-        m_generalSettings->showShortcutsInContextMenu());
+        GeneralSettings::showShortcutsInContextMenu());
 
     setDockNestingEnabled(true);
 
@@ -197,31 +198,6 @@ MainWindow::MainWindow()
             this, &MainWindow::openDroppedFiles);
 }
 
-// Edit View 3D needs to know when the main window's state or activation change
-void MainWindow::changeEvent(QEvent *event)
-{
-    if (event->type() == QEvent::WindowStateChange) {
-        emit m_coreImpl->windowStateChanged(m_previousWindowStates, windowState());
-        m_previousWindowStates = windowState();
-    } else if (event->type() == QEvent::ActivationChange) {
-        // check the last 3 children for a possible active window
-        auto rIter = children().rbegin();
-        bool hasPopup = false;
-        for (int i = 0; i < 3; ++i) {
-            if (rIter < children().rend()) {
-                auto child = qobject_cast<QWidget *>(*(rIter++));
-                if (child && child->isActiveWindow()) {
-                    hasPopup = true;
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-        emit m_coreImpl->windowActivationChanged(isActiveWindow(), hasPopup);
-    }
-}
-
 NavigationWidget *MainWindow::navigationWidget(Side side) const
 {
     return side == Side::Left ? m_leftNavigationWidget : m_rightNavigationWidget;
@@ -231,6 +207,16 @@ void MainWindow::setSidebarVisible(bool visible, Side side)
 {
     if (NavigationWidgetPlaceHolder::current(side))
         navigationWidget(side)->setShown(visible);
+}
+
+bool MainWindow::askConfirmationBeforeExit() const
+{
+    return m_askConfirmationBeforeExit;
+}
+
+void MainWindow::setAskConfirmationBeforeExit(bool ask)
+{
+    m_askConfirmationBeforeExit = ask;
 }
 
 void MainWindow::setOverrideColor(const QColor &color)
@@ -322,7 +308,7 @@ void MainWindow::extensionsInitialized()
     m_windowSupport = new WindowSupport(this, Context("Core.MainWindow"));
     m_windowSupport->setCloseActionEnabled(false);
     OutputPaneManager::create();
-    m_vcsManager->extensionsInitialized();
+    VcsManager::extensionsInitialized();
     m_leftNavigationWidget->setFactories(INavigationWidgetFactory::allNavigationFactories());
     m_rightNavigationWidget->setFactories(INavigationWidgetFactory::allNavigationFactories());
 
@@ -333,8 +319,8 @@ void MainWindow::extensionsInitialized()
 
     emit m_coreImpl->coreAboutToOpen();
     // Delay restoreWindowState, since it is overridden by LayoutRequest event
-    QTimer::singleShot(0, this, &MainWindow::restoreWindowState);
-    QTimer::singleShot(0, m_coreImpl, &ICore::coreOpened);
+    QMetaObject::invokeMethod(this, &MainWindow::restoreWindowState, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(m_coreImpl, &ICore::coreOpened, Qt::QueuedConnection);
 }
 
 static void setRestart(bool restart)
@@ -359,6 +345,17 @@ void MainWindow::closeEvent(QCloseEvent *event)
     static bool alreadyClosed = false;
     if (alreadyClosed) {
         event->accept();
+        return;
+    }
+
+    if (m_askConfirmationBeforeExit &&
+            (QMessageBox::question(this,
+                                   tr("Exit %1?").arg(Constants::IDE_DISPLAY_NAME),
+                                   tr("Exit %1?").arg(Constants::IDE_DISPLAY_NAME),
+                                   QMessageBox::Yes | QMessageBox::No,
+                                   QMessageBox::No)
+             == QMessageBox::No)) {
+        event->ignore();
         return;
     }
 
@@ -449,6 +446,12 @@ void MainWindow::registerDefaultContainers()
     medit->appendGroup(Constants::G_EDIT_FIND);
     medit->appendGroup(Constants::G_EDIT_OTHER);
 
+    ActionContainer *mview = ActionManager::createMenu(Constants::M_VIEW);
+    menubar->addMenu(mview, Constants::G_VIEW);
+    mview->menu()->setTitle(tr("&View"));
+    mview->appendGroup(Constants::G_VIEW_VIEWS);
+    mview->appendGroup(Constants::G_VIEW_PANES);
+
     // Tools Menu
     ActionContainer *ac = ActionManager::createMenu(Constants::M_TOOLS);
     menubar->addMenu(ac, Constants::G_TOOLS);
@@ -459,8 +462,6 @@ void MainWindow::registerDefaultContainers()
     menubar->addMenu(mwindow, Constants::G_WINDOW);
     mwindow->menu()->setTitle(tr("&Window"));
     mwindow->appendGroup(Constants::G_WINDOW_SIZE);
-    mwindow->appendGroup(Constants::G_WINDOW_VIEWS);
-    mwindow->appendGroup(Constants::G_WINDOW_PANES);
     mwindow->appendGroup(Constants::G_WINDOW_SPLIT);
     mwindow->appendGroup(Constants::G_WINDOW_NAVIGATE);
     mwindow->appendGroup(Constants::G_WINDOW_LIST);
@@ -490,6 +491,7 @@ void MainWindow::registerDefaultActions()
 {
     ActionContainer *mfile = ActionManager::actionContainer(Constants::M_FILE);
     ActionContainer *medit = ActionManager::actionContainer(Constants::M_EDIT);
+    ActionContainer *mview = ActionManager::actionContainer(Constants::M_VIEW);
     ActionContainer *mtools = ActionManager::actionContainer(Constants::M_TOOLS);
     ActionContainer *mwindow = ActionManager::actionContainer(Constants::M_WINDOW);
     ActionContainer *mhelp = ActionManager::actionContainer(Constants::M_HELP);
@@ -569,11 +571,7 @@ void MainWindow::registerDefaultActions()
     mfile->addAction(cmd, Constants::G_FILE_SAVE);
 
     // SaveAll Action
-    m_saveAllAction = new QAction(tr("Save A&ll"), this);
-    cmd = ActionManager::registerAction(m_saveAllAction, Constants::SAVEALL);
-    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? QString() : tr("Ctrl+Shift+S")));
-    mfile->addAction(cmd, Constants::G_FILE_SAVE);
-    connect(m_saveAllAction, &QAction::triggered, this, &MainWindow::saveAll);
+    DocumentManager::registerSaveAllAction();
 
     // Print Action
     icon = QIcon::fromTheme(QLatin1String("document-print"));
@@ -665,7 +663,10 @@ void MainWindow::registerDefaultActions()
                                            : Utils::Icons::ZOOMOUT_TOOLBAR.icon();
     tmpaction = new QAction(icon, tr("Zoom Out"), this);
     cmd = ActionManager::registerAction(tmpaction, Constants::ZOOM_OUT);
-    cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+-")));
+    if (useMacShortcuts)
+        cmd->setDefaultKeySequences({QKeySequence(tr("Ctrl+-")), QKeySequence(tr("Ctrl+Shift+-"))});
+    else
+        cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+-")));
     tmpaction->setEnabled(false);
 
     // Zoom Reset Action
@@ -739,7 +740,7 @@ void MainWindow::registerDefaultActions()
     ProxyAction *toggleLeftSideBarProxyAction =
             ProxyAction::proxyActionWithIcon(cmd->action(), Utils::Icons::TOGGLE_LEFT_SIDEBAR_TOOLBAR.icon());
     m_toggleLeftSideBarButton->setDefaultAction(toggleLeftSideBarProxyAction);
-    mwindow->addAction(cmd, Constants::G_WINDOW_VIEWS);
+    mview->addAction(cmd, Constants::G_VIEW_VIEWS);
     m_toggleLeftSideBarAction->setEnabled(false);
 
     // Show Right Sidebar Action
@@ -755,14 +756,14 @@ void MainWindow::registerDefaultActions()
     ProxyAction *toggleRightSideBarProxyAction =
             ProxyAction::proxyActionWithIcon(cmd->action(), Utils::Icons::TOGGLE_RIGHT_SIDEBAR_TOOLBAR.icon());
     m_toggleRightSideBarButton->setDefaultAction(toggleRightSideBarProxyAction);
-    mwindow->addAction(cmd, Constants::G_WINDOW_VIEWS);
+    mview->addAction(cmd, Constants::G_VIEW_VIEWS);
     m_toggleRightSideBarButton->setEnabled(false);
 
     registerModeSelectorStyleActions();
 
     // Window->Views
-    ActionContainer *mviews = ActionManager::createMenu(Constants::M_WINDOW_VIEWS);
-    mwindow->addMenu(mviews, Constants::G_WINDOW_VIEWS);
+    ActionContainer *mviews = ActionManager::createMenu(Constants::M_VIEW_VIEWS);
+    mview->addMenu(mviews, Constants::G_VIEW_VIEWS);
     mviews->menu()->setTitle(tr("&Views"));
 
     // "Help" separators
@@ -806,7 +807,7 @@ void MainWindow::registerDefaultActions()
 
 void MainWindow::registerModeSelectorStyleActions()
 {
-    ActionContainer *mwindow = ActionManager::actionContainer(Constants::M_WINDOW);
+    ActionContainer *mview = ActionManager::actionContainer(Constants::M_VIEW);
 
     // Cycle Mode Selector Styles
     m_cycleModeSelectorStyleAction = new QAction(tr("Cycle Mode Selector Styles"), this);
@@ -817,8 +818,8 @@ void MainWindow::registerModeSelectorStyleActions()
     });
 
     // Mode Selector Styles
-    ActionContainer *mmodeLayouts = ActionManager::createMenu(Constants::M_WINDOW_MODESTYLES);
-    mwindow->addMenu(mmodeLayouts, Constants::G_WINDOW_VIEWS);
+    ActionContainer *mmodeLayouts = ActionManager::createMenu(Constants::M_VIEW_MODESTYLES);
+    mview->addMenu(mmodeLayouts, Constants::G_VIEW_VIEWS);
     QMenu *styleMenu = mmodeLayouts->menu();
     styleMenu->setTitle(tr("Mode Selector Style"));
     auto *stylesGroup = new QActionGroup(styleMenu);
@@ -854,7 +855,9 @@ static IDocumentFactory *findDocumentFactory(const QList<IDocumentFactory*> &fil
     });
 }
 
-/*! Either opens \a fileNames with editors or loads a project.
+/*!
+ * \internal
+ * Either opens \a fileNames with editors or loads a project.
  *
  *  \a flags can be used to stop on first failure, indicate that a file name
  *  might include line numbers and/or switch mode to edit mode.
@@ -862,7 +865,7 @@ static IDocumentFactory *findDocumentFactory(const QList<IDocumentFactory*> &fil
  *  \a workingDirectory is used when files are opened by a remote client, since
  *  the file names are relative to the client working directory.
  *
- *  \returns the first opened document. Required to support the -block flag
+ *  Returns the first opened document. Required to support the \c -block flag
  *  for client mode.
  *
  *  \sa IPlugin::remoteArguments()
@@ -874,7 +877,7 @@ IDocument *MainWindow::openFiles(const QStringList &fileNames,
     const QList<IDocumentFactory*> documentFactories = IDocumentFactory::allDocumentFactories();
     IDocument *res = nullptr;
 
-    foreach (const QString &fileName, fileNames) {
+    for (const QString &fileName : fileNames) {
         const QDir workingDir(workingDirectory.isEmpty() ? QDir::currentPath() : workingDirectory);
         const QFileInfo fi(workingDir, fileName);
         const QString absoluteFilePath = fi.absoluteFilePath();
@@ -895,12 +898,19 @@ IDocument *MainWindow::openFiles(const QStringList &fileNames,
                 emFlags |=  EditorManager::CanContainLineAndColumnNumber;
             if (flags & ICore::SwitchSplitIfAlreadyVisible)
                 emFlags |= EditorManager::SwitchSplitIfAlreadyVisible;
-            IEditor *editor = EditorManager::openEditor(absoluteFilePath, Id(), emFlags);
-            if (!editor) {
-                if (flags & ICore::StopOnLoadFail)
-                    return res;
-            } else if (!res) {
-                res = editor->document();
+            if (emFlags != EditorManager::NoFlags || !res) {
+                IEditor *editor = EditorManager::openEditor(absoluteFilePath, Id(), emFlags);
+                if (!editor) {
+                    if (flags & ICore::StopOnLoadFail)
+                        return res;
+                } else if (!res) {
+                    res = editor->document();
+                }
+            } else {
+                auto *factory = IEditorFactory::preferredEditorFactories(absoluteFilePath).value(0);
+                DocumentModelPrivate::addSuspendedDocument(absoluteFilePath,
+                                                           {},
+                                                           factory ? factory->id() : Id());
             }
         }
     }
@@ -912,11 +922,6 @@ void MainWindow::setFocusToEditor()
     EditorManagerPrivate::doEscapeKeyFocusMoveMagic();
 }
 
-void MainWindow::saveAll()
-{
-    DocumentManager::saveAllModifiedDocumentsSilently();
-}
-
 void MainWindow::exit()
 {
     // this function is most likely called from a user action
@@ -924,7 +929,7 @@ void MainWindow::exit()
     // since on close we are going to delete everything
     // so to prevent the deleting of that object we
     // just append it
-    QTimer::singleShot(0, this,  &QWidget::close);
+    QMetaObject::invokeMethod(this,  &QWidget::close, Qt::QueuedConnection);
 }
 
 void MainWindow::openFileWith()
@@ -941,9 +946,10 @@ void MainWindow::openFileWith()
     }
 }
 
-IContext *MainWindow::contextObject(QWidget *widget)
+IContext *MainWindow::contextObject(QWidget *widget) const
 {
-    return m_contextWidgets.value(widget);
+    const auto it = m_contextWidgets.find(widget);
+    return it == m_contextWidgets.end() ? nullptr : it->second;
 }
 
 void MainWindow::addContextObject(IContext *context)
@@ -951,10 +957,11 @@ void MainWindow::addContextObject(IContext *context)
     if (!context)
         return;
     QWidget *widget = context->widget();
-    if (m_contextWidgets.contains(widget))
+    if (m_contextWidgets.find(widget) != m_contextWidgets.end())
         return;
 
-    m_contextWidgets.insert(widget, context);
+    m_contextWidgets.insert(std::make_pair(widget, context));
+    connect(context, &QObject::destroyed, this, [this, context] { removeContextObject(context); });
 }
 
 void MainWindow::removeContextObject(IContext *context)
@@ -962,11 +969,17 @@ void MainWindow::removeContextObject(IContext *context)
     if (!context)
         return;
 
-    QWidget *widget = context->widget();
-    if (!m_contextWidgets.contains(widget))
+    disconnect(context, &QObject::destroyed, this, nullptr);
+
+    const auto it = std::find_if(m_contextWidgets.cbegin(),
+                                 m_contextWidgets.cend(),
+                                 [context](const std::pair<QWidget *, IContext *> &v) {
+                                     return v.second == context;
+                                 });
+    if (it == m_contextWidgets.cend())
         return;
 
-    m_contextWidgets.remove(widget);
+    m_contextWidgets.erase(it);
     if (m_activeContext.removeAll(context) > 0)
         updateContextObject(m_activeContext);
 }
@@ -983,7 +996,7 @@ void MainWindow::updateFocusWidget(QWidget *old, QWidget *now)
     if (QWidget *p = QApplication::focusWidget()) {
         IContext *context = nullptr;
         while (p) {
-            context = m_contextWidgets.value(p);
+            context = contextObject(p);
             if (context)
                 newContext.append(context);
             p = p->parentWidget();
@@ -1010,15 +1023,20 @@ void MainWindow::updateContextObject(const QList<IContext *> &context)
 void MainWindow::aboutToShutdown()
 {
     disconnect(qApp, &QApplication::focusChanged, this, &MainWindow::updateFocusWidget);
+    for (auto contextPair : m_contextWidgets)
+        disconnect(contextPair.second, &QObject::destroyed, this, nullptr);
     m_activeContext.clear();
     hide();
 }
 
 static const char settingsGroup[] = "MainWindow";
 static const char colorKey[] = "Color";
+static const char askBeforeExitKey[] = "AskBeforeExit";
 static const char windowGeometryKey[] = "WindowGeometry";
 static const char windowStateKey[] = "WindowState";
 static const char modeSelectorLayoutKey[] = "ModeSelectorLayout";
+
+static const bool askBeforeExitDefault = false;
 
 void MainWindow::readSettings()
 {
@@ -1033,6 +1051,8 @@ void MainWindow::readSettings()
         StyleHelper::setBaseColor(settings->value(QLatin1String(colorKey),
                                   QColor(StyleHelper::DEFAULT_BASE_COLOR)).value<QColor>());
     }
+
+    m_askConfirmationBeforeExit = settings->value(askBeforeExitKey, askBeforeExitDefault).toBool();
 
     {
         ModeManager::Style modeStyle =
@@ -1059,11 +1079,17 @@ void MainWindow::readSettings()
 
 void MainWindow::saveSettings()
 {
-    QSettings *settings = PluginManager::settings();
+    QtcSettings *settings = PluginManager::settings();
     settings->beginGroup(QLatin1String(settingsGroup));
 
     if (!(m_overrideColor.isValid() && StyleHelper::baseColor() == m_overrideColor))
-        settings->setValue(QLatin1String(colorKey), StyleHelper::requestedBaseColor());
+        settings->setValueWithDefault(colorKey,
+                                      StyleHelper::requestedBaseColor(),
+                                      QColor(StyleHelper::DEFAULT_BASE_COLOR));
+
+    settings->setValueWithDefault(askBeforeExitKey,
+                                  m_askConfirmationBeforeExit,
+                                  askBeforeExitDefault);
 
     settings->endGroup();
 

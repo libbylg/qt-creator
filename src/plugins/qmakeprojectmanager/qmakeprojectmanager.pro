@@ -10,7 +10,6 @@ HEADERS += \
     qmakeparsernodes.h \
     qmakeprojectimporter.h \
     qmakeprojectmanagerplugin.h \
-    qmakeprojectmanager.h \
     qmakeproject.h \
     qmakesettings.h \
     qmakenodes.h \
@@ -22,7 +21,6 @@ HEADERS += \
     wizards/qtwizard.h \
     wizards/subdirsprojectwizard.h \
     wizards/subdirsprojectwizarddialog.h \
-    wizards/simpleprojectwizard.h \
     qmakeprojectmanagerconstants.h \
     qmakestep.h \
     externaleditors.h \
@@ -40,7 +38,6 @@ SOURCES += \
     qmakeparsernodes.cpp \
     qmakeprojectimporter.cpp \
     qmakeprojectmanagerplugin.cpp \
-    qmakeprojectmanager.cpp \
     qmakeproject.cpp \
     qmakenodes.cpp \
     qmakesettings.cpp \
@@ -52,7 +49,6 @@ SOURCES += \
     wizards/qtwizard.cpp \
     wizards/subdirsprojectwizard.cpp \
     wizards/subdirsprojectwizarddialog.cpp \
-    wizards/simpleprojectwizard.cpp \
     qmakestep.cpp \
     externaleditors.cpp \
     qmakebuildconfiguration.cpp \

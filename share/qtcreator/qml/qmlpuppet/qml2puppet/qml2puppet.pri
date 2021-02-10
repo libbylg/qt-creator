@@ -1,9 +1,19 @@
 QT += core gui widgets qml quick network
 QT += core-private qml-private quick-private gui-private
 
-CONFIG += c++11
+CONFIG += c++17
+win32:!mingw: QMAKE_CXXFLAGS += /std:c++17
 
 DEFINES -= QT_CREATOR
+
+# This .pri file contains classes to enable a special multilanguage translator
+MULTILANGUAGE_SUPPORT_PRI=$$(MULTILANGUAGE_SUPPORT_PRI)
+!isEmpty(MULTILANGUAGE_SUPPORT_PRI) {
+    exists($$(MULTILANGUAGE_SUPPORT_PRI)): message(including \"$$(MULTILANGUAGE_SUPPORT_PRI)\")
+    else: error("MULTILANGUAGE_SUPPORT_PRI: \"$$(MULTILANGUAGE_SUPPORT_PRI)\" does not exist.")
+    include($$(MULTILANGUAGE_SUPPORT_PRI))
+    DEFINES += MULTILANGUAGE_TRANSLATIONPROVIDER
+}
 
 include (editor3d/editor3d.pri)
 include (../instances/instances.pri)
@@ -13,6 +23,8 @@ include (../container/container.pri)
 include (../interfaces/interfaces.pri)
 include (../types/types.pri)
 include (../qmlprivategate/qmlprivategate.pri)
+include (iconrenderer/iconrenderer.pri)
+include (import3d/import3d.pri)
 
 SOURCES +=  $$PWD/qml2puppetmain.cpp
 RESOURCES +=  $$PWD/../qmlpuppet.qrc

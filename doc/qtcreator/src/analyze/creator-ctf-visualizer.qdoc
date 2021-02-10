@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-cppcheck.html
     \page creator-ctf-visualizer.html
     \nextpage creator-autotest.html
@@ -96,6 +95,10 @@
     you can use to set the zoom level. You can also drag the zoom handles (7).
     To reset the default zoom level, right-click the timeline to open the
     context menu, and select \uicontrol {Reset Zoom}.
+
+    Select the \inlineimage filtericon.png
+    (\uicontrol {Restrict to Threads}) button (10) to select the threads to
+    show.
 
     \section2 Selecting Event Ranges
 

@@ -27,7 +27,6 @@
 
 #include <projectexplorer/kitchooser.h>
 #include <projectexplorer/kitinformation.h>
-#include <coreplugin/id.h>
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -51,7 +50,6 @@ QmlProfilerAttachDialog::QmlProfilerAttachDialog(QWidget *parent) :
     QDialog(parent),
     d(new QmlProfilerAttachDialogPrivate)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setWindowTitle(tr("Start QML Profiler"));
 
     d->kitChooser = new KitChooser(this);
@@ -109,7 +107,7 @@ Kit *QmlProfilerAttachDialog::kit() const
     return d->kitChooser->currentKit();
 }
 
-void QmlProfilerAttachDialog::setKitId(Core::Id id)
+void QmlProfilerAttachDialog::setKitId(Utils::Id id)
 {
     d->kitChooser->setCurrentKitId(id);
 }

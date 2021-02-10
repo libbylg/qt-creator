@@ -27,24 +27,32 @@
 
 #include "autotest_global.h"
 
-#include "testconfiguration.h"
+#include "itemdatacache.h"
 #include "testtreeitem.h"
 
+#include <utils/id.h>
 #include <utils/treemodel.h>
 
 #include <QSortFilterProxyModel>
 
+namespace ProjectExplorer { class Target; }
+
 namespace Autotest {
 namespace Internal {
+class AutotestPluginPrivate;
 class TestCodeParser;
 } // namespace Internal
 
 class TestParseResult;
 using TestParseResultPtr = QSharedPointer<TestParseResult>;
 
-class AUTOTESTSHARED_EXPORT TestTreeModel : public Utils::TreeModel<>
+class AUTOTESTSHARED_EXPORT TestTreeModel : public Utils::TreeModel<Utils::TreeItem, ITestTreeItem>
 {
     Q_OBJECT
+
+    friend class Internal::AutotestPluginPrivate; // For ctor.
+    explicit TestTreeModel(Internal::TestCodeParser *parser);
+
 public:
     static TestTreeModel* instance();
     ~TestTreeModel() override;
@@ -54,13 +62,18 @@ public:
 
     Internal::TestCodeParser *parser() const { return m_parser; }
     bool hasTests() const;
-    QList<TestConfiguration *> getAllTestCases() const;
-    QList<TestConfiguration *> getSelectedTests() const;
-    QList<TestConfiguration *> getTestsForFile(const Utils::FilePath &fileName) const;
+    QList<ITestConfiguration *> getAllTestCases() const;
+    QList<ITestConfiguration *> getSelectedTests() const;
+    QList<ITestConfiguration *> getFailedTests() const;
+    QList<ITestConfiguration *> getTestsForFile(const Utils::FilePath &fileName) const;
     QList<TestTreeItem *> testItemsByName(const QString &testName);
     void synchronizeTestFrameworks();
-    void rebuild(const QList<Core::Id> &frameworkIds);
+    void synchronizeTestTools();
+    void rebuild(const QList<Utils::Id> &frameworkIds);
 
+    void updateCheckStateCache();
+    bool hasFailedTests() const;
+    void clearFailedMarks();
 #ifdef WITH_TESTS
     int autoTestsCount() const;
     int namedQuickTestsCount() const;
@@ -71,10 +84,10 @@ public:
     int gtestNamesCount() const;
     QMultiMap<QString, int> gtestNamesAndSets() const;
     int boostTestNamesCount() const;
-    QMultiMap<QString, int> boostTestSuitesAndTests() const;
+    QMap<QString, int> boostTestSuitesAndTests() const;
 #endif
 
-    void markAllForRemoval();
+    void markAllFrameworkItemsForRemoval();
     void markForRemoval(const QString &filePath);
     void sweep();
 
@@ -87,19 +100,26 @@ signals:
 
 private:
     void onParseResultReady(const TestParseResultPtr result);
+    void onDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                       const QVector<int> &roles);
     void handleParseResult(const TestParseResult *result, TestTreeItem *rootNode);
     void removeAllTestItems();
-    void removeTestRootNodes();
+    void removeAllTestToolItems();
     void removeFiles(const QStringList &files);
     bool sweepChildren(TestTreeItem *item);
     void insertItemInParent(TestTreeItem *item, TestTreeItem *root, bool groupingEnabled);
-    void revalidateCheckState(TestTreeItem *item);
-    explicit TestTreeModel(QObject *parent = nullptr);
+    void revalidateCheckState(ITestTreeItem *item);
     void setupParsingConnections();
     void filterAndInsert(TestTreeItem *item, TestTreeItem *root, bool groupingEnabled);
     QList<TestTreeItem *> testItemsByName(TestTreeItem *root, const QString &testName);
+    void onTargetChanged(ProjectExplorer::Target *target);
+    void onBuildSystemTestsUpdated();
+    const QList<TestTreeItem *> frameworkRootNodes() const;
+    const QList<ITestTreeItem *> testToolRootNodes() const;
 
     Internal::TestCodeParser *m_parser = nullptr;
+    Internal::ItemDataCache<Qt::CheckState> *m_checkStateCache = nullptr; // not owned
+    Internal::ItemDataCache<bool> m_failedStateCache;
 };
 
 namespace Internal {
@@ -122,8 +142,8 @@ public:
     static FilterMode toFilterMode(int f);
 
 protected:
-    bool lessThan(const QModelIndex &left, const QModelIndex &right) const;
-    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const;
+    bool lessThan(const QModelIndex &left, const QModelIndex &right) const final;
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const final;
 
 private:
     Autotest::TestTreeItem::SortMode m_sortMode = Autotest::TestTreeItem::Alphabetically;

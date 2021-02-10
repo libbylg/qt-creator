@@ -1,6 +1,7 @@
 add_qtc_plugin(CppEditor
   DEFINES CPPEDITOR_LIBRARY
   PLUGIN_DEPENDS Core CppTools ProjectExplorer TextEditor
+  PLUGIN_TEST_DEPENDS QmakeProjectManager
   SOURCES
     cppautocompleter.cpp cppautocompleter.h
     cppcodemodelinspectordialog.cpp cppcodemodelinspectordialog.h cppcodemodelinspectordialog.ui
@@ -25,10 +26,19 @@ add_qtc_plugin(CppEditor
     cppquickfix.cpp cppquickfix.h
     cppquickfixassistant.cpp cppquickfixassistant.h
     cppquickfixes.cpp cppquickfixes.h
+    cppquickfixprojectsettings.cpp cppquickfixprojectsettings.h
+    cppquickfixprojectsettingswidget.cpp cppquickfixprojectsettingswidget.h
+        cppquickfixprojectsettingswidget.ui
+    cppquickfixsettings.cpp cppquickfixsettings.h
+    cppquickfixsettingspage.cpp cppquickfixsettingspage.h
+    cppquickfixsettingswidget.cpp cppquickfixsettingswidget.h cppquickfixsettingswidget.ui
     cpptypehierarchy.cpp cpptypehierarchy.h
     cppuseselectionsupdater.cpp cppuseselectionsupdater.h
     resourcepreviewhoverhandler.cpp resourcepreviewhoverhandler.h
-  EXPLICIT_MOC cppeditor.h
+   EXPLICIT_MOC
+     cppeditor.h
+     cppquickfixsettingswidget.h
+     cppquickfixprojectsettingswidget.h
 )
 
 extend_qtc_plugin(CppEditor
@@ -43,5 +53,4 @@ extend_qtc_plugin(CppEditor
     followsymbol_switchmethoddecldef_test.cpp
   EXPLICIT_MOC
     cppdoxygen_test.h
-    cppquickfix_test.h
 )

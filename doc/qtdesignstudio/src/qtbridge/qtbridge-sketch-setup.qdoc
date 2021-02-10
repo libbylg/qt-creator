@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2021 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Bridge documentation.
@@ -24,21 +24,31 @@
 ****************************************************************************/
 
 /*!
-
-    \contentspage {Qt Design Studio}
     \previouspage sketchqtbridge.html
     \page qtbridge-sketch-setup.html
     \nextpage qtbridge-sketch-using.html
 
     \title Setting Up \QBSK
 
-    \QBSK is delivered with \QDS as a Sketch plugin that you can install to
-    Sketch.
+    You can purchase a \QBSK license from the \l{https://marketplace.qt.io/}
+    {Qt Marketplace}, and then use the Qt Installer to have the \QBSK
+    plugin package copied to the following path in your Qt installation
+    folder:
+
+    \list
+        \li On Windows:
+            \c {Tools\QtDesignStudio\sketch_bridge\io.qt.qtbridge.sketchplugin}
+        \li On \macos:
+            \c {QtDesignStudio/sketch_bridge/io.qt.qtbridge.sketchplugin}.
+    \endlist
 
     \note Install the Sketch app before installing the plugin.
 
-    To install the \QBSK plugin to Sketch, double-click the \QBSK plugin in the
-    \c sketch_bridge directory in the installation directory of \QDS.
+    To install the \QBSK plugin to Sketch, double-click
+    \c io.qt.qtbridge.sketchplugin in the \c sketch_bridge
+    folder in the installation directory of \QDS. Sketch
+    will automatically install \QBSK.
 
-    The plugin is available at \uicontrol Plugins > \uicontrol {\QB}.
+    You can launch the Sketch plugin from \uicontrol Plugins >
+    \uicontrol {\QB} in Sketch.
 */

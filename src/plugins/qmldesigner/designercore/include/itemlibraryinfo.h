@@ -29,6 +29,7 @@
 
 #include "propertycontainer.h"
 #include <QPointer>
+#include <memory>
 
 namespace QmlDesigner {
 
@@ -54,7 +55,7 @@ class QMLDESIGNERCORE_EXPORT ItemLibraryEntry
 
 public:
     ItemLibraryEntry();
-    ~ItemLibraryEntry();
+    ~ItemLibraryEntry() = default;
 
     QString name() const;
     TypeName typeName() const;
@@ -67,9 +68,8 @@ public:
     QString qmlPath() const;
     QString qmlSource() const;
     QString requiredImport() const;
-
-    ItemLibraryEntry(const ItemLibraryEntry &other);
-    ItemLibraryEntry& operator=(const ItemLibraryEntry &other);
+    QString customComponentSource() const;
+    QStringList extraFilePaths() const;
 
     using Property = QmlDesigner::PropertyContainer;
 
@@ -86,9 +86,11 @@ public:
     void setQmlPath(const QString &qml);
     void setRequiredImport(const QString &requiredImport);
     void addHints(const QHash<QString, QString> &hints);
+    void setCustomComponentSource(const QString &source);
+    void addExtraFilePath(const QString &extraFile);
 
 private:
-    QExplicitlySharedDataPointer<Internal::ItemLibraryEntryData> m_data;
+    std::shared_ptr<Internal::ItemLibraryEntryData> m_data;
 };
 
 class QMLDESIGNERCORE_EXPORT ItemLibraryInfo : public QObject
@@ -100,7 +102,6 @@ public:
 
     QList<ItemLibraryEntry> entries() const;
     QList<ItemLibraryEntry> entriesForType(const QByteArray &typeName, int majorVersion, int minorVersion) const;
-    ItemLibraryEntry entry(const QString &name) const;
 
     void addEntries(const QList<ItemLibraryEntry> &entries, bool overwriteDuplicate = false);
     bool containsEntry(const ItemLibraryEntry &entry);

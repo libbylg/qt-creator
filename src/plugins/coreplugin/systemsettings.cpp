@@ -25,10 +25,13 @@
 
 #include "systemsettings.h"
 #include "coreconstants.h"
+#include "coreplugin.h"
 #include "editormanager/editormanager_p.h"
+#include "dialogs/restartdialog.h"
 #include "fileutils.h"
 #include "icore.h"
 #include "iversioncontrol.h"
+#include "mainwindow.h"
 #include "patchtool.h"
 #include "vcsmanager.h"
 
@@ -36,6 +39,7 @@
 #include <utils/checkablemessagebox.h>
 #include <utils/consoleprocess.h>
 #include <utils/environment.h>
+#include <utils/environmentdialog.h>
 #include <utils/hostosinfo.h>
 #include <utils/unixutils.h>
 
@@ -47,12 +51,33 @@
 
 using namespace Utils;
 
+static const char crashReportingEnabledKey[] = "CrashReportingEnabled";
+static const char showCrashButtonKey[] = "ShowCrashButton";
+
 namespace Core {
 namespace Internal {
 
+// TODO: move to somewhere in Utils
+#ifdef ENABLE_CRASHPAD
+static QString formatSize(qint64 size)
+{
+    QStringList units {QObject::tr("Bytes"), QObject::tr("KB"), QObject::tr("MB"),
+                       QObject::tr("GB"), QObject::tr("TB")};
+    double outputSize = size;
+    int i;
+    for (i = 0; i < units.size() - 1; ++i) {
+        if (outputSize < 1024)
+            break;
+        outputSize /= 1024;
+    }
+    return i == 0 ? QString("%0 %1").arg(outputSize).arg(units[i]) // Bytes
+                  : QString("%0 %1").arg(outputSize, 0, 'f', 2).arg(units[i]); // KB, MB, GB, TB
+}
+#endif // ENABLE_CRASHPAD
+
 class SystemSettingsWidget : public IOptionsPageWidget
 {
-    QT_DECLARE_DEPRECATED_TR_FUNCTIONS(Core::Internal::SystemSettingsWidget)
+    Q_DECLARE_TR_FUNCTIONS(Core::Internal::SystemSettingsWidget)
 
 public:
     SystemSettingsWidget()
@@ -86,9 +111,7 @@ public:
             m_ui.externalFileBrowserEdit->setText(UnixUtils::fileBrowser(ICore::settings()));
         } else {
             m_ui.externalFileBrowserLabel->hide();
-            m_ui.externalFileBrowserEdit->hide();
-            m_ui.resetFileBrowserButton->hide();
-            m_ui.helpExternalFileBrowserButton->hide();
+            m_ui.externalFileBrowserWidget->hide();
         }
 
         const QString patchToolTip = tr("Command used for reverting diff chunks.");
@@ -112,6 +135,48 @@ public:
         m_ui.maxRecentFilesSpinBox->setMinimum(1);
         m_ui.maxRecentFilesSpinBox->setMaximum(99);
         m_ui.maxRecentFilesSpinBox->setValue(EditorManagerPrivate::maxRecentFiles());
+#ifdef ENABLE_CRASHPAD
+        if (ICore::settings()->value(showCrashButtonKey).toBool()) {
+            auto crashButton = new QPushButton("CRASH!!!");
+            crashButton->show();
+            connect(crashButton, &QPushButton::clicked, []() {
+                // do a real crash
+                volatile int* a = reinterpret_cast<volatile int *>(NULL); *a = 1;
+            });
+        }
+
+        m_ui.enableCrashReportingCheckBox->setChecked(
+                    ICore::settings()->value(crashReportingEnabledKey).toBool());
+        connect(m_ui.helpCrashReportingButton, &QAbstractButton::clicked, this, [this] {
+            showHelpDialog(tr("Crash Reporting"), CorePlugin::msgCrashpadInformation());
+        });
+        connect(m_ui.enableCrashReportingCheckBox,
+                QOverload<int>::of(&QCheckBox::stateChanged), this, [this] {
+            const QString restartText = tr("The change will take effect after restart.");
+            Core::RestartDialog restartDialog(Core::ICore::dialogParent(), restartText);
+            restartDialog.exec();
+            if (restartDialog.result() == QDialog::Accepted)
+                apply();
+        });
+
+        updateClearCrashWidgets();
+        connect(m_ui.clearCrashReportsButton, &QPushButton::clicked, this, [&] {
+            QDir crashReportsDir(ICore::crashReportsPath());
+            crashReportsDir.setFilter(QDir::Files);
+            const QStringList crashFiles = crashReportsDir.entryList();
+            for (QString file : crashFiles)
+                crashReportsDir.remove(file);
+            updateClearCrashWidgets();
+        });
+#else
+        m_ui.enableCrashReportingCheckBox->setVisible(false);
+        m_ui.helpCrashReportingButton->setVisible(false);
+        m_ui.clearCrashReportsButton->setVisible(false);
+        m_ui.crashReportsSizeText->setVisible(false);
+#endif
+
+        m_ui.askBeforeExitCheckBox->setChecked(
+                    static_cast<Core::Internal::MainWindow *>(ICore::mainWindow())->askConfirmationBeforeExit());
 
         if (HostOsInfo::isAnyUnixHost()) {
             connect(m_ui.resetTerminalButton, &QAbstractButton::clicked,
@@ -146,10 +211,25 @@ public:
             else
                 m_ui.fileSystemCaseSensitivityChooser->setCurrentIndex(1);
         } else {
+            m_ui.fileSystemCaseSensitivityLabel->hide();
             m_ui.fileSystemCaseSensitivityWidget->hide();
         }
 
         updatePath();
+
+        m_ui.environmentChangesLabel->setElideMode(Qt::ElideRight);
+        m_environmentChanges = CorePlugin::environmentChanges();
+        updateEnvironmentChangesLabel();
+        connect(m_ui.environmentButton, &QPushButton::clicked, [this] {
+            Utils::optional<EnvironmentItems> changes
+                = Utils::EnvironmentDialog::getEnvironmentItems(m_ui.environmentButton,
+                                                                m_environmentChanges);
+            if (!changes)
+                return;
+            m_environmentChanges = *changes;
+            updateEnvironmentChangesLabel();
+            updatePath();
+        });
 
         connect(VcsManager::instance(), &VcsManager::configurationChanged,
                 this, &SystemSettingsWidget::updatePath);
@@ -163,10 +243,13 @@ private:
     void resetTerminal();
     void updateTerminalUi(const Utils::TerminalCommand &term);
     void updatePath();
+    void updateEnvironmentChangesLabel();
+    void updateClearCrashWidgets();
 
-    void variableHelpDialogCreator(const QString &helpText);
+    void showHelpDialog(const QString &title, const QString &helpText);
     Ui::SystemSettings m_ui;
     QPointer<QMessageBox> m_dialog;
+    EnvironmentItems m_environmentChanges;
 };
 
 void SystemSettingsWidget::apply()
@@ -182,7 +265,7 @@ void SystemSettingsWidget::apply()
                                       m_ui.externalFileBrowserEdit->text());
         }
     }
-    PatchTool::setPatchCommand(m_ui.patchChooser->path());
+    PatchTool::setPatchCommand(m_ui.patchChooser->filePath().toString());
     EditorManagerPrivate::setAutoSaveEnabled(m_ui.autoSaveCheckBox->isChecked());
     EditorManagerPrivate::setAutoSaveInterval(m_ui.autoSaveInterval->value());
     EditorManagerPrivate::setAutoSuspendEnabled(m_ui.autoSuspendCheckBox->isChecked());
@@ -191,6 +274,13 @@ void SystemSettingsWidget::apply()
                 m_ui.warnBeforeOpeningBigFiles->isChecked());
     EditorManagerPrivate::setBigFileSizeLimit(m_ui.bigFilesLimitSpinBox->value());
     EditorManagerPrivate::setMaxRecentFiles(m_ui.maxRecentFilesSpinBox->value());
+#ifdef ENABLE_CRASHPAD
+    ICore::settings()->setValue(crashReportingEnabledKey,
+                                m_ui.enableCrashReportingCheckBox->isChecked());
+#endif
+
+    static_cast<Core::Internal::MainWindow *>(ICore::mainWindow())->setAskConfirmationBeforeExit(
+                m_ui.askBeforeExitCheckBox->isChecked());
 
     if (HostOsInfo::isMacHost()) {
         Qt::CaseSensitivity defaultSensitivity
@@ -202,6 +292,8 @@ void SystemSettingsWidget::apply()
         else
             HostOsInfo::setOverrideFileNameCaseSensitivity(selectedSensitivity);
     }
+
+    CorePlugin::setEnvironmentChanges(m_environmentChanges);
 }
 
 void SystemSettingsWidget::resetTerminal()
@@ -231,9 +323,20 @@ void SystemSettingsWidget::updatePath()
     m_ui.patchChooser->setEnvironment(env);
 }
 
-void SystemSettingsWidget::variableHelpDialogCreator(const QString &helpText)
+void SystemSettingsWidget::updateEnvironmentChangesLabel()
+{
+    const QString shortSummary = Utils::EnvironmentItem::toStringList(m_environmentChanges)
+                                     .join("; ");
+    m_ui.environmentChangesLabel->setText(shortSummary.isEmpty() ? tr("No changes to apply.")
+                                                                 : shortSummary);
+}
+
+void SystemSettingsWidget::showHelpDialog(const QString &title, const QString &helpText)
 {
     if (m_dialog) {
+        if (m_dialog->windowTitle() != title)
+            m_dialog->setText(helpText);
+
         if (m_dialog->text() != helpText)
             m_dialog->setText(helpText);
 
@@ -241,20 +344,31 @@ void SystemSettingsWidget::variableHelpDialogCreator(const QString &helpText)
         ICore::raiseWindow(m_dialog);
         return;
     }
-    QMessageBox *mb = new QMessageBox(QMessageBox::Information,
-                                  tr("Variables"),
-                                  helpText,
-                                  QMessageBox::Close,
-                                  this);
+    auto mb = new QMessageBox(QMessageBox::Information, title, helpText, QMessageBox::Close, this);
     mb->setWindowModality(Qt::NonModal);
     m_dialog = mb;
     mb->show();
 }
 
+#ifdef ENABLE_CRASHPAD
+void SystemSettingsWidget::updateClearCrashWidgets()
+{
+    QDir crashReportsDir(ICore::crashReportsPath());
+    crashReportsDir.setFilter(QDir::Files);
+    qint64 size = 0;
+    const QStringList crashFiles = crashReportsDir.entryList();
+    for (QString file : crashFiles)
+        size += QFileInfo(crashReportsDir, file).size();
+
+    m_ui.clearCrashReportsButton->setEnabled(!crashFiles.isEmpty());
+    m_ui.crashReportsSizeText->setText(formatSize(size));
+}
+#endif
+
 void SystemSettingsWidget::showHelpForFileBrowser()
 {
     if (HostOsInfo::isAnyUnixHost() && !HostOsInfo::isMacHost())
-        variableHelpDialogCreator(UnixUtils::fileBrowserHelpText());
+        showHelpDialog(tr("Variables"), UnixUtils::fileBrowserHelpText());
 }
 
 SystemSettings::SystemSettings()

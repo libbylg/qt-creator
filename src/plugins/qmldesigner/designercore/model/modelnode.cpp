@@ -41,11 +41,12 @@
 #include "nodelistproperty.h"
 #include "nodeproperty.h"
 #include <rewriterview.h>
+#include "annotation.h"
 
 #include <utils/algorithm.h>
 
 #include <QHash>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
 
@@ -92,7 +93,24 @@ ModelNode::ModelNode(const ModelNode &modelNode, AbstractView *view)
       m_model(modelNode.model()),
       m_view(view)
 {
+}
 
+ModelNode::ModelNode(ModelNode &&other)
+    : m_internalNode(std::move(other.m_internalNode))
+    , m_model(std::move(other.m_model))
+    , m_view(std::move(other.m_view))
+{
+    other.m_model = {};
+    other.m_view = {};
+}
+
+ModelNode &ModelNode::operator=(ModelNode &&other)
+{
+    ModelNode newNode = std::move(other);
+
+    swap(*this, newNode);
+
+    return *this;
 }
 
 /*! \brief contructs a invalid model node
@@ -102,7 +120,6 @@ ModelNode::ModelNode(const ModelNode &modelNode, AbstractView *view)
 ModelNode::ModelNode():
         m_internalNode(new InternalNode)
 {
-
 }
 
 ModelNode::ModelNode(const ModelNode &other) = default;
@@ -198,7 +215,9 @@ static bool isIdToAvoid(const QString& id)
         "layer",
         "scale",
         "enabled",
-        "anchors"
+        "anchors",
+        "texture",
+        "shaderInfo"
     };
 
     return ids.contains(id);
@@ -206,8 +225,8 @@ static bool isIdToAvoid(const QString& id)
 
 static bool idContainsWrongLetter(const QString& id)
 {
-    static QRegExp idExpr(QStringLiteral("[a-z_][a-zA-Z0-9_]*"));
-    return !idExpr.exactMatch(id);
+    static QRegularExpression idExpr(QStringLiteral("^[a-z_][a-zA-Z0-9_]+$"));
+    return !id.contains(idExpr);
 }
 
 bool ModelNode::isValidId(const QString &id)
@@ -673,35 +692,33 @@ void ModelNode::removeProperty(const PropertyName &name) const
         model()->d->removeProperty(internalNode()->property(name));
 }
 
-
 /*! \brief removes this node from the node tree
 */
-
-static QList<ModelNode> descendantNodes(const ModelNode &parent)
+static QList<ModelNode> descendantNodes(const ModelNode &node)
 {
-    QList<ModelNode> descendants(parent.directSubModelNodes());
-    foreach (const ModelNode &child, parent.directSubModelNodes()) {
+    const QList<ModelNode> children = node.directSubModelNodes();
+    QList<ModelNode> descendants = children;
+    for (const ModelNode &child : children)
         descendants += descendantNodes(child);
-    }
+
     return descendants;
 }
 
 static void removeModelNodeFromSelection(const ModelNode &node)
 {
-    { // remove nodes from the active selection:
-        QList<ModelNode> selectedList = node.view()->selectedModelNodes();
+    // remove nodes from the active selection
+    QList<ModelNode> selectedList = node.view()->selectedModelNodes();
 
-        foreach (const ModelNode &childModelNode, descendantNodes(node))
-            selectedList.removeAll(childModelNode);
-        selectedList.removeAll(node);
+    const QList<ModelNode> descendants = descendantNodes(node);
+    for (const ModelNode &descendantNode : descendants)
+        selectedList.removeAll(descendantNode);
 
-        node.view()->setSelectedModelNodes(selectedList);
-    }
+    selectedList.removeAll(node);
+
+    node.view()->setSelectedModelNodes(selectedList);
 }
 
-
 /*! \brief complete removes this ModelNode from the Model
-
 */
 void ModelNode::destroy()
 {
@@ -782,19 +799,19 @@ The list contains every ModelNode that belongs to one of this ModelNodes
 properties.
 \return a list of all ModelNodes that are direct children
 */
-const QList<ModelNode> ModelNode::directSubModelNodes() const
+QList<ModelNode> ModelNode::directSubModelNodes() const
 {
     return toModelNodeList(internalNode()->allDirectSubNodes(), view());
 }
 
-const QList<ModelNode> ModelNode::directSubModelNodesOfType(const TypeName &typeName) const
+QList<ModelNode> ModelNode::directSubModelNodesOfType(const TypeName &typeName) const
 {
     return Utils::filtered(directSubModelNodes(), [typeName](const ModelNode &node){
         return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
     });
 }
 
-const QList<ModelNode> ModelNode::subModelNodesOfType(const TypeName &typeName) const
+QList<ModelNode> ModelNode::subModelNodesOfType(const TypeName &typeName) const
 {
     return Utils::filtered(allSubModelNodes(), [typeName](const ModelNode &node){
         return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
@@ -808,12 +825,12 @@ All children in this list will be implicitly removed if this ModelNode is destro
 \return a list of all ModelNodes that are direct or indirect children
 */
 
-const QList<ModelNode> ModelNode::allSubModelNodes() const
+QList<ModelNode> ModelNode::allSubModelNodes() const
 {
     return toModelNodeList(internalNode()->allSubNodes(), view());
 }
 
-const QList<ModelNode> ModelNode::allSubModelNodesAndThisNode() const
+QList<ModelNode> ModelNode::allSubModelNodesAndThisNode() const
 {
     QList<ModelNode> modelNodeList;
     modelNodeList.append(*this);
@@ -943,6 +960,9 @@ bool ModelNode::hasNodeListProperty(const PropertyName &name) const
 
 static bool recursiveAncestor(const ModelNode &possibleAncestor, const ModelNode &node)
 {
+    if (!node.isValid())
+        return false;
+
     if (node.hasParentProperty()) {
         if (node.parentProperty().parentModelNode() == possibleAncestor)
            return true;
@@ -1016,7 +1036,7 @@ QVariant ModelNode::toVariant() const
     return QVariant::fromValue(*this);
 }
 
-const QVariant ModelNode::auxiliaryData(const PropertyName &name) const
+QVariant ModelNode::auxiliaryData(const PropertyName &name) const
 {
     if (!isValid())
         throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
@@ -1044,12 +1064,207 @@ bool ModelNode::hasAuxiliaryData(const PropertyName &name) const
     return internalNode()->hasAuxiliaryData(name);
 }
 
-QHash<PropertyName, QVariant> ModelNode::auxiliaryData() const
+const QHash<PropertyName, QVariant> &ModelNode::auxiliaryData() const
 {
     if (!isValid())
         throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);
 
     return internalNode()->auxiliaryData();
+}
+
+QString ModelNode::customId() const
+{
+    QString result;
+    if (hasCustomId())
+        result = auxiliaryData(customIdProperty).value<QString>();
+
+    return result;
+}
+
+bool ModelNode::hasCustomId() const
+{
+    return hasAuxiliaryData(customIdProperty);
+}
+
+void ModelNode::setCustomId(const QString &str)
+{
+    setAuxiliaryData(customIdProperty, QVariant::fromValue<QString>(str));
+}
+
+void ModelNode::removeCustomId()
+{
+    if (hasCustomId()) {
+        removeAuxiliaryData(customIdProperty);
+    }
+}
+
+QVector<Comment> ModelNode::comments() const
+{
+    return annotation().comments();
+}
+
+bool ModelNode::hasComments() const
+{
+    return annotation().hasComments();
+}
+
+void ModelNode::setComments(const QVector<Comment> &coms)
+{
+    Annotation anno = annotation();
+    anno.setComments(coms);
+
+    setAnnotation(anno);
+}
+
+void ModelNode::addComment(const Comment &com)
+{
+    Annotation anno = annotation();
+    anno.addComment(com);
+
+    setAnnotation(anno);
+}
+
+bool ModelNode::updateComment(const Comment &com, int position)
+{
+    bool result = false;
+    if (hasAnnotation()) {
+        Annotation anno = annotation();
+
+        if (anno.updateComment(com, position)) {
+            setAnnotation(anno);
+            result = true;
+        }
+    }
+
+    return result;
+}
+
+Annotation ModelNode::annotation() const
+{
+    Annotation result;
+
+    if (hasAnnotation())
+        result.fromQString(auxiliaryData(annotationProperty).value<QString>());
+
+    return result;
+}
+
+bool ModelNode::hasAnnotation() const
+{
+    return hasAuxiliaryData(annotationProperty);
+}
+
+void ModelNode::setAnnotation(const Annotation &annotation)
+{
+    setAuxiliaryData(annotationProperty, QVariant::fromValue<QString>(annotation.toQString()));
+}
+
+void ModelNode::removeAnnotation()
+{
+    if (hasAnnotation()) {
+        removeAuxiliaryData(annotationProperty);
+    }
+}
+
+Annotation ModelNode::globalAnnotation() const
+{
+    Annotation result;
+    ModelNode root = view()->rootModelNode();
+
+    if (hasGlobalAnnotation())
+        result.fromQString(root.auxiliaryData(globalAnnotationProperty).value<QString>());
+
+    return result;
+}
+
+bool ModelNode::hasGlobalAnnotation() const
+{
+    return view()->rootModelNode().hasAuxiliaryData(globalAnnotationProperty);
+}
+
+void ModelNode::setGlobalAnnotation(const Annotation &annotation)
+{
+    view()->rootModelNode().setAuxiliaryData(globalAnnotationProperty,
+                                             QVariant::fromValue<QString>(annotation.toQString()));
+}
+
+void ModelNode::removeGlobalAnnotation()
+{
+    if (hasGlobalAnnotation()) {
+        view()->rootModelNode().removeAuxiliaryData(globalAnnotationProperty);
+    }
+}
+
+GlobalAnnotationStatus ModelNode::globalStatus() const
+{
+    GlobalAnnotationStatus result;
+    ModelNode root = view()->rootModelNode();
+
+    if (hasGlobalAnnotation()) {
+        result.fromQString(root.auxiliaryData(globalAnnotationStatus).value<QString>());
+    }
+
+    return result;
+}
+
+bool ModelNode::hasGlobalStatus() const
+{
+    return view()->rootModelNode().hasAuxiliaryData(globalAnnotationStatus);
+}
+
+void ModelNode::setGlobalStatus(const GlobalAnnotationStatus &status)
+{
+    view()->rootModelNode().setAuxiliaryData(globalAnnotationStatus,
+                                             QVariant::fromValue<QString>(status.toQString()));
+}
+
+void ModelNode::removeGlobalStatus()
+{
+    if (hasGlobalStatus()) {
+        view()->rootModelNode().removeAuxiliaryData(globalAnnotationStatus);
+    }
+}
+
+bool ModelNode::locked() const
+{
+    if (hasLocked())
+        return auxiliaryData(lockedProperty).toBool();
+
+    return false;
+}
+
+bool ModelNode::hasLocked() const
+{
+    return hasAuxiliaryData(lockedProperty);
+}
+
+void ModelNode::setLocked(bool value)
+{
+    if (value) {
+        setAuxiliaryData(lockedProperty, true);
+        // Remove newly locked node and all its descendants from potential selection
+        for (ModelNode node : allSubModelNodesAndThisNode()) {
+            node.deselectNode();
+            node.removeAuxiliaryData("timeline_expanded");
+            node.removeAuxiliaryData("transition_expanded");
+        }
+    } else {
+        removeAuxiliaryData(lockedProperty);
+    }
+}
+
+bool ModelNode::isThisOrAncestorLocked(const ModelNode &node)
+{
+    if (!node.isValid())
+        return false;
+
+    if (node.locked())
+        return true;
+
+    if (node.isRootNode() || !node.hasParentProperty())
+        return false;
+
+    return isThisOrAncestorLocked(node.parentProperty().parentModelNode());
 }
 
 void  ModelNode::setScriptFunctions(const QStringList &scriptFunctionList)

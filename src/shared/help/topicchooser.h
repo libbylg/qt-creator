@@ -42,7 +42,7 @@ class TopicChooser : public QDialog
 
 public:
     TopicChooser(QWidget *parent, const QString &keyword,
-        const QMap<QString, QUrl> &links);
+        const QMultiMap<QString, QUrl> &links);
 
     QUrl link() const;
 
@@ -50,7 +50,7 @@ private:
     void acceptDialog();
     void setFilter(const QString &pattern);
     void activated(const QModelIndex &index);
-    bool eventFilter(QObject *object, QEvent *event);
+    bool eventFilter(QObject *object, QEvent *event) override;
 
     Ui::TopicChooser ui;
     QList<QUrl> m_links;

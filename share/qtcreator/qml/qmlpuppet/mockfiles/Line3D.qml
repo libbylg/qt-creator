@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import LineGeometry 1.0
 
 Node {
@@ -33,7 +33,7 @@ Node {
     property alias startPos: lineGeometry.startPos
     property alias endPos: lineGeometry.endPos
     property alias name: lineGeometry.name // Name must be unique for each line
-    property alias color: lineMat.emissiveColor
+    property alias color: lineMat.diffuseColor
 
     Model {
         geometry: LineGeometry {
@@ -43,7 +43,7 @@ Node {
             DefaultMaterial {
                 id: lineMat
                 lighting: DefaultMaterial.NoLighting
-                cullingMode: Material.DisableCulling
+                cullMode: Material.NoCulling
             }
         ]
     }

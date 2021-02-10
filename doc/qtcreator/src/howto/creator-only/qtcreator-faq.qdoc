@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -24,7 +24,6 @@
 ****************************************************************************/
 
 /*!
-    \contentspage index.html
     \previouspage creator-help.html
     \page creator-faq.html
     \nextpage creator-how-tos.html
@@ -47,7 +46,7 @@
     For more information about where the files are located on each supported
     platform, see \l {Location of Settings Files}.
 
-    \b {\QC comes with MinGW, should I use this version with Qt?}
+    \b {\QC comes with \MinGW, should I use this version with Qt?}
 
     Use the version that was built against the Qt version.
 
@@ -55,9 +54,9 @@
     compiler. What should I do?}
 
     Make sure that the application is in your system PATH when starting \QC.
-    Also select \uicontrol {Tools > Options} to check the settings specified
-    for the application. Many plugins specify either the path to the tool they
-    need or the environment they run in.
+    Also select \uicontrol Tools > \uicontrol Options to check the settings
+    specified for the application. Many plugins specify either the path to the
+    tool they need or the environment they run in.
 
     This is especially relevant for the \macos where \c {/usr/local/bin} might
     not be in the path when \QC is started.
@@ -66,14 +65,15 @@
 
     \QC has been localized into several languages. If the system
     language is one of the supported languages, it is automatically selected.
-    To change the language, select \uicontrol {Tools > Options > Environment} and
-    select a language in the \uicontrol Language field. The change takes effect after
-    you restart \QC.
+    To change the language, select \uicontrol Tools > \uicontrol Options >
+    \uicontrol Environment and select a language in the \uicontrol Language
+    field. Select \uicontrol {Restart Now} to restart \QC and have the change
+    take effect.
 
     \b {Has a reported issue been addressed?}
 
     You can look up any issue in the
-    \l{https://bugreports.qt.io/}{Qt bug tracker}.
+    \l{https://bugreports.qt.io/}{Qt Project Bug Tracker}.
 
     \include widgets/creator-faq-qtdesigner.qdocinc qt designer faq
 
@@ -172,8 +172,9 @@
     \uicontrol Help mode.
 
     To view the documentation that is available and to add documentation,
-    select \uicontrol {Tools > Options > Help > Documentation}. For more
-    information, see \l{Adding External Documentation}.
+    select \uicontrol Tools > \uicontrol Options > \uicontrol Help >
+    \uicontrol Documentation. For more information, see
+    \l{Adding External Documentation}.
 
     \section1 Debugger Questions
 
@@ -195,10 +196,11 @@
     \b {How do I generate a core file in \QC?}
 
     To trigger the GDB command that generates a core file while debugging,
-    select \uicontrol {Window > Views > Debugger Log}. In the \uicontrol Command field,
-    type \c gcore and press \key Enter. The core file is created in the
-    current working directory. You can specify another location for the file,
-    including a relative or absolute path, as an argument of the command.
+    select \uicontrol View > \uicontrol Views > \uicontrol {Debugger Log}.
+    In the \uicontrol Command field, type \c gcore and press \key Enter. The
+    core file is created in the current working directory. You can specify
+    another location for the file, including a relative or absolute path, as an
+    argument of the command.
 
     \omit
     To generate a temporary core file, select \uicontrol {Create Snapshot} in the
@@ -210,7 +212,7 @@
 
     \b {How can I make use of my multi-core CPU with \QC?}
 
-    On Linux and \macos, go to \uicontrol Project mode, select your configuration
+    On Linux and \macos, go to \uicontrol Projects mode, select your configuration
     in the \uicontrol {Build Settings}, locate the \uicontrol {Build Steps}, and add the
     following value, where \c{<num>} is the amount of cores in your CPU:
     \c{-j <num>}
@@ -272,8 +274,8 @@
     type of application, \c qDebug() and related functions use standard output
     and error output.
 
-    We recommend that you select \uicontrol {Projects > Run Settings > Run in
-    terminal} for console applications.
+    We recommend that you select \uicontrol Projects > \uicontrol {Run Settings} >
+    \uicontrol {Run in terminal} for console applications.
 
     For GUI applications, \c qDebug() and related functions use the Windows API
     function \c OutputDebugString(). The output is displayed in the

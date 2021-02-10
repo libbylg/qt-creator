@@ -31,9 +31,12 @@
 #include <QMutex>
 #include <QObject>
 #include <QUrl>
+#ifndef HELP_NEW_FILTER_ENGINE
 #include <QStandardItemModel>
-
 #include <functional>
+#else
+QT_FORWARD_DECLARE_CLASS(QHelpFilterEngine)
+#endif
 
 QT_FORWARD_DECLARE_CLASS(QHelpEngine)
 
@@ -80,6 +83,9 @@ public:
     static QFont fallbackFont();
     static void setFallbackFont(const QFont &font);
 
+    static int fontZoom();
+    static int setFontZoom(int percentage);
+
     static StartOption startOption();
     static void setStartOption(StartOption option);
 
@@ -94,9 +100,6 @@ public:
 
     static QStringList lastShownPages();
     static void setLastShownPages(const QStringList &pages);
-
-    static QList<float> lastShownPagesZoom();
-    static void setLastShownPagesZoom(const QList<qreal> &zoom);
 
     static int lastSelectedTab();
     static void setLastSelectedTab(int index);
@@ -116,18 +119,25 @@ public:
     static QByteArray loadErrorMessage(const QUrl &url, const QString &errorString);
     Q_INVOKABLE static Help::Internal::LocalHelpManager::HelpData helpData(const QUrl &url);
 
+#ifndef HELP_NEW_FILTER_ENGINE
     static QAbstractItemModel *filterModel();
     static void setFilterIndex(int index);
     static int filterIndex();
 
     static void updateFilterModel();
+#else
+    static QHelpFilterEngine *filterEngine();
+#endif
 
     static bool canOpenOnlineHelp(const QUrl &url);
     static bool openOnlineHelp(const QUrl &url);
 
 signals:
+#ifndef HELP_NEW_FILTER_ENGINE
     void filterIndexChanged(int index);
+#endif
     void fallbackFontChanged(const QFont &font);
+    void fontZoomChanged(int percentage);
     void returnOnCloseChanged();
     void scrollWheelZoomingEnabledChanged(bool enabled);
     void contextHelpOptionChanged(Core::HelpManager::HelpViewerLocation option);
@@ -136,9 +146,11 @@ private:
     static bool m_guiNeedsSetup;
     static bool m_needsCollectionFile;
 
+#ifndef HELP_NEW_FILTER_ENGINE
     static QStandardItemModel *m_filterModel;
     static QString m_currentFilter;
     static int m_currentFilterIndex;
+#endif
 
     static QMutex m_guiMutex;
     static QHelpEngine *m_guiEngine;

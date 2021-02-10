@@ -84,6 +84,18 @@ void BackendReceiver::addExpectedCompletionsMessage(
     m_assistProcessorsTable.insert(ticket, processor);
 }
 
+void BackendReceiver::cancelProcessor(TextEditor::IAssistProcessor *processor)
+{
+    for (auto it = m_assistProcessorsTable.cbegin(), end = m_assistProcessorsTable.cend();
+            it != end; ++it)
+    {
+        if (it.value() == processor) {
+            m_assistProcessorsTable.erase(it);
+            return;
+        }
+    }
+}
+
 void BackendReceiver::deleteProcessorsOfEditorWidget(TextEditor::TextEditorWidget *textEditorWidget)
 {
     QList<quint64> toRemove;
@@ -147,7 +159,8 @@ bool BackendReceiver::isExpectingCompletionsMessage() const
 void BackendReceiver::reset()
 {
     // Clean up waiting assist processors
-    qDeleteAll(m_assistProcessorsTable.begin(), m_assistProcessorsTable.end());
+    for (ClangCompletionAssistProcessor *processor : m_assistProcessorsTable)
+        processor->setAsyncProposalAvailable(nullptr);
     m_assistProcessorsTable.clear();
 
     // Clean up futures for references; TODO: Remove duplication
@@ -187,8 +200,7 @@ void BackendReceiver::completions(const CompletionsMessage &message)
                  << "items";
 
     const quint64 ticket = message.ticketNumber;
-    QScopedPointer<ClangCompletionAssistProcessor> processor(m_assistProcessorsTable.take(ticket));
-    if (processor)
+    if (ClangCompletionAssistProcessor *processor = m_assistProcessorsTable.take(ticket))
         processor->handleAvailableCompletions(message.codeCompletions);
 }
 
@@ -325,7 +337,7 @@ static CppTools::ToolTipInfo toToolTipInfo(const ToolTipMessage &message)
     info.qDocIdCandidates = toStringList(backendInfo.qdocIdCandidates);
     info.qDocMark = backendInfo.qdocMark;
     info.qDocCategory = toHelpItemCategory(backendInfo.qdocCategory);
-
+    info.value = backendInfo.value;
     info.sizeInBytes = backendInfo.sizeInBytes;
 
     return info;

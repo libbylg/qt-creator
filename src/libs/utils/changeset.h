@@ -92,7 +92,7 @@ public:
     bool copy(int start, int end, int to);
     bool insert(int pos, const QString &text);
 
-    bool hadErrors();
+    bool hadErrors() const;
 
     void apply(QString *s);
     void apply(QTextCursor *textCursor);
@@ -120,5 +120,10 @@ private:
     QList<EditOp> m_operationList;
     bool m_error;
 };
+
+inline bool operator<(const ChangeSet::Range &r1, const ChangeSet::Range &r2)
+{
+    return r1.start < r2.start;
+}
 
 } // namespace Utils

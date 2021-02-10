@@ -36,6 +36,7 @@
 #include <coreplugin/icore.h>
 #include <cppeditor/cppeditorconstants.h>
 #include <texteditor/codestyleeditor.h>
+#include <texteditor/fontsettings.h>
 #include <texteditor/icodestylepreferencesfactory.h>
 #include <texteditor/textdocument.h>
 #include <texteditor/displaysettings.h>
@@ -157,8 +158,6 @@ CppCodeStylePreferencesWidget::CppCodeStylePreferencesWidget(QWidget *parent)
             this, &CppCodeStylePreferencesWidget::slotCodeStyleSettingsChanged);
     connect(m_ui->bindStarToRightSpecifier, &QCheckBox::toggled,
             this, &CppCodeStylePreferencesWidget::slotCodeStyleSettingsChanged);
-    connect(m_ui->preferGetterNamesWithoutGet, &QCheckBox::toggled,
-            this, &CppCodeStylePreferencesWidget::slotCodeStyleSettingsChanged);
 
     m_ui->categoryTab->setCurrentIndex(0);
 }
@@ -216,7 +215,6 @@ CppCodeStyleSettings CppCodeStylePreferencesWidget::cppCodeStyleSettings() const
     set.bindStarToRightSpecifier = m_ui->bindStarToRightSpecifier->isChecked();
     set.extraPaddingForConditionsIfConfusingAlign = m_ui->extraPaddingConditions->isChecked();
     set.alignAssignments = m_ui->alignAssignments->isChecked();
-    set.preferGetterNameWithoutGetPrefix = m_ui->preferGetterNamesWithoutGet->isChecked();
 
     return set;
 }
@@ -250,7 +248,6 @@ void CppCodeStylePreferencesWidget::setCodeStyleSettings(const CppCodeStyleSetti
     m_ui->bindStarToRightSpecifier->setChecked(s.bindStarToRightSpecifier);
     m_ui->extraPaddingConditions->setChecked(s.extraPaddingForConditionsIfConfusingAlign);
     m_ui->alignAssignments->setChecked(s.alignAssignments);
-    m_ui->preferGetterNamesWithoutGet->setChecked(s.preferGetterNameWithoutGetPrefix);
     m_blockUpdates = wasBlocked;
     if (preview)
         updatePreview();

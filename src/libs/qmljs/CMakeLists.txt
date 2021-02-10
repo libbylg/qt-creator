@@ -1,13 +1,13 @@
 add_qtc_library(QmlJS
-  DEPENDS ExtensionSystem Utils
-  PUBLIC_DEPENDS CPlusPlus Qt5::Widgets Qt5::Xml LanguageUtils
+  DEPENDS ExtensionSystem Utils Qt5::Xml
+  PUBLIC_DEPENDS CPlusPlus Qt5::Widgets LanguageUtils
   SOURCES
     jsoncheck.cpp jsoncheck.h
     parser/qmldirparser.cpp parser/qmldirparser_p.h
-    parser/qmlerror.cpp parser/qmlerror.h
     parser/qmljsast.cpp parser/qmljsast_p.h
     parser/qmljsastfwd_p.h
     parser/qmljsastvisitor.cpp parser/qmljsastvisitor_p.h
+    parser/qmljsdiagnosticmessage_p.h
     parser/qmljsengine_p.cpp parser/qmljsengine_p.h
     parser/qmljsglobal_p.h
     parser/qmljsgrammar.cpp parser/qmljsgrammar_p.h
@@ -15,6 +15,7 @@ add_qtc_library(QmlJS
     parser/qmljslexer.cpp parser/qmljslexer_p.h
     parser/qmljsmemorypool_p.h
     parser/qmljsparser.cpp parser/qmljsparser_p.h
+    parser/qmljssourcelocation_p.h
     persistenttrie.cpp persistenttrie.h
     qmljs_global.h
     qmljsbind.cpp qmljsbind.h

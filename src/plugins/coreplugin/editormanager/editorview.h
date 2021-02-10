@@ -25,9 +25,8 @@
 
 #pragma once
 
-#include "../id.h"
-
 #include <utils/dropsupport.h>
+#include <utils/id.h>
 
 #include <QMap>
 #include <QList>
@@ -50,10 +49,13 @@ class QStackedWidget;
 class QToolButton;
 QT_END_NAMESPACE
 
+namespace Utils {
+class InfoBarDisplay;
+}
+
 namespace Core {
 class IDocument;
 class IEditor;
-class InfoBarDisplay;
 class EditorToolBar;
 
 namespace Internal {
@@ -61,7 +63,7 @@ namespace Internal {
 struct EditLocation {
     QPointer<IDocument> document;
     QString fileName;
-    Id id;
+    Utils::Id id;
     QVariant state;
 };
 
@@ -76,8 +78,8 @@ public:
     ~EditorView() override;
 
     SplitterOrView *parentSplitterOrView() const;
-    EditorView *findNextView();
-    EditorView *findPreviousView();
+    EditorView *findNextView() const;
+    EditorView *findPreviousView() const;
 
     int editorCount() const;
     void addEditor(IEditor *editor);
@@ -121,7 +123,7 @@ private:
 
     void setParentSplitterOrView(SplitterOrView *splitterOrView);
 
-    void fillListContextMenu(QMenu *menu);
+    void fillListContextMenu(QMenu *menu) const;
     void updateNavigatorActions();
     void updateToolBar(IEditor *editor);
     void checkProjectLoaded(IEditor *editor);
@@ -130,7 +132,7 @@ private:
     EditorToolBar *m_toolBar;
 
     QStackedWidget *m_container;
-    InfoBarDisplay *m_infoBarDisplay;
+    Utils::InfoBarDisplay *m_infoBarDisplay;
     QString m_statusWidgetId;
     QFrame *m_statusHLine;
     QFrame *m_statusWidget;

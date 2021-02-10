@@ -50,7 +50,6 @@
 
 #include <QDir>
 #include <QList>
-#include <QStringRef>
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
 
@@ -63,8 +62,8 @@ namespace QmlJSEditor {
 namespace {
 
     QString textAt(const Document::Ptr doc,
-                   const AST::SourceLocation &from,
-                   const AST::SourceLocation &to)
+                   const SourceLocation &from,
+                   const SourceLocation &to)
     {
         return doc->source().mid(from.offset, to.end() - from.begin());
     }
@@ -173,7 +172,7 @@ bool QmlJSHoverHandler::setQmlTypeHelp(const ScopeChain &scopeChain, const Docum
     QRegularExpressionMatch m = version.match(moduleName);
     if (m.hasMatch()) {
         QMap<QString, QUrl> filteredUrlMap;
-        QStringRef maj = m.capturedRef(2);
+        const QString maj = m.captured(2);
         for (const HelpItem::Link &link : links) {
             QString urlModuleName = link.second.path().split('/')[1];
             if (urlModuleName.contains(maj))

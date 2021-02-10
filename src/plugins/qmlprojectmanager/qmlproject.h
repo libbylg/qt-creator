@@ -62,7 +62,7 @@ public:
 
     QmlProject *qmlProject() const;
 
-    QVariant additionalData(Core::Id id) const override;
+    QVariant additionalData(Utils::Id id) const override;
 
     enum RefreshOption {
         ProjectFile   = 0x01,
@@ -76,6 +76,7 @@ public:
 
     Utils::FilePath canonicalProjectDir() const;
     QString mainFile() const;
+    bool qtForMCUs() const;
     void setMainFile(const QString &mainFilePath);
     Utils::FilePath targetDirectory() const;
     Utils::FilePath targetFile(const Utils::FilePath &sourceFile) const;
@@ -103,6 +104,27 @@ public:
 
     QPointer<QmlProjectItem> m_projectItem;
     Utils::FilePath m_canonicalProjectDir;
+
+private:
+    bool m_blockFilesUpdate = false;
+    friend class FilesUpdateBlocker;
+};
+
+class FilesUpdateBlocker {
+public:
+    FilesUpdateBlocker(QmlBuildSystem* bs): m_bs(bs) {
+        if (m_bs)
+            m_bs->m_blockFilesUpdate = true;
+    }
+
+    ~FilesUpdateBlocker() {
+        if (m_bs) {
+            m_bs->m_blockFilesUpdate = false;
+            m_bs->refresh(QmlBuildSystem::Everything);
+        }
+    }
+private:
+    QPointer<QmlBuildSystem> m_bs;
 };
 
 class QMLPROJECTMANAGER_EXPORT QmlProject : public ProjectExplorer::Project

@@ -28,14 +28,15 @@
 
 #include "selectionboxgeometry.h"
 
+#include <QtQuick3D/qquick3dobject.h>
 #include <QtQuick3D/private/qquick3dorthographiccamera_p.h>
 #include <QtQuick3D/private/qquick3dperspectivecamera_p.h>
-#include <QtQuick3D/private/qquick3dobject_p_p.h>
 #include <QtQuick3D/private/qquick3dcamera_p.h>
 #include <QtQuick3D/private/qquick3dnode_p.h>
 #include <QtQuick3D/private/qquick3dmodel_p.h>
 #include <QtQuick3D/private/qquick3dviewport_p.h>
 #include <QtQuick3D/private/qquick3ddefaultmaterial_p.h>
+#include <QtQuick3D/private/qquick3dscenemanager_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendercontextcore_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrenderbuffermanager_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendermodel_p.h>
@@ -43,12 +44,13 @@
 #include <QtQuick/qquickwindow.h>
 #include <QtQuick/qquickitem.h>
 #include <QtCore/qmath.h>
-#include <QtGui/qscreen.h>
 
 namespace QmlDesigner {
 namespace Internal {
 
-const QString globalStateId = QStringLiteral("@GTS"); // global tool state
+const QString _globalStateId = QStringLiteral("@GTS"); // global tool state
+const QString _lastSceneIdKey = QStringLiteral("lastSceneId");
+const QString _rootSizeKey = QStringLiteral("rootSize");
 
 GeneralHelper::GeneralHelper()
     : QObject()
@@ -65,8 +67,9 @@ GeneralHelper::GeneralHelper()
 
 void GeneralHelper::requestOverlayUpdate()
 {
-    if (!m_overlayUpdateTimer.isActive())
-        m_overlayUpdateTimer.start();
+    // Restart the timer on each request in attempt to ensure there's one frame between the last
+    // request and actual update.
+    m_overlayUpdateTimer.start();
 }
 
 QString GeneralHelper::generateUniqueName(const QString &nameRoot)
@@ -85,17 +88,17 @@ void GeneralHelper::orbitCamera(QQuick3DCamera *camera, const QVector3D &startRo
     if (dragVector.length() < 0.001f)
         return;
 
-    camera->setRotation(startRotation);
-    QVector3D newRotation(dragVector.y(), dragVector.x(), 0.f);
+    camera->setEulerRotation(startRotation);
+    QVector3D newRotation(-dragVector.y(), -dragVector.x(), 0.f);
     newRotation *= 0.5f; // Emprically determined multiplier for nice drag
     newRotation += startRotation;
 
-    camera->setRotation(newRotation);
+    camera->setEulerRotation(newRotation);
 
     const QVector3D oldLookVector = camera->position() - lookAtPoint;
     QMatrix4x4 m = camera->sceneTransform();
     const float *dataPtr(m.data());
-    QVector3D newLookVector(-dataPtr[8], -dataPtr[9], -dataPtr[10]);
+    QVector3D newLookVector(dataPtr[8], dataPtr[9], dataPtr[10]);
     newLookVector.normalize();
     newLookVector *= oldLookVector.length();
 
@@ -149,7 +152,7 @@ float GeneralHelper::zoomCamera(QQuick3DCamera *camera, float distance, float de
 // Return value contains new lookAt point (xyz) and zoom factor (w)
 QVector4D GeneralHelper::focusObjectToCamera(QQuick3DCamera *camera, float defaultLookAtDistance,
                                              QQuick3DNode *targetObject, QQuick3DViewport *viewPort,
-                                             float oldZoom, bool updateZoom)
+                                             float oldZoom, bool updateZoom, bool closeUp)
 {
     if (!camera)
         return QVector4D(0.f, 0.f, 0.f, 1.f);
@@ -164,7 +167,12 @@ QVector4D GeneralHelper::focusObjectToCamera(QQuick3DCamera *camera, float defau
         if (auto renderModel = static_cast<QSSGRenderModel *>(targetPriv->spatialNode)) {
             QWindow *window = static_cast<QWindow *>(viewPort->window());
             if (window) {
-                auto context = QSSGRenderContextInterface::getRenderContextInterface(quintptr(window));
+                QSSGRef<QSSGRenderContextInterface> context;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+                context = QSSGRenderContextInterface::getRenderContextInterface(quintptr(window));
+#else
+                context = targetPriv->sceneManager->rci;
+#endif
                 if (!context.isNull()) {
                     QSSGBounds3 bounds;
                     auto geometry = qobject_cast<SelectionBoxGeometry *>(modelNode->geometry());
@@ -187,7 +195,6 @@ QVector4D GeneralHelper::focusObjectToCamera(QQuick3DCamera *camera, float defau
 
                     // Adjust lookAt to look directly at the center of the object bounds
                     lookAt = renderModel->globalTransform.map(center);
-                    lookAt.setZ(-lookAt.z()); // Render node transforms have inverted z
                 }
             }
         }
@@ -196,16 +203,23 @@ QVector4D GeneralHelper::focusObjectToCamera(QQuick3DCamera *camera, float defau
     // Reset camera position to default zoom
     QMatrix4x4 m = camera->sceneTransform();
     const float *dataPtr(m.data());
-    QVector3D newLookVector(-dataPtr[8], -dataPtr[9], -dataPtr[10]);
+    QVector3D newLookVector(dataPtr[8], dataPtr[9], dataPtr[10]);
     newLookVector.normalize();
     newLookVector *= defaultLookAtDistance;
 
     camera->setPosition(lookAt + newLookVector);
 
-    float newZoomFactor = updateZoom ? qBound(.01f, float(maxExtent / 700.), 100.f) : oldZoom;
+    qreal divisor = closeUp ? 900. : 725.;
+
+    float newZoomFactor = updateZoom ? qBound(.01f, float(maxExtent / divisor), 100.f) : oldZoom;
     float cameraZoomFactor = zoomCamera(camera, 0, defaultLookAtDistance, lookAt, newZoomFactor, false);
 
     return QVector4D(lookAt, cameraZoomFactor);
+}
+
+bool GeneralHelper::fuzzyCompare(double a, double b)
+{
+    return qFuzzyCompare(a, b);
 }
 
 void GeneralHelper::delayedPropertySet(QObject *obj, int delay, const QString &property,
@@ -228,6 +242,40 @@ QQuick3DNode *GeneralHelper::resolvePick(QQuick3DNode *pickNode)
         }
     }
     return pickNode;
+}
+
+void GeneralHelper::registerGizmoTarget(QQuick3DNode *node)
+{
+    if (!m_gizmoTargets.contains(node)) {
+        m_gizmoTargets.insert(node);
+        node->installEventFilter(this);
+    }
+}
+
+void GeneralHelper::unregisterGizmoTarget(QQuick3DNode *node)
+{
+    if (m_gizmoTargets.contains(node)) {
+        m_gizmoTargets.remove(node);
+        node->removeEventFilter(this);
+    }
+}
+
+bool GeneralHelper::isLocked(QQuick3DNode *node)
+{
+    if (node) {
+        QVariant lockValue = node->property("_edit3dLocked");
+        return lockValue.isValid() && lockValue.toBool();
+    }
+    return false;
+}
+
+bool GeneralHelper::isHidden(QQuick3DNode *node)
+{
+    if (node) {
+        QVariant hideValue = node->property("_edit3dHidden");
+        return hideValue.isValid() && hideValue.toBool();
+    }
+    return false;
 }
 
 void GeneralHelper::storeToolState(const QString &sceneId, const QString &tool, const QVariant &state,
@@ -260,56 +308,6 @@ void GeneralHelper::initToolStates(const QString &sceneId, const QVariantMap &to
     m_toolStates[sceneId] = toolStates;
 }
 
-void GeneralHelper::storeWindowState(QQuickWindow *w)
-{
-    QVariantMap windowState;
-    const QRect geometry = w->geometry();
-    const bool maximized = w->windowState() == Qt::WindowMaximized;
-    windowState.insert("maximized", maximized);
-    windowState.insert("geometry", geometry);
-
-    storeToolState(globalStateId, "windowState", windowState, 500);
-}
-
-void GeneralHelper::restoreWindowState(QQuickWindow *w)
-{
-    if (m_toolStates.contains(globalStateId)) {
-        const QVariantMap &globalStateMap = m_toolStates[globalStateId];
-        const QString stateKey = QStringLiteral("windowState");
-        if (globalStateMap.contains(stateKey)) {
-            QVariantMap windowState = globalStateMap[stateKey].value<QVariantMap>();
-
-            doRestoreWindowState(w, windowState);
-
-            // If the mouse cursor at puppet launch time is in a different screen than the one where the
-            // view geometry was saved on, the initial position and size can be incorrect, but if
-            // we reset the geometry again asynchronously, it should end up with correct geometry.
-            QTimer::singleShot(0, [this, w, windowState]() {
-                doRestoreWindowState(w, windowState);
-
-                QTimer::singleShot(0, [w]() {
-                    // Make sure that the window is at least partially visible on the screen
-                    QRect geo = w->geometry();
-                    QRect sRect = w->screen()->geometry();
-                    if (geo.left() > sRect.right() - 150)
-                        geo.moveRight(sRect.right());
-                    if (geo.right() < sRect.left() + 150)
-                        geo.moveLeft(sRect.left());
-                    if (geo.top() > sRect.bottom() - 150)
-                        geo.moveBottom(sRect.bottom());
-                    if (geo.bottom() < sRect.top() + 150)
-                        geo.moveTop(sRect.top());
-                    if (geo.width() > sRect.width())
-                        geo.setWidth(sRect.width());
-                    if (geo.height() > sRect.height())
-                        geo.setHeight(sRect.height());
-                    w->setGeometry(geo);
-                });
-            });
-        }
-    }
-}
-
 void GeneralHelper::enableItemUpdate(QQuickItem *item, bool enable)
 {
     if (item)
@@ -324,21 +322,29 @@ QVariantMap GeneralHelper::getToolStates(const QString &sceneId)
     return {};
 }
 
-void GeneralHelper::doRestoreWindowState(QQuickWindow *w, const QVariantMap &windowState)
+QString GeneralHelper::globalStateId() const
 {
-    const QString geoKey = QStringLiteral("geometry");
-    if (windowState.contains(geoKey)) {
-        bool maximized = false;
-        const QString maxKey = QStringLiteral("maximized");
-        if (windowState.contains(maxKey))
-            maximized = windowState[maxKey].toBool();
+    return _globalStateId;
+}
 
-        QRect rect = windowState[geoKey].value<QRect>();
+QString GeneralHelper::lastSceneIdKey() const
+{
+    return _lastSceneIdKey;
+}
 
-        w->setGeometry(rect);
-        if (maximized)
-            w->showMaximized();
-    }
+QString GeneralHelper::rootSizeKey() const
+{
+    return _rootSizeKey;
+}
+
+double GeneralHelper::brightnessScaler() const
+{
+    // Light brightness was rescaled in Qt6 from 100 -> 1.
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    return 100.;
+#else
+    return 1.;
+#endif
 }
 
 bool GeneralHelper::isMacOS() const
@@ -348,6 +354,21 @@ bool GeneralHelper::isMacOS() const
 #else
     return false;
 #endif
+}
+
+bool GeneralHelper::eventFilter(QObject *obj, QEvent *event)
+{
+    if (event->type() == QEvent::DynamicPropertyChange) {
+        auto node = qobject_cast<QQuick3DNode *>(obj);
+        if (m_gizmoTargets.contains(node)) {
+            auto de = static_cast<QDynamicPropertyChangeEvent *>(event);
+            if (de->propertyName() == "_edit3dLocked")
+                emit lockedStateChanged(node);
+            else if (de->propertyName() == "_edit3dHidden")
+                emit hiddenStateChanged(node);
+        }
+    }
+    return QObject::eventFilter(obj, event);
 }
 
 void GeneralHelper::handlePendingToolStateUpdate()

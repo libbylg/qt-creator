@@ -28,18 +28,16 @@
 
 #include <QSharedData>
 
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
 
 namespace QmlDesigner {
 
 namespace Internal {
 
-class ItemLibraryEntryData : public QSharedData
+class ItemLibraryEntryData
 {
 public:
-    ItemLibraryEntryData()
-    {}
-
     QString name;
     TypeName typeName;
     QString category;
@@ -52,23 +50,11 @@ public:
     QString qmlSource;
     QString requiredImport;
     QHash<QString, QString> hints;
+    QString customComponentSource;
+    QStringList extraFilePaths;
 };
 
 } // namespace Internal
-
-//
-// ItemLibraryEntry
-//
-
-ItemLibraryEntry::ItemLibraryEntry(const ItemLibraryEntry &other) = default;
-
-ItemLibraryEntry& ItemLibraryEntry::operator=(const ItemLibraryEntry &other)
-{
-    if (this !=&other)
-        m_data = other.m_data;
-
-    return *this;
-}
 
 void ItemLibraryEntry::setTypeIcon(const QIcon &icon)
 {
@@ -95,8 +81,6 @@ ItemLibraryEntry::ItemLibraryEntry() : m_data(new Internal::ItemLibraryEntryData
     m_data->name.clear();
 }
 
-ItemLibraryEntry::~ItemLibraryEntry() = default;
-
 QString ItemLibraryEntry::name() const
 {
     return m_data->name;
@@ -120,6 +104,16 @@ QString ItemLibraryEntry::qmlSource() const
 QString ItemLibraryEntry::requiredImport() const
 {
     return m_data->requiredImport;
+}
+
+QString ItemLibraryEntry::customComponentSource() const
+{
+    return m_data->customComponentSource;
+}
+
+QStringList ItemLibraryEntry::extraFilePaths() const
+{
+    return m_data->extraFilePaths;
 }
 
 int ItemLibraryEntry::majorVersion() const
@@ -193,7 +187,17 @@ void ItemLibraryEntry::setRequiredImport(const QString &requiredImport)
 
 void ItemLibraryEntry::addHints(const QHash<QString, QString> &hints)
 {
-    m_data->hints.unite(hints);
+    Utils::addToHash(&m_data->hints, hints);
+}
+
+void ItemLibraryEntry::setCustomComponentSource(const QString &source)
+{
+    m_data->customComponentSource = source;
+}
+
+void ItemLibraryEntry::addExtraFilePath(const QString &extraFile)
+{
+    m_data->extraFilePaths.append(extraFile);
 }
 
 void ItemLibraryEntry::addProperty(PropertyName &name, QString &type, QVariant &value)
@@ -218,12 +222,18 @@ QDataStream& operator<<(QDataStream& stream, const ItemLibraryEntry &itemLibrary
     stream << itemLibraryEntry.m_data->properties;
     stream << itemLibraryEntry.m_data->qml;
     stream << itemLibraryEntry.m_data->qmlSource;
+    stream << itemLibraryEntry.m_data->customComponentSource;
+    stream << itemLibraryEntry.m_data->extraFilePaths;
 
     return stream;
 }
 
 QDataStream& operator>>(QDataStream& stream, ItemLibraryEntry &itemLibraryEntry)
 {
+    // Clear containers so that we don't simply append to them in case the object is reused
+    itemLibraryEntry.m_data->hints.clear();
+    itemLibraryEntry.m_data->properties.clear();
+
     stream >> itemLibraryEntry.m_data->name;
     stream >> itemLibraryEntry.m_data->typeName;
     stream >> itemLibraryEntry.m_data->majorVersion;
@@ -237,6 +247,8 @@ QDataStream& operator>>(QDataStream& stream, ItemLibraryEntry &itemLibraryEntry)
     stream >> itemLibraryEntry.m_data->properties;
     stream >> itemLibraryEntry.m_data->qml;
     stream >> itemLibraryEntry.m_data->qmlSource;
+    stream >> itemLibraryEntry.m_data->customComponentSource;
+    stream >> itemLibraryEntry.m_data->extraFilePaths;
 
     return stream;
 }
@@ -256,6 +268,8 @@ QDebug operator<<(QDebug debug, const ItemLibraryEntry &itemLibraryEntry)
     debug << itemLibraryEntry.m_data->properties;
     debug << itemLibraryEntry.m_data->qml;
     debug << itemLibraryEntry.m_data->qmlSource;
+    debug << itemLibraryEntry.m_data->customComponentSource;
+    debug << itemLibraryEntry.m_data->extraFilePaths;
 
     return debug.space();
 }
@@ -284,17 +298,6 @@ QList<ItemLibraryEntry> ItemLibraryInfo::entriesForType(const QByteArray &typeNa
         entries += m_baseInfo->entriesForType(typeName, majorVersion, minorVersion);
 
     return entries;
-}
-
-ItemLibraryEntry ItemLibraryInfo::entry(const QString &name) const
-{
-    if (m_nameToEntryHash.contains(name))
-        return m_nameToEntryHash.value(name);
-
-    if (m_baseInfo)
-        return m_baseInfo->entry(name);
-
-    return ItemLibraryEntry();
 }
 
 QList<ItemLibraryEntry> ItemLibraryInfo::entries() const

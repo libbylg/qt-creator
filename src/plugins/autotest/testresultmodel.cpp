@@ -24,11 +24,14 @@
 ****************************************************************************/
 
 #include "testresultmodel.h"
+
 #include "autotesticons.h"
 #include "autotestplugin.h"
 #include "testresultdelegate.h"
 #include "testrunner.h"
 #include "testsettings.h"
+#include "testtreeitem.h"
+#include "testtreemodel.h"
 
 #include <projectexplorer/projectexplorericons.h>
 #include <utils/qtcassert.h>
@@ -242,6 +245,16 @@ void TestResultModel::updateParent(const TestResultItem *item)
     updateParent(parentItem);
 }
 
+static bool isFailed(ResultType type)
+{
+    switch (type) {
+    case ResultType::Fail: case ResultType::UnexpectedPass: case ResultType::MessageFatal:
+        return true;
+    default:
+        return false;
+    }
+}
+
 void TestResultModel::addTestResult(const TestResultPtr &testResult, bool autoExpand)
 {
     const int lastRow = rootItem()->childCount() - 1;
@@ -289,8 +302,11 @@ void TestResultModel::addTestResult(const TestResultPtr &testResult, bool autoEx
     addFileName(testResult->fileName()); // ensure we calculate the results pane correctly
     if (parentItem) {
         parentItem->appendChild(newItem);
-        if (autoExpand)
+        if (autoExpand) {
             parentItem->expand();
+            newItem->expand();
+            newItem->forAllChildren([](Utils::TreeItem *it) { it->expand(); });
+        }
         updateParent(newItem);
     } else {
         if (lastRow >= 0) {
@@ -303,6 +319,13 @@ void TestResultModel::addTestResult(const TestResultPtr &testResult, bool autoEx
         }
         // there is no MessageCurrentTest at the last row, but we have a toplevel item - just add it
         rootItem()->appendChild(newItem);
+    }
+
+    if (isFailed(testResult->result())) {
+        if (const ITestTreeItem *it = testResult->findTestTreeItem()) {
+            TestTreeModel *model = TestTreeModel::instance();
+            model->setData(model->indexForItem(it), true, FailedRole);
+        }
     }
 }
 
@@ -372,14 +395,10 @@ int TestResultModel::maxWidthOfLineNumber(const QFont &font)
 int TestResultModel::resultTypeCount(ResultType type) const
 {
     int result = 0;
-
-    for (auto resultsForId : m_testResultCount.values())
-        result += resultsForId.value(type, 0);
-
-    for (auto id : m_reportedSummary.keys()) {
-        if (int counted = m_testResultCount.value(id).value(type))
-            result -= counted;
-        result += m_reportedSummary[id].value(type);
+    for (auto it = m_testResultCount.cbegin(); it != m_testResultCount.cend(); ++it) {
+        // if we got a result count from the framework prefer that over our counted results
+        int reported = m_reportedSummary[it.key()].value(type);
+        result += reported != 0 ? reported : it.value().value(type);
     }
     return result;
 }

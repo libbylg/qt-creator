@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -24,10 +24,9 @@
 ****************************************************************************/
 
 /*!
-    \contentspage index.html
     \page qtquick-iso-icon-browser.html
-    \previouspage qmldesigner-pathview-editor.html
-    \nextpage creator-quick-ui-forms.html
+    \previouspage studio-3d-scene-environment.html
+    \nextpage creator-qml-modules-with-plugins.html
 
     \title Browsing ISO 7000 Icons
 
@@ -48,7 +47,7 @@
 
         \li Open the Qt Quick UI form in the \uicontrol Design mode.
 
-        \li In the \uicontrol Library, select \uicontrol Imports >
+        \li In the \uicontrol Library, select \uicontrol {QML Imports} >
             \uicontrol {Add Import} > \uicontrol {QtQuick.Extras} to import the
             \l {Qt Quick Extras} module.
 

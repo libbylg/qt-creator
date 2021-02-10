@@ -25,8 +25,10 @@
 
 #include "qmljslexer_p.h"
 #include "qmljsengine_p.h"
-#include "qmljsmemorypool_p.h"
 #include "qmljskeywords_p.h"
+
+#include "qmljs/parser/qmljsdiagnosticmessage_p.h"
+#include "qmljs/parser/qmljsmemorypool_p.h"
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qvarlengtharray.h>
@@ -34,8 +36,14 @@
 #include <QtCore/QScopedValueRollback>
 
 QT_BEGIN_NAMESPACE
-Q_CORE_EXPORT double qstrtod(const char *s00, char const **se, bool *ok);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+Q_CORE_EXPORT double qstrntod(const char *s00, int len, char const **se, bool *ok);
+#else
+Q_CORE_EXPORT double qstrntod(const char *s00, qsizetype len, char const **se, bool *ok);
+#endif
 QT_END_NAMESPACE
+
+QT_QML_BEGIN_NAMESPACE
 
 using namespace QmlJS;
 
@@ -116,8 +124,8 @@ void Lexer::setCode(const QString &code, int lineno, bool qmlMode)
     _tokenText.clear();
     _tokenText.reserve(1024);
     _errorMessage.clear();
-    _tokenSpell = QStringRef();
-    _rawString = QStringRef();
+    _tokenSpell = QStringView();
+    _rawString = QStringView();
 
     _codePtr = code.unicode();
     _endPtr = _codePtr + code.length();
@@ -240,70 +248,70 @@ int Lexer::lex()
     const int previousTokenKind = _tokenKind;
 
   again:
-    _tokenSpell = QStringRef();
-    _rawString = QStringRef();
-    _tokenKind = scanToken();
-    _tokenLength = _codePtr - _tokenStartPtr - 1;
+      _tokenSpell = QStringView();
+      _rawString = QStringView();
+      _tokenKind = scanToken();
+      _tokenLength = _codePtr - _tokenStartPtr - 1;
 
-    _delimited = false;
-    _restrictedKeyword = false;
-    _followsClosingBrace = (previousTokenKind == T_RBRACE);
+      _delimited = false;
+      _restrictedKeyword = false;
+      _followsClosingBrace = (previousTokenKind == T_RBRACE);
 
-    // update the flags
-    switch (_tokenKind) {
-    case T_LBRACE:
-        if (_bracesCount > 0)
-            ++_bracesCount;
-        Q_FALLTHROUGH();
-    case T_SEMICOLON:
-        _importState = ImportState::NoQmlImport;
-        Q_FALLTHROUGH();
-    case T_QUESTION:
-    case T_COLON:
-    case T_TILDE:
-        _delimited = true;
-        break;
-    case T_AUTOMATIC_SEMICOLON:
-    case T_AS:
-        _importState = ImportState::NoQmlImport;
-        Q_FALLTHROUGH();
-    default:
-        if (isBinop(_tokenKind))
-            _delimited = true;
-        break;
+      // update the flags
+      switch (_tokenKind) {
+      case T_LBRACE:
+          if (_bracesCount > 0)
+              ++_bracesCount;
+          Q_FALLTHROUGH();
+      case T_SEMICOLON:
+          _importState = ImportState::NoQmlImport;
+          Q_FALLTHROUGH();
+      case T_QUESTION:
+      case T_COLON:
+      case T_TILDE:
+          _delimited = true;
+          break;
+      case T_AUTOMATIC_SEMICOLON:
+      case T_AS:
+          _importState = ImportState::NoQmlImport;
+          Q_FALLTHROUGH();
+      default:
+          if (isBinop(_tokenKind))
+              _delimited = true;
+          break;
 
-    case T_IMPORT:
-        if (qmlMode() || (_handlingDirectives && previousTokenKind == T_DOT))
-            _importState = ImportState::SawImport;
-        if (isBinop(_tokenKind))
-            _delimited = true;
-        break;
+      case T_IMPORT:
+          if (qmlMode() || (_handlingDirectives && previousTokenKind == T_DOT))
+              _importState = ImportState::SawImport;
+          if (isBinop(_tokenKind))
+              _delimited = true;
+          break;
 
-    case T_IF:
-    case T_FOR:
-    case T_WHILE:
-    case T_WITH:
-        _parenthesesState = CountParentheses;
-        _parenthesesCount = 0;
-        break;
+      case T_IF:
+      case T_FOR:
+      case T_WHILE:
+      case T_WITH:
+          _parenthesesState = CountParentheses;
+          _parenthesesCount = 0;
+          break;
 
-    case T_ELSE:
-    case T_DO:
-        _parenthesesState = BalancedParentheses;
-        break;
+      case T_ELSE:
+      case T_DO:
+          _parenthesesState = BalancedParentheses;
+          break;
 
-    case T_CONTINUE:
-    case T_BREAK:
-    case T_RETURN:
-    case T_YIELD:
-    case T_THROW:
-        _restrictedKeyword = true;
-        break;
-    case T_RBRACE:
-        if (_bracesCount > 0)
-            --_bracesCount;
-        if (_bracesCount == 0)
-            goto again;
+      case T_CONTINUE:
+      case T_BREAK:
+      case T_RETURN:
+      case T_YIELD:
+      case T_THROW:
+          _restrictedKeyword = true;
+          break;
+      case T_RBRACE:
+          if (_bracesCount > 0)
+              --_bracesCount;
+          if (_bracesCount == 0)
+              goto again;
     } // switch
 
     // update the parentheses state
@@ -564,7 +572,14 @@ again:
 
     case ']': return T_RBRACKET;
     case '[': return T_LBRACKET;
-    case '?': return T_QUESTION;
+    case '?': {
+        if (_char == QLatin1Char('?')) {
+            scanChar();
+            return T_QUESTION_QUESTION;
+        }
+
+        return T_QUESTION;
+    }
 
     case '>':
         if (_char == QLatin1Char('>')) {
@@ -695,6 +710,8 @@ again:
 
     case ')': return T_RPAREN;
     case '(': return T_LPAREN;
+
+    case '@': return T_AT;
 
     case '&':
         if (_char == QLatin1Char('=')) {
@@ -864,12 +881,15 @@ int Lexer::scanString(ScanStringMode mode)
     // in case we just parsed a \r, we need to reset this flag to get things working
     // correctly in the loop below and afterwards
     _skipLinefeed = false;
-
+    bool first = true;
     if (_engine) {
         while (_codePtr <= _endPtr) {
             if (isLineTerminator()) {
-                if ((quote == QLatin1Char('`') || qmlMode()))
+                if ((quote == QLatin1Char('`') || qmlMode())) {
+                    if (first)
+                        --_currentLineNumber;
                     break;
+                }
                 _errorCode = IllegalCharacter;
                 _errorMessage = QCoreApplication::translate("QmlParser", "Stray newline in string literal");
                 return T_ERROR;
@@ -895,11 +915,13 @@ int Lexer::scanString(ScanStringMode mode)
             // don't use scanChar() here, that would transform \r sequences and the midRef() call would create the wrong result
             _char = *_codePtr++;
             ++_currentColumnNumber;
+            first = false;
         }
     }
 
     // rewind by one char, so things gets scanned correctly
     --_codePtr;
+    --_currentColumnNumber;
 
     _validTokenText = true;
     _tokenText = QString(startCode, _codePtr - startCode);
@@ -964,7 +986,7 @@ int Lexer::scanString(ScanStringMode mode)
                     _tokenText += QChar(QChar::highSurrogate(codePoint));
                     u = QChar::lowSurrogate(codePoint);
                 } else {
-                    u = codePoint;
+                    u = QChar(codePoint);
                 }
             } break;
 
@@ -1159,15 +1181,13 @@ int Lexer::scanNumber(QChar ch)
         }
     }
 
-    chars.append('\0');
-
     const char *begin = chars.constData();
     const char *end = nullptr;
     bool ok = false;
 
-    _tokenValue = qstrtod(begin, &end, &ok);
+    _tokenValue = qstrntod(begin, chars.size(), &end, &ok);
 
-    if (end - begin != chars.size() - 1) {
+    if (end - begin != chars.size()) {
         _errorCode = IllegalExponentIndicator;
         _errorMessage = QCoreApplication::translate("QmlParser", "Illegal syntax for exponential number");
         return T_ERROR;
@@ -1608,3 +1628,5 @@ bool Lexer::scanDirectives(Directives *directives, DiagnosticMessage *error)
 
     return true;
 }
+
+QT_QML_END_NAMESPACE

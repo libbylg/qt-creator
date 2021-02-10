@@ -89,34 +89,9 @@ LiteHtmlHelpViewer::LiteHtmlHelpViewer(QWidget *parent)
 
 LiteHtmlHelpViewer::~LiteHtmlHelpViewer() = default;
 
-QFont LiteHtmlHelpViewer::viewerFont() const
-{
-    return m_viewer->defaultFont();
-}
-
 void LiteHtmlHelpViewer::setViewerFont(const QFont &newFont)
 {
     m_viewer->setDefaultFont(newFont);
-}
-
-void LiteHtmlHelpViewer::scaleUp()
-{
-    setScale(scale() * 1.1);
-}
-
-void LiteHtmlHelpViewer::scaleDown()
-{
-    setScale(scale() * .9);
-}
-
-void LiteHtmlHelpViewer::resetScale()
-{
-    m_viewer->setZoomFactor(1);
-}
-
-qreal LiteHtmlHelpViewer::scale() const
-{
-    return m_viewer->zoomFactor();
 }
 
 void LiteHtmlHelpViewer::setScale(qreal scale)

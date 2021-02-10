@@ -39,10 +39,10 @@ class UvscServerProvider;
 
 namespace Uv {
 
-// Helpers
+class DeviceSelection;
 
-QString toolsFilePath(const QString &uVisionFilePath);
-QString targetUVisionPath();
+// Helper function.
+QString buildPackageId(const DeviceSelection &selection);
 
 // UvProject
 

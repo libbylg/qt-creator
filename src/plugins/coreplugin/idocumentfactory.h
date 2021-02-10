@@ -25,9 +25,10 @@
 
 #pragma once
 
-#include "id.h"
+#include "core_global.h"
 
-#include <QObject>
+#include <utils/id.h>
+
 #include <QStringList>
 
 #include <functional>
@@ -36,13 +37,11 @@ namespace Core {
 
 class IDocument;
 
-class CORE_EXPORT IDocumentFactory : public QObject
+class CORE_EXPORT IDocumentFactory
 {
-    Q_OBJECT
-
 public:
-    IDocumentFactory(QObject *parent = nullptr);
-    ~IDocumentFactory() override;
+    IDocumentFactory();
+    ~IDocumentFactory();
 
     static const QList<IDocumentFactory *> allDocumentFactories();
 
@@ -57,7 +56,6 @@ public:
     void addMimeType(const QString &mimeType) { m_mimeTypes.append(mimeType); }
 
 private:
-    Id m_id;
     Opener m_opener;
     QStringList m_mimeTypes;
     QString m_displayName;

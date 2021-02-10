@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "gtestparser.h"
+#include "gtestframework.h"
 #include "gtesttreeitem.h"
 #include "gtestvisitors.h"
 #include "gtest_utils.h"
@@ -38,7 +39,7 @@ TestTreeItem *GTestParseResult::createTestTreeItem() const
 {
     if (itemType != TestTreeItem::TestSuite && itemType != TestTreeItem::TestCase)
         return nullptr;
-    GTestTreeItem *item = new GTestTreeItem(name, fileName, itemType);
+    GTestTreeItem *item = new GTestTreeItem(framework, name, fileName, itemType);
     item->setProFile(proFile);
     item->setLine(line);
     item->setColumn(column);
@@ -86,21 +87,23 @@ static bool hasGTestNames(const CPlusPlus::Document::Ptr &document)
     return false;
 }
 
-static bool handleGTest(QFutureInterface<TestParseResultPtr> futureInterface,
-                        const CPlusPlus::Document::Ptr &doc,
-                        const CPlusPlus::Snapshot &snapshot,
-                        const Core::Id &id)
+bool GTestParser::processDocument(QFutureInterface<TestParseResultPtr> futureInterface,
+                                  const QString &fileName)
 {
+    CPlusPlus::Document::Ptr doc = document(fileName);
+    if (doc.isNull() || !includesGTest(doc, m_cppSnapshot) || !hasGTestNames(doc))
+        return false;
+
     const CppTools::CppModelManager *modelManager = CppTools::CppModelManager::instance();
     const QString &filePath = doc->fileName();
-    const QByteArray &fileContent = CppParser::getFileContent(filePath);
-    CPlusPlus::Document::Ptr document = snapshot.preprocessedDocument(fileContent, filePath);
+    const QByteArray &fileContent = getFileContent(filePath);
+    CPlusPlus::Document::Ptr document = m_cppSnapshot.preprocessedDocument(fileContent, filePath);
     document->check();
     CPlusPlus::AST *ast = document->translationUnit()->ast();
     GTestVisitor visitor(document);
     visitor.accept(ast);
 
-    QMap<GTestCaseSpec, GTestCodeLocationList> result = visitor.gtestFunctions();
+    const QMap<GTestCaseSpec, GTestCodeLocationList> result = visitor.gtestFunctions();
     QString proFile;
     const QList<CppTools::ProjectPart::Ptr> &ppList = modelManager->projectPart(filePath);
     if (!ppList.isEmpty())
@@ -108,8 +111,9 @@ static bool handleGTest(QFutureInterface<TestParseResultPtr> futureInterface,
     else
         return false; // happens if shutting down while parsing
 
-    for (const GTestCaseSpec &testSpec : result.keys()) {
-        GTestParseResult *parseResult = new GTestParseResult(id);
+    for (auto it = result.cbegin(); it != result.cend(); ++it) {
+        const GTestCaseSpec &testSpec = it.key();
+        GTestParseResult *parseResult = new GTestParseResult(framework());
         parseResult->itemType = TestTreeItem::TestSuite;
         parseResult->fileName = filePath;
         parseResult->name = testSpec.testCaseName;
@@ -118,8 +122,8 @@ static bool handleGTest(QFutureInterface<TestParseResultPtr> futureInterface,
         parseResult->disabled = testSpec.disabled;
         parseResult->proFile = proFile;
 
-        for (const GTestCodeLocationAndType &location : result.value(testSpec)) {
-            GTestParseResult *testSet = new GTestParseResult(id);
+        for (const GTestCodeLocationAndType &location : it.value()) {
+            GTestParseResult *testSet = new GTestParseResult(framework());
             testSet->name = location.m_name;
             testSet->fileName = filePath;
             testSet->line = location.m_line;
@@ -133,16 +137,7 @@ static bool handleGTest(QFutureInterface<TestParseResultPtr> futureInterface,
 
         futureInterface.reportResult(TestParseResultPtr(parseResult));
     }
-    return !result.keys().isEmpty();
-}
-
-bool GTestParser::processDocument(QFutureInterface<TestParseResultPtr> futureInterface,
-                                  const QString &fileName)
-{
-    CPlusPlus::Document::Ptr doc = document(fileName);
-    if (doc.isNull() || !includesGTest(doc, m_cppSnapshot) || !hasGTestNames(doc))
-        return false;
-    return handleGTest(futureInterface, doc, m_cppSnapshot, id());
+    return !result.isEmpty();
 }
 
 } // namespace Internal

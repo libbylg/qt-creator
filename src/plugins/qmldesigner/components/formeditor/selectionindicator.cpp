@@ -25,7 +25,9 @@
 
 #include "selectionindicator.h"
 
+#include "annotation.h"
 #include <designeractionmanager.h>
+#include <formeditorannotationicon.h>
 
 #include <QPen>
 #include <QGraphicsScene>
@@ -75,6 +77,7 @@ void SelectionIndicator::clear()
         }
     }
     m_labelItem.reset(nullptr);
+    m_annotationItem = nullptr;
     m_indicatorShapeHash.clear();
 }
 
@@ -119,6 +122,7 @@ void SelectionIndicator::setItems(const QList<FormEditorItem*> &itemList)
     if (checkSingleSelection(itemList)) {
         FormEditorItem *selectedItem = itemList.constFirst();
         m_labelItem = std::make_unique<QGraphicsPolygonItem>(m_layerItem.data());
+        const qreal scaleFactor = m_layerItem->viewportTransform().m11();
 
         QGraphicsWidget *toolbar = DesignerActionManager::instance().createFormEditorToolBar(m_labelItem.get());
         toolbar->setPos(1, -1);
@@ -128,6 +132,14 @@ void SelectionIndicator::setItems(const QList<FormEditorItem*> &itemList)
 
         if (modelNode.hasId())
             textItem->setPlainText(modelNode.id());
+
+        if (modelNode.hasAnnotation() || modelNode.hasCustomId()) {
+            m_annotationItem = new FormEditorAnnotationIcon(modelNode, m_labelItem.get());
+            m_annotationItem->update();
+        }
+        else {
+            m_annotationItem = nullptr;
+        }
 
         static QColor textColor = Utils::creatorTheme()->color(Utils::Theme::QmlDesigner_FormEditorForegroundColor);
 
@@ -139,18 +151,25 @@ void SelectionIndicator::setItems(const QList<FormEditorItem*> &itemList)
         QPointF pos = labelRect.topLeft();
         labelRect.moveTo(0, 0);
         m_labelItem->setPolygon(labelRect);
-        const int scaledHeight = labelHeight / m_layerItem->viewportTransform().m11();
+        const int scaledHeight = labelHeight / scaleFactor;
         m_labelItem->setPos(pos + QPointF(0, -scaledHeight));
         const int offset = (labelHeight - textItem->boundingRect().height()) / 2;
         textItem->setPos(QPointF(toolbar->size().width(), offset));
         m_labelItem->setFlag(QGraphicsItem::ItemIsSelectable, false);
         m_labelItem->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+
         QPen pen;
         pen.setCosmetic(true);
         pen.setWidth(2);
         pen.setCapStyle(Qt::RoundCap);
         pen.setJoinStyle(Qt::BevelJoin);
         pen.setColor(selectionColor);
+
+        if (m_annotationItem) {
+            m_annotationItem->setFlags(QGraphicsItem::ItemIgnoresTransformations);
+            adjustAnnotationPosition(labelPolygon.boundingRect(), m_labelItem->boundingRect(), scaleFactor);
+        }
+
         m_labelItem->setPen(pen);
         m_labelItem->setBrush(selectionColor);
         m_labelItem->update();
@@ -172,8 +191,14 @@ void SelectionIndicator::updateItems(const QList<FormEditorItem*> &itemList)
         QPolygonF labelPolygon = boundingRectInLayerItemSpaceForItem(selectedItem, m_layerItem.data());
         QRectF labelRect = labelPolygon.boundingRect();
         QPointF pos = labelRect.topLeft();
-        const int scaledHeight = labelHeight / m_layerItem->viewportTransform().m11();
+        const qreal scaleFactor = m_layerItem->viewportTransform().m11();
+        const int scaledHeight = labelHeight / scaleFactor;
         m_labelItem->setPos(pos + QPointF(0, -scaledHeight));
+
+        if (m_annotationItem) {
+            adjustAnnotationPosition(labelPolygon.boundingRect(), m_labelItem->boundingRect(), scaleFactor);
+        }
+
         m_layerItem->update();
     }
 }
@@ -184,6 +209,26 @@ void SelectionIndicator::setCursor(const QCursor &cursor)
 
     foreach (QGraphicsItem  *item, m_indicatorShapeHash)
         item->setCursor(cursor);
+}
+
+void SelectionIndicator::adjustAnnotationPosition(const QRectF &itemRect, const QRectF &labelRect, qreal scaleFactor)
+{
+    if (!m_annotationItem) return;
+
+    const qreal iconWShift = m_annotationItem->iconWidth() * 0.5;
+    const qreal iconHShift = (m_annotationItem->iconHeight() * 0.45)/scaleFactor;
+    qreal iconX = 0.0;
+    qreal iconY = -(iconHShift);
+
+    if (((labelRect.width() + iconWShift)/scaleFactor) > itemRect.width())
+        iconY -= labelRect.height()/scaleFactor;
+
+    if ((iconWShift/scaleFactor) > itemRect.width())
+        iconX = 0.0;
+    else
+        iconX = (itemRect.width()) - (iconWShift/scaleFactor);
+
+    m_annotationItem->setPos(iconX*scaleFactor, iconY*scaleFactor);
 }
 
 }

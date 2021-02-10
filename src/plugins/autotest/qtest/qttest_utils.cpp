@@ -30,6 +30,7 @@
 #include "../testsettings.h"
 
 #include <utils/algorithm.h>
+#include <utils/environment.h>
 #include <utils/qtcassert.h>
 
 #include <QByteArrayList>
@@ -46,16 +47,16 @@ bool isQTestMacro(const QByteArray &macro)
     return valid.contains(macro);
 }
 
-QHash<QString, QString> testCaseNamesForFiles(const Core::Id &id, const QStringList &files)
+QHash<QString, QString> testCaseNamesForFiles(ITestFramework *framework, const QStringList &files)
 {
     QHash<QString, QString> result;
-    TestTreeItem *rootNode = TestFrameworkManager::instance()->rootNodeForTestFramework(id);
+    TestTreeItem *rootNode = framework->rootNode();
     QTC_ASSERT(rootNode, return result);
 
-    rootNode->forFirstLevelChildren([&result, &files](TestTreeItem *child) {
+    rootNode->forFirstLevelChildren([&result, &files](ITestTreeItem *child) {
         if (files.contains(child->filePath()))
             result.insert(child->filePath(), child->name());
-        child->forFirstLevelChildren([&result, &files, child](TestTreeItem *grandChild) {
+        child->forFirstLevelChildren([&result, &files, child](ITestTreeItem *grandChild) {
             if (files.contains(grandChild->filePath()))
                 result.insert(grandChild->filePath(), child->name());
         });
@@ -63,13 +64,13 @@ QHash<QString, QString> testCaseNamesForFiles(const Core::Id &id, const QStringL
     return result;
 }
 
-QMultiHash<QString, QString> alternativeFiles(const Core::Id &id, const QStringList &files)
+QMultiHash<QString, QString> alternativeFiles(ITestFramework *framework, const QStringList &files)
 {
     QMultiHash<QString, QString> result;
-    TestTreeItem *rootNode = TestFrameworkManager::instance()->rootNodeForTestFramework(id);
+    TestTreeItem *rootNode = framework->rootNode();
     QTC_ASSERT(rootNode, return result);
 
-    rootNode->forFirstLevelChildren([&result, &files](TestTreeItem *child) {
+    rootNode->forFirstLevelChildren([&result, &files](ITestTreeItem *child) {
         const QString &baseFilePath = child->filePath();
         for (int childRow = 0, count = child->childCount(); childRow < count; ++childRow) {
             auto grandChild = static_cast<const QtTestTreeItem *>(child->childAt(childRow));

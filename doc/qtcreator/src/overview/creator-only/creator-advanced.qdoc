@@ -30,14 +30,13 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-autotest.html
     \page creator-advanced.html
     \nextpage creator-os-supported-platforms.html
 
     \title Advanced Use
 
-    \image creator_advanceduse.png
+    \image front-advanced.png
 
     \QC attempts to meet your development needs, whether you are an
     experienced Qt developer or a newcomer to Qt. When you install \QC

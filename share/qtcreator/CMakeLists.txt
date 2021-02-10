@@ -1,25 +1,37 @@
-set(template_directories android cplusplus debugger glsl modeleditor qml qmldesigner
-  qmlicons qml-type-descriptions schemes scripts snippets styles templates themes welcomescreen)
-
-add_custom_target(copy_share_to_builddir ALL
-  COMMENT Copy files into build directory
-  VERBATIM
+set(resource_directories
+  android
+  cplusplus
+  debugger
+  glsl
+  indexer_preincludes
+  modeleditor
+  qml
+  qmldesigner
+  qmlicons
+  qml-type-descriptions
+  schemes
+  snippets
+  styles
+  templates
+  themes
 )
 
-foreach(dir IN ITEMS ${template_directories})
-  add_custom_command(TARGET copy_share_to_builddir POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${dir}"
-      "${PROJECT_BINARY_DIR}/${IDE_DATA_PATH}/${dir}"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    COMMENT Copy files into build directory
-    VERBATIM
-  )
-endforeach()
+if (APPLE)
+  set(resource_directories ${resource_directories} scripts)
+endif()
 
-install(DIRECTORY ${template_directories} DESTINATION "${IDE_DATA_PATH}")
+# copy resource directories during build
+qtc_copy_to_builddir(copy_share_to_builddir
+  DIRECTORIES ${resource_directories}
+  DESTINATION "${IDE_DATA_PATH}"
+  CREATE_SUBDIRS
+)
+
+# create install rule for resource directories
 install(
-  FILES indexer_preincludes/qglobal.h indexer_preincludes/windows.h
-  DESTINATION "${IDE_DATA_PATH}/indexer_preincludes"
+  DIRECTORY ${resource_directories}
+  DESTINATION "${IDE_DATA_PATH}"
+  USE_SOURCE_PERMISSIONS
 )
 
 add_subdirectory(translations)

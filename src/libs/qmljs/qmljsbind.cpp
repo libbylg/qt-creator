@@ -29,6 +29,9 @@
 #include "qmljsdocument.h"
 #include "qmljsmodelmanagerinterface.h"
 
+#include <QtCore/QVersionNumber>
+#include <QtCore/QLibraryInfo>
+
 #include <utils/algorithm.h>
 
 using namespace LanguageUtils;
@@ -149,17 +152,38 @@ ObjectValue *Bind::bindObject(UiQualifiedId *qualifiedTypeNameId, UiObjectInitia
     }
 
     parentObjectValue = switchObjectValue(objectValue);
-
-    if (parentObjectValue) {
-        objectValue->setMember(QLatin1String("parent"), parentObjectValue);
-    } else if (!_rootObjectValue) {
+    ObjectValue *nextRoot = _rootObjectValue;
+    QString parentComponentName = _currentComponentName;
+    if (!_rootObjectValue) {
         _rootObjectValue = objectValue;
-        _rootObjectValue->setClassName(_doc->componentName());
+        _inlineComponents[_currentComponentName] = objectValue;
+        if (!_currentComponentName.isEmpty()) {
+            if (_currentComponentName.contains('.'))
+                parentComponentName = _currentComponentName.mid(0,_currentComponentName.lastIndexOf('.'));
+            else
+                parentComponentName = "";
+            nextRoot = _inlineComponents.value(parentComponentName);
+            // we add the inline component inside its parent
+            nextRoot->setMember(_currentComponentName.mid(_currentComponentName.lastIndexOf('.') + 1), objectValue);
+            _rootObjectValue->setClassName(_doc->componentName() + "." + _currentComponentName); // use :: instead of .?
+        } else {
+            nextRoot = _rootObjectValue;
+            _rootObjectValue->setClassName(_doc->componentName());
+        }
+    } else if (parentObjectValue) {
+        objectValue->setMember(QLatin1String("parent"), parentObjectValue);
     }
 
     accept(initializer);
 
+    _rootObjectValue = nextRoot;
+    _currentComponentName = parentComponentName;
     return switchObjectValue(parentObjectValue);
+}
+
+void Bind::throwRecursionDepthError()
+{
+    _diagnosticMessages->append(DiagnosticMessage(Severity::Error, SourceLocation(), tr("Hit maximal recursion depth in AST visit")));
 }
 
 void Bind::accept(Node *node)
@@ -194,17 +218,16 @@ void Bind::endVisit(UiProgram *)
 bool Bind::visit(UiImport *ast)
 {
     ComponentVersion version;
-    if (ast->versionToken.isValid()) {
-        const QString versionString = _doc->source().mid(ast->versionToken.offset, ast->versionToken.length);
-        version = ComponentVersion(versionString);
-        if (!version.isValid()) {
-            _diagnosticMessages->append(
-                        errorMessage(ast->versionToken, tr("expected two numbers separated by a dot")));
-        }
-    }
+    if (ast->version)
+        version = ComponentVersion(ast->version->majorVersion, ast->version->minorVersion);
 
     if (ast->importUri) {
-        if (!version.isValid()) {
+        QVersionNumber qtVersion;
+        if (ModelManagerInterface *model = ModelManagerInterface::instance()) {
+            ModelManagerInterface::ProjectInfo pInfo = model->projectInfoForPath(_doc->fileName());
+            qtVersion = QVersionNumber::fromString(pInfo.qtVersionString);
+        }
+        if (!version.isValid() && (!qtVersion.isNull() && qtVersion.majorVersion() < 6)) {
             _diagnosticMessages->append(
                         errorMessage(ast, tr("package import requires a version number")));
         }
@@ -221,7 +244,12 @@ bool Bind::visit(UiImport *ast)
                     _doc->setLanguage(Dialect::QmlQtQuick2);
             }
         }
-        _imports += import;
+
+        // Make sure QtQuick import is in the list before imports that might depend on it
+        if (import.name() == QLatin1String("QtQuick"))
+            _imports.prepend(import);
+        else
+            _imports += import;
     } else if (!ast->fileName.isEmpty()) {
         _imports += ImportInfo::pathImport(_doc->path(), ast->fileName.toString(),
                                            version, ast->importId.toString(), ast);
@@ -303,6 +331,18 @@ bool Bind::visit(UiArrayBinding *)
 {
     // ### FIXME: do we need to store the members into the property? Or, maybe the property type is an JS Array?
 
+    return true;
+}
+
+bool Bind::visit(UiInlineComponent *ast)
+{
+    if (!_currentComponentName.isEmpty()) {
+        _currentComponentName += ".";
+        _diagnosticMessages->append(
+            errorMessage(ast, tr("Nested inline components are not supported")));
+    }
+    _currentComponentName += ast->name.toString();
+    _rootObjectValue = nullptr;
     return true;
 }
 

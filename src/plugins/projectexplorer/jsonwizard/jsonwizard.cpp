@@ -33,6 +33,7 @@
 #include "../projectexplorerconstants.h"
 #include "../projecttree.h"
 #include <coreplugin/editormanager/editormanager.h>
+#include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/messagemanager.h>
 
 #include <utils/algorithm.h>
@@ -422,7 +423,7 @@ void JsonWizard::handleNewPages(int pageId)
 
 void JsonWizard::handleError(const QString &message)
 {
-    Core::MessageManager::write(message, Core::MessageManager::ModeSwitch);
+    Core::MessageManager::writeDisrupting(message);
 }
 
 QString JsonWizard::stringify(const QVariant &v) const
@@ -451,7 +452,7 @@ void JsonWizard::openFiles(const JsonWizard::GeneratorFiles &files)
         }
         if (file.attributes() & Core::GeneratedFile::OpenProjectAttribute) {
             ProjectExplorerPlugin::OpenProjectResult result
-                    = ProjectExplorerPlugin::instance()->openProject(file.path());
+                    = ProjectExplorerPlugin::openProject(file.path());
             if (!result) {
                 errorMessage = result.errorMessage();
                 if (errorMessage.isEmpty()) {
@@ -465,11 +466,14 @@ void JsonWizard::openFiles(const JsonWizard::GeneratorFiles &files)
             openedSomething = true;
         }
         if (file.attributes() & Core::GeneratedFile::OpenEditorAttribute) {
-            if (!Core::EditorManager::openEditor(file.path(), file.editorId())) {
+            Core::IEditor *editor = Core::EditorManager::openEditor(file.path(), file.editorId());
+            if (!editor) {
                 errorMessage = QCoreApplication::translate("ProjectExplorer::JsonWizard",
                                                            "Failed to open an editor for \"%1\".")
                         .arg(QDir::toNativeSeparators(file.path()));
                 break;
+            } else if (file.attributes() & Core::GeneratedFile::TemporaryFile) {
+                editor->document()->setTemporary(true);
             }
             openedSomething = true;
         }
@@ -538,7 +542,6 @@ JsonWizardJsExtension::JsonWizardJsExtension(JsonWizard *wizard)
 
 QVariant JsonWizardJsExtension::value(const QString &name) const
 {
-    const QVariant value = m_wizard->value(name);
     return m_wizard->expander()->expandVariant(m_wizard->value(name));
 }
 

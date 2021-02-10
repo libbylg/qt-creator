@@ -44,7 +44,7 @@
 #include <QCryptographicHash>
 #include <QJSEngine>
 #include <QProcess>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QVariantMap>
 
 namespace QbsProjectManager {
@@ -71,7 +71,7 @@ static QString toJSLiteral(const bool b)
 static QString toJSLiteral(const QString &str)
 {
     QString js = str;
-    js.replace(QRegExp("([\\\\\"])"), "\\\\1");
+    js.replace(QRegularExpression("([\\\\\"])"), "\\\\1");
     js.prepend('"');
     js.append('"');
     return js;
@@ -150,7 +150,7 @@ QString QbsProfileManager::ensureProfileForKit(const ProjectExplorer::Kit *k)
 {
     if (!k)
         return QString();
-    m_instance->updateProfileIfNecessary(k);
+    updateProfileIfNecessary(k);
     return profileNameForKit(k);
 }
 
@@ -252,10 +252,12 @@ QString QbsProfileManager::runQbsConfig(QbsConfigOp op, const QString &key, cons
         return {};
     qbsConfig.start(qbsExe.toString(), args);
     if (!qbsConfig.waitForStarted(3000) || !qbsConfig.waitForFinished(5000)) {
-        Core::MessageManager::write(tr("Failed run qbs config: %1").arg(qbsConfig.errorString()));
+        Core::MessageManager::writeFlashing(
+            tr("Failed to run qbs config: %1").arg(qbsConfig.errorString()));
     } else if (qbsConfig.exitCode() != 0) {
-        Core::MessageManager::write(tr("Failed to run qbs config: %1")
-                                    .arg(QString::fromLocal8Bit(qbsConfig.readAllStandardError())));
+        Core::MessageManager::writeFlashing(
+            tr("Failed to run qbs config: %1")
+                .arg(QString::fromLocal8Bit(qbsConfig.readAllStandardError())));
     }
     return QString::fromLocal8Bit(qbsConfig.readAllStandardOutput()).trimmed();
 }

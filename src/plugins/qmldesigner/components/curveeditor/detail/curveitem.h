@@ -27,6 +27,7 @@
 
 #include "curveeditorstyle.h"
 #include "curvesegment.h"
+#include "handleitem.h"
 #include "keyframe.h"
 #include "selectableitem.h"
 #include "treeitem.h"
@@ -34,18 +35,22 @@
 #include <string>
 #include <QGraphicsObject>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class AnimationCurve;
 class KeyframeItem;
 class GraphicsScene;
 
-class CurveItem : public QGraphicsObject
+class CurveItem : public CurveEditorItem
 {
     Q_OBJECT
 
 signals:
     void curveChanged(unsigned int id, const AnimationCurve &curve);
+
+    void keyframeMoved(KeyframeItem *item, const QPointF &direction);
+
+    void handleMoved(KeyframeItem *frame, HandleItem::Slot slot, double angle, double deltaLength);
 
 public:
     CurveItem(QGraphicsItem *parent = nullptr);
@@ -64,19 +69,27 @@ public:
 
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 
+    void lockedCallback() override;
+
     bool isDirty() const;
 
-    bool locked() const;
+    bool hasActiveKeyframe() const;
 
-    bool pinned() const;
+    bool hasActiveHandle() const;
 
-    bool isUnderMouse() const;
+    bool hasSelectedKeyframe() const;
 
-    bool hasSelection() const;
+    bool hasEditableSegment(double time) const;
+
+    bool isFirst(const KeyframeItem *key) const;
+
+    bool isLast(const KeyframeItem *key) const;
+
+    int indexOf(const KeyframeItem *key) const;
 
     unsigned int id() const;
 
-    ValueType valueType() const;
+    PropertyTreeItem::ValueType valueType() const;
 
     PropertyTreeItem::Component component() const;
 
@@ -86,17 +99,21 @@ public:
 
     std::vector<AnimationCurve> curves() const;
 
+    QVector<KeyframeItem *> keyframes() const;
+
+    QVector<KeyframeItem *> selectedKeyframes() const;
+
+    QVector<HandleItem *> handles() const;
+
+    CurveSegment segment(const KeyframeItem *keyframe, HandleItem::Slot slot) const;
+
     void restore();
-
-    void setLocked(bool locked);
-
-    void setPinned(bool pinned);
 
     void setDirty(bool dirty);
 
     void setHandleVisibility(bool visible);
 
-    void setValueType(ValueType type);
+    void setValueType(PropertyTreeItem::ValueType type);
 
     void setComponent(PropertyTreeItem::Component comp);
 
@@ -108,9 +125,9 @@ public:
 
     void setInterpolation(Keyframe::Interpolation interpolation);
 
-    void connect(GraphicsScene *scene);
+    void toggleUnified();
 
-    void setIsUnderMouse(bool under);
+    void connect(GraphicsScene *scene);
 
     void insertKeyframeByTime(double time);
 
@@ -123,21 +140,15 @@ private:
 
     CurveItemStyleOption m_style;
 
-    ValueType m_type;
+    PropertyTreeItem::ValueType m_type;
 
     PropertyTreeItem::Component m_component;
 
     QTransform m_transform;
 
-    std::vector<KeyframeItem *> m_keyframes;
-
-    bool m_locked;
-
-    bool m_pinned;
-
-    bool m_underMouse;
+    QVector<KeyframeItem *> m_keyframes;
 
     bool m_itemDirty;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

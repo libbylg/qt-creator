@@ -48,7 +48,7 @@ using ScriptEvaluator = std::function<void (QString)>;
 class ConsoleItemModel;
 class ConsoleView;
 
-class Console : public Core::IOutputPane
+class Console final : public Core::IOutputPane
 {
     Q_OBJECT
 
@@ -61,7 +61,6 @@ public:
     QString displayName() const override { return tr("QML Debugger Console"); }
     int priorityInStatusBar() const override;
     void clearContents() override;
-    void visibilityChanged(bool visible) override;
     bool canFocus() const override;
     bool hasFocus() const override;
     void setFocus() override;

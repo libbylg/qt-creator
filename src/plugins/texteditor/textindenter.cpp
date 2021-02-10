@@ -36,12 +36,49 @@ TextIndenter::TextIndenter(QTextDocument *doc)
 
 TextIndenter::~TextIndenter() = default;
 
+// Indent a text block based on previous line.
+// Simple text paragraph layout:
+// aaaa aaaa
+//
+//   bbb bb
+//   bbb bb
+//
+//  - list
+//    list line2
+//
+//  - listn
+//
+// ccc
+//
+// @todo{Add formatting to wrap paragraphs. This requires some
+// hoops as the current indentation routines are not prepared
+// for additional block being inserted. It might be possible
+// to do in 2 steps (indenting/wrapping)}
+int TextIndenter::indentFor(const QTextBlock &block,
+                            const TabSettings &tabSettings,
+                            int cursorPositionInEditor)
+{
+    Q_UNUSED(tabSettings)
+    Q_UNUSED(cursorPositionInEditor)
+
+    QTextBlock previous = block.previous();
+    if (!previous.isValid())
+        return 0;
+
+    const QString previousText = previous.text();
+    // Empty line indicates a start of a new paragraph. Leave as is.
+    if (previousText.isEmpty() || previousText.trimmed().isEmpty())
+        return 0;
+
+    return tabSettings.indentationColumn(previousText);
+}
+
 IndentationForBlock TextIndenter::indentationForBlocks(const QVector<QTextBlock> &blocks,
                                                        const TabSettings &tabSettings,
                                                        int /*cursorPositionInEditor*/)
 {
     IndentationForBlock ret;
-    for (QTextBlock block : blocks)
+    for (const QTextBlock &block : blocks)
         ret.insert(block.blockNumber(), indentFor(block, tabSettings));
     return ret;
 }
@@ -86,7 +123,7 @@ void TextIndenter::reindent(const QTextCursor &cursor,
         // skip empty blocks
         while (block.isValid() && block != end) {
             QString bt = block.text();
-            if (tabSettings.firstNonSpace(bt) < bt.size())
+            if (TabSettings::firstNonSpace(bt) < bt.size())
                 break;
             indentBlock(block, QChar::Null, tabSettings);
             block = block.next();

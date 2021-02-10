@@ -43,8 +43,8 @@ CppLocatorFilter::CppLocatorFilter(CppLocatorData *locatorData)
 {
     setId(Constants::LOCATOR_FILTER_ID);
     setDisplayName(Constants::LOCATOR_FILTER_DISPLAY_NAME);
-    setShortcutString(":");
-    setIncludedByDefault(false);
+    setDefaultShortcutString(":");
+    setDefaultIncludedByDefault(false);
 }
 
 CppLocatorFilter::~CppLocatorFilter() = default;
@@ -101,7 +101,7 @@ QList<Core::LocatorFilterEntry> CppLocatorFilter::matchesFor(
 
                 // Highlight the matched characters, therefore it may be necessary
                 // to update the match if the displayName is different from matchString
-                if (matchString.midRef(matchOffset) != filterEntry.displayName) {
+                if (QStringView(matchString).mid(matchOffset) != filterEntry.displayName) {
                     match = shortRegexp.match(filterEntry.displayName);
                     matchOffset = 0;
                 }

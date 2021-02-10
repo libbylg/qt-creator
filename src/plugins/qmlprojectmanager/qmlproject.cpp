@@ -57,10 +57,16 @@
 #include <QDebug>
 #include <QRegularExpression>
 #include <QTextCodec>
+#include <QLoggingCategory>
 
 using namespace Core;
 using namespace ProjectExplorer;
 using namespace QmlProjectManager::Internal;
+using namespace Utils;
+
+namespace {
+Q_LOGGING_CATEGORY(infoLogger, "QmlProjectManager.QmlBuildSystem", QtInfoMsg)
+}
 
 namespace QmlProjectManager {
 
@@ -140,10 +146,9 @@ void QmlBuildSystem::parseProject(RefreshOptions options)
                           this, &QmlBuildSystem::refreshFiles);
 
               } else {
-                  MessageManager::write(tr("Error while loading project file %1.")
-                                        .arg(projectFilePath().toUserOutput()),
-                                        MessageManager::NoModeSwitch);
-                  MessageManager::write(errorMessage);
+                  MessageManager::writeFlashing(tr("Error while loading project file %1.")
+                                                    .arg(projectFilePath().toUserOutput()));
+                  MessageManager::writeSilently(errorMessage);
               }
         }
         if (m_projectItem) {
@@ -161,9 +166,9 @@ void QmlBuildSystem::parseProject(RefreshOptions options)
                 Utils::FileReader reader;
                 QString errorMessage;
                 if (!reader.fetch(mainFilePath, &errorMessage)) {
-                    MessageManager::write(tr("Warning while loading project file %1.")
-                                          .arg(projectFilePath().toUserOutput()));
-                    MessageManager::write(errorMessage);
+                    MessageManager::writeFlashing(tr("Warning while loading project file %1.")
+                                                      .arg(projectFilePath().toUserOutput()));
+                    MessageManager::writeSilently(errorMessage);
                 }
             }
         }
@@ -205,6 +210,13 @@ QString QmlBuildSystem::mainFile() const
     return QString();
 }
 
+bool QmlBuildSystem::qtForMCUs() const
+{
+    if (m_projectItem)
+        return m_projectItem.data()->qtForMCUs();
+    return false;
+}
+
 void QmlBuildSystem::setMainFile(const QString &mainFilePath)
 {
     if (m_projectItem)
@@ -213,7 +225,7 @@ void QmlBuildSystem::setMainFile(const QString &mainFilePath)
 
 Utils::FilePath QmlBuildSystem::targetDirectory() const
 {
-    if (DeviceTypeKitAspect::deviceTypeId(target()->kit())
+    if (DeviceTypeKitAspect::deviceTypeId(kit())
             == ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE)
         return canonicalProjectDir();
 
@@ -269,6 +281,10 @@ QStringList QmlBuildSystem::makeAbsolute(const Utils::FilePath &path, const QStr
 
 void QmlBuildSystem::refreshFiles(const QSet<QString> &/*added*/, const QSet<QString> &removed)
 {
+    if (m_blockFilesUpdate) {
+        qCDebug(infoLogger) << "Auto files refresh blocked.";
+        return;
+    }
     refresh(Files);
     if (!removed.isEmpty()) {
         if (auto modelManager = QmlJS::ModelManagerInterface::instance())
@@ -355,7 +371,7 @@ void QmlBuildSystem::generateProjectTree()
 
     auto newRoot = std::make_unique<QmlProjectNode>(project());
 
-    for (const QString &f : m_projectItem.data()->files()) {
+    for (const QString &f : m_projectItem->files()) {
         const Utils::FilePath fileName = Utils::FilePath::fromString(f);
         const FileType fileType = (fileName == projectFilePath())
                 ? FileType::Project : FileNode::fileTypeForFileName(fileName);
@@ -372,7 +388,7 @@ void QmlBuildSystem::updateDeploymentData()
     if (!m_projectItem)
         return;
 
-    if (DeviceTypeKitAspect::deviceTypeId(target()->kit())
+    if (DeviceTypeKitAspect::deviceTypeId(kit())
             == ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE) {
         return;
     }
@@ -393,6 +409,8 @@ QVariant QmlBuildSystem::additionalData(Id id) const
         return customFileSelectors();
     if (id == Constants::customForceFreeTypeData)
         return forceFreeType();
+    if (id == Constants::customQtForMCUs)
+        return qtForMCUs();
     return {};
 }
 
@@ -455,8 +473,8 @@ bool QmlBuildSystem::renameFile(Node * context, const QString &filePath, const Q
             setMainFile(newFilePath);
 
             // make sure to change it also in the qmlproject file
-            const QString qmlProjectFilePath = project()->projectFilePath().toString();
-            Core::FileChangeBlocker fileChangeBlocker(qmlProjectFilePath);
+            const Utils::FilePath qmlProjectFilePath = project()->projectFilePath();
+            Core::FileChangeBlocker fileChangeBlocker(qmlProjectFilePath.toString());
             const QList<Core::IEditor *> editors = Core::DocumentModel::editorsForFilePath(qmlProjectFilePath);
             TextEditor::TextDocument *document = nullptr;
             if (!editors.isEmpty()) {
@@ -470,7 +488,7 @@ bool QmlBuildSystem::renameFile(Node * context, const QString &filePath, const Q
             QString error;
             Utils::TextFileFormat textFileFormat;
             const QTextCodec *codec = QTextCodec::codecForName("UTF-8"); // qml files are defined to be utf-8
-            if (Utils::TextFileFormat::readFile(qmlProjectFilePath, codec, &fileContent, &textFileFormat, &error)
+            if (Utils::TextFileFormat::readFile(qmlProjectFilePath.toString(), codec, &fileContent, &textFileFormat, &error)
                     != Utils::TextFileFormat::ReadSuccess) {
                 qWarning() << "Failed to read file" << qmlProjectFilePath << ":" << error;
             }
@@ -483,7 +501,7 @@ bool QmlBuildSystem::renameFile(Node * context, const QString &filePath, const Q
 
             fileContent.replace(match.capturedStart(1), match.capturedLength(1), QFileInfo(newFilePath).fileName());
 
-            if (!textFileFormat.writeFile(qmlProjectFilePath, fileContent, &error))
+            if (!textFileFormat.writeFile(qmlProjectFilePath.toString(), fileContent, &error))
                 qWarning() << "Failed to write file" << qmlProjectFilePath << ":" << error;
 
             refresh(Everything);

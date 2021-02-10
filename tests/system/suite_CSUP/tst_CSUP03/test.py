@@ -51,11 +51,6 @@ def constructExpectedCode(original, codeLines, funcSuffix):
             generatedFunc += "\n    %s" % line
     if withBraces:
         generatedFunc += "\n        \n    }"
-    # QTCREATORBUG-12118: last line has 4 additional blanks
-    if JIRA.isBugStillOpen(12118):
-        generatedFunc += "    "
-    else:
-        test.warning("Remove unnecessary code - QTCREATORBUG-12118 is closed.")
     generatedFunc += "\n}"
     tmp.insert(insertHere + 1, generatedFunc)
     return "\n".join(tmp) + "\n"
@@ -83,7 +78,7 @@ def main():
                 continue
             if not startCreatorVerifyingClang(useClang):
                 continue
-            projectName = createNewNonQtProject(tempDir(), "project_csup03",
+            projectName = createNewNonQtProject(tempDir(), "project-csup03",
                                                 [Targets.DESKTOP_4_8_7_DEFAULT])
             checkCodeModelSettings(useClang)
             openDocument("%s.Sources.main\\.cpp" % projectName)
@@ -120,7 +115,5 @@ def main():
                 test.compare(modifiedCode, expectedCode, "Verifying whether code matches expected.")
                 # reverting to initial state of main.cpp
                 revertMainCpp()
-            snooze(1)   # "Close All" might be disabled
-            invokeMenuItem('File', 'Close All')
             invokeMenuItem('File', 'Exit')
             waitForCleanShutdown()

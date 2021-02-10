@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
@@ -28,6 +28,7 @@ import QtQuick.Controls 2.3
 import StudioFonts 1.0
 import QtQuick.Layouts 1.0
 import projectmodel 1.0
+import usagestatistics 1.0
 
 Image {
     id: welcome_splash
@@ -37,9 +38,30 @@ Image {
 
     signal goNext
     signal closeClicked
+    signal configureClicked
 
     property alias doNotShowAgain: do_not_show_checkBox.checked
     property bool loadingPlugins: true
+
+    // called from C++
+    function onPluginInitialized(crashReportingEnabled: bool, crashReportingOn: bool)
+    {
+        loadingPlugins = false
+
+        if (crashReportingEnabled) {
+            var configureButton = "<a href='#' style='text-decoration:none;color:#ffff00'>"
+                                  + qsTr("[Configure]") + "</a>";
+            var settingPath = Qt.platform.os === "osx"
+                              ? qsTr("Qt Creator > Preferences > Environment > System")
+                              : qsTr("Tools > Options > Environment > System")
+            var strOn = qsTr("Qt Design Studio collects crash reports for the sole purpose of fixing bugs. "
+                        + "You can disable this feature under %1. %2").arg(settingPath).arg(configureButton)
+           var strOff = qsTr("Qt Design Studio can collect crash reports for the sole purpose of fixing bugs. "
+                        + "You can enable this feature under %1. %2").arg(settingPath).arg(configureButton)
+
+            crash_reporting_text.text = crashReportingOn ? strOn : strOff;
+        }
+    }
 
     Image {
         id: logo
@@ -83,7 +105,7 @@ Image {
         width: 270
         height: 24
         color: "#ffffff"
-        text: qsTr("Copyright 2008 - 2019 The Qt Company")
+        text: qsTr("Copyright 2008 - 2020 The Qt Company")
         font.pixelSize: 16
         font.family: StudioFonts.titilliumWeb_light
     }
@@ -103,7 +125,7 @@ Image {
     Text {
         id: marketing_1
         x: 16
-        y: 302
+        y: 252
         width: 355
         height: 31
         color: "#ffffff"
@@ -117,7 +139,7 @@ Image {
     Text {
         id: marketing_2
         x: 16
-        y: 323
+        y: 273
         width: 311
         height: 31
         color: "#ffffff"
@@ -131,7 +153,7 @@ Image {
     Text {
         id: marketing_3
         x: 16
-        y: 344
+        y: 294
         width: 311
         height: 31
         color: "#ffffff"
@@ -140,6 +162,26 @@ Image {
         font.family: StudioFonts.titilliumWeb_light
         font.pixelSize: 12
         font.wordSpacing: 0
+    }
+
+    Text {
+        id: crash_reporting_text
+        color: "#ffffff"
+        textFormat: Text.RichText
+        x: 16
+        y: 330
+        width: 311
+        wrapMode: Text.WordWrap
+        font.family: StudioFonts.titilliumWeb_light
+        font.pixelSize: 12
+        font.wordSpacing: 0
+        onLinkActivated: welcome_splash.configureClicked()
+
+        MouseArea { // show hand cursor on link hover
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton // don't eat clicks on the Text
+            cursorShape: parent.hoveredLink ? Qt.PointingHandCursor : Qt.ArrowCursor
+        }
     }
 
     Dof_Effect {
@@ -191,10 +233,9 @@ Image {
         scale: 0.5
     }
 
-
     RowLayout {
         x: 16
-        y: 254
+        y: 330
 
         visible: welcome_splash.loadingPlugins
 
@@ -249,5 +290,21 @@ Image {
         ProjectModel {
             id: projectModel
         }
+
+        UsageStatisticModel {
+            id: usageStatisticModel
+        }
+    }
+
+    NoShowCheckbox {
+        id: usageStatisticCheckBox
+        x: -47
+        y: 391
+        text: "Enable Usage Statistics"
+        padding: 0
+        scale: 0.5
+        checked: usageStatisticModel.usageStatisticEnabled
+
+        onCheckedChanged: usageStatisticModel.setPluginEnabled(usageStatisticCheckBox.checked)
     }
 }

@@ -45,7 +45,10 @@ Item {
     width: 96
     implicitHeight: spinBox.height
 
-    onFocusChanged: transaction.end();
+    onFocusChanged: {
+        restoreCursor();
+        transaction.end();
+    }
 
     StudioControls.RealSpinBox {
         id: spinBox
@@ -59,6 +62,8 @@ Item {
             restoreCursor();
             transaction.end();
         }
+
+        onDragging: holdCursorInPlace();
 
         onRealValueModified: {
             if (transaction.active())
@@ -83,6 +88,8 @@ Item {
         actionIndicator.icon.color: extFuncLogic.color
         actionIndicator.icon.text: extFuncLogic.glyph
         actionIndicator.onClicked: extFuncLogic.show()
+
+        actionIndicator.forceVisible: extFuncLogic.menuVisible
 
         ColorLogic {
             id: colorLogic

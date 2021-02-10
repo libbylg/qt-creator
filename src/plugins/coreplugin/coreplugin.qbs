@@ -1,5 +1,6 @@
 import qbs 1.0
 import qbs.FileInfo
+import qbs.Utilities
 
 Project {
     name: "Core"
@@ -17,17 +18,10 @@ Project {
             condition: qbs.targetOS.contains("windows")
         }
 
-        Depends { name: "Qt.script"; required: false }
-
         Depends { name: "Utils" }
         Depends { name: "Aggregation" }
 
         Depends { name: "app_version_header" }
-
-        Properties {
-            condition: Qt.script.present
-            cpp.defines: base.concat("WITH_JAVASCRIPTFILTER")
-        }
 
         cpp.dynamicLibraries: {
             if (qbs.targetOS.contains("windows"))
@@ -93,8 +87,6 @@ Project {
                 "icontext.h",
                 "icore.cpp",
                 "icore.h",
-                "id.cpp",
-                "id.h",
                 "idocument.cpp",
                 "idocument.h",
                 "idocumentfactory.cpp",
@@ -104,8 +96,6 @@ Project {
                 "imode.h",
                 "inavigationwidgetfactory.cpp",
                 "inavigationwidgetfactory.h",
-                "infobar.cpp",
-                "infobar.h",
                 "ioutputpane.cpp",
                 "ioutputpane.h",
                 "iversioncontrol.cpp",
@@ -154,6 +144,8 @@ Project {
                 "patchtool.h",
                 "plugindialog.cpp",
                 "plugindialog.h",
+                "plugininstallwizard.cpp",
+                "plugininstallwizard.h",
                 "reaper.cpp",
                 "reaper.h",
                 "reaper_p.h",
@@ -178,8 +170,6 @@ Project {
                 "textdocument.h",
                 "themechooser.cpp",
                 "themechooser.h",
-                "variablechooser.cpp",
-                "variablechooser.h",
                 "vcsmanager.cpp",
                 "vcsmanager.h",
                 "versiondialog.cpp",
@@ -209,6 +199,7 @@ Project {
             prefix: "dialogs/"
             files: [
                 "addtovcsdialog.cpp", "addtovcsdialog.h", "addtovcsdialog.ui",
+                "codecselector.cpp", "codecselector.h",
                 "externaltoolconfig.cpp", "externaltoolconfig.h", "externaltoolconfig.ui",
                 "filepropertiesdialog.cpp", "filepropertiesdialog.h", "filepropertiesdialog.ui",
                 "ioptionspage.cpp", "ioptionspage.h",
@@ -355,6 +346,8 @@ Project {
                 "filesystemfilter.ui",
                 "ilocatorfilter.cpp",
                 "ilocatorfilter.h",
+                "javascriptfilter.cpp",
+                "javascriptfilter.h",
                 "locatorconstants.h",
                 "locatorfiltersfilter.cpp",
                 "locatorfiltersfilter.h",
@@ -371,28 +364,11 @@ Project {
                 "locatorwidget.h",
                 "opendocumentsfilter.cpp",
                 "opendocumentsfilter.h",
+                "spotlightlocatorfilter.h",
+                "spotlightlocatorfilter.cpp",
                 "urllocatorfilter.cpp",
                 "urllocatorfilter.h",
                 "urllocatorfilter.ui"
-            ]
-        }
-
-        Group {
-            name: "Locator Javascript Filter"
-            condition: Qt.script.present
-            prefix: "locator/"
-            files: [
-                "javascriptfilter.cpp",
-                "javascriptfilter.h",
-            ]
-        }
-
-        Group {
-            name: "Locator_mac"
-            condition: qbs.targetOS.contains("macos")
-            files: [
-                "locator/spotlightlocatorfilter.h",
-                "locator/spotlightlocatorfilter.mm",
             ]
         }
 

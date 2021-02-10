@@ -27,7 +27,6 @@
 
 #include "debuggerconstants.h"
 
-#include <coreplugin/id.h>
 #include <projectexplorer/abi.h>
 
 #include <functional>
@@ -74,13 +73,9 @@ QAction *addAction(QMenu *menu, const QString &d1, const QString &d2, bool on,
 QAction *addCheckableAction(QMenu *menu, const QString &display, bool on, bool checked,
                             const std::function<void()> &onTriggered);
 
-void addHideColumnActions(QMenu *menu, QWidget *widget);
-
-
 // Qt's various build paths for unpatched versions
 QStringList qtBuildPaths();
 
-void addDebugInfoTask(unsigned id, const QString &cmd);
 QWidget *addSearch(Utils::BaseTreeView *treeView);
 
 } // namespace Internal

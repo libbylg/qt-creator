@@ -52,47 +52,42 @@ class LinuxIccToolChainFactory;
 // GccToolChain
 // --------------------------------------------------------------------------
 
-inline const QStringList languageOption(Core::Id languageId)
+inline const QStringList languageOption(Utils::Id languageId)
 {
     if (languageId == Constants::C_LANGUAGE_ID)
         return {"-x", "c"};
     return {"-x", "c++"};
 }
 
-inline const QStringList gccPredefinedMacrosOptions(Core::Id languageId)
+inline const QStringList gccPredefinedMacrosOptions(Utils::Id languageId)
 {
     return languageOption(languageId) + QStringList({"-E", "-dM"});
 }
 
 class PROJECTEXPLORER_EXPORT GccToolChain : public ToolChain
 {
-public:
-    GccToolChain(Core::Id typeId);
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::GccToolChain)
 
-    Abi targetAbi() const override;
+public:
+    GccToolChain(Utils::Id typeId);
+
     QString originalTargetTriple() const override;
     Utils::FilePath installDir() const override;
     QString version() const;
     Abis supportedAbis() const override;
-    void setTargetAbi(const Abi &);
-
-    bool isValid() const override;
 
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
     Utils::WarningFlags warningFlags(const QStringList &cflags) const override;
+    QStringList includedFiles(const QStringList &flags,
+                              const QString &directoryPath) const override;
 
     MacroInspectionRunner createMacroInspectionRunner() const override;
-    Macros predefinedMacros(const QStringList &cxxflags) const override;
-
     BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(const Utils::Environment &env) const override;
-    HeaderPaths builtInHeaderPaths(const QStringList &flags,
-                                   const Utils::FilePath &sysRootPath,
-                                   const Utils::Environment &env) const override;
 
     void addToEnvironment(Utils::Environment &env) const override;
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
     QStringList suggestedMkspecList() const override;
-    IOutputParser *outputParser() const override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
 
     QVariantMap toMap() const override;
     bool fromMap(const QVariantMap &data) override;
@@ -102,7 +97,6 @@ public:
     bool operator ==(const ToolChain &) const override;
 
     void resetToolChain(const Utils::FilePath &);
-    Utils::FilePath compilerCommand() const override;
     void setPlatformCodeGenFlags(const QStringList &);
     QStringList extraCodeModelFlags() const override;
     QStringList platformCodeGenFlags() const;
@@ -127,7 +121,6 @@ protected:
     using CacheItem = QPair<QStringList, Macros>;
     using GccCache = QVector<CacheItem>;
 
-    void setCompilerCommand(const Utils::FilePath &path);
     void setSupportedAbis(const Abis &abis);
     void setOriginalTargetTriple(const QString &targetTriple);
     void setInstallDir(const Utils::FilePath &installDir);
@@ -154,7 +147,7 @@ protected:
                                           const QStringList &platformCodeGenFlags,
                                           OptionsReinterpreter reinterpretOptions,
                                           HeaderPathsCache headerCache,
-                                          Core::Id languageId,
+                                          Utils::Id languageId,
                                           ExtraHeaderPathsFunction extraHeaderPathsFunction,
                                           const QStringList &flags,
                                           const QString &sysRoot,
@@ -182,11 +175,10 @@ private:
     static QStringList gccPrepareArguments(const QStringList &flags,
                                            const QString &sysRoot,
                                            const QStringList &platformCodeGenFlags,
-                                           Core::Id languageId,
+                                           Utils::Id languageId,
                                            OptionsReinterpreter reinterpretOptions);
 
 protected:
-    Utils::FilePath m_compilerCommand;
     QStringList m_platformCodeGenFlags;
     QStringList m_platformLinkerFlags;
 
@@ -194,7 +186,6 @@ protected:
     mutable ExtraHeaderPathsFunction m_extraHeaderPathsFunction = [](HeaderPaths &) {};
 
 private:
-    Abi m_targetAbi;
     mutable Abis m_supportedAbis;
     mutable QString m_originalTargetTriple;
     mutable HeaderPaths m_headerPaths;
@@ -212,9 +203,11 @@ private:
 
 class PROJECTEXPLORER_EXPORT ClangToolChain : public GccToolChain
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::ClangToolChain)
+
 public:
     ClangToolChain();
-    explicit ClangToolChain(Core::Id typeId);
+    explicit ClangToolChain(Utils::Id typeId);
     ~ClangToolChain() override;
 
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
@@ -222,7 +215,7 @@ public:
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
     Utils::WarningFlags warningFlags(const QStringList &cflags) const override;
 
-    IOutputParser *outputParser() const override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
 
     QStringList suggestedMkspecList() const override;
     void addToEnvironment(Utils::Environment &env) const override;
@@ -258,6 +251,8 @@ private:
 
 class PROJECTEXPLORER_EXPORT MingwToolChain : public GccToolChain
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::MingwToolChain)
+
 public:
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
 
@@ -276,9 +271,11 @@ private:
 
 class PROJECTEXPLORER_EXPORT LinuxIccToolChain : public GccToolChain
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::LinuxIccToolChain)
+
 public:
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
-    IOutputParser *outputParser() const override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
 
     QStringList suggestedMkspecList() const override;
 

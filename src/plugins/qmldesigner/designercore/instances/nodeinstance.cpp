@@ -32,6 +32,8 @@
 
 #include <QDebug>
 #include <QPainter>
+#include <QVector3D>
+#include <QVector2D>
 
 QT_BEGIN_NAMESPACE
 void qt_blurImage(QPainter *painter, QImage &blurImage, qreal radius, bool quality, bool alphaOnly, int transposed = 0);
@@ -76,6 +78,7 @@ public:
     QString errorMessage;
 
     QHash<PropertyName, QPair<PropertyName, qint32> > anchors;
+    QStringList allStates;
 };
 
 NodeInstance::NodeInstance() = default;
@@ -169,6 +172,10 @@ bool NodeInstance::hasError() const
     return !d->errorMessage.isEmpty();
 }
 
+QStringList NodeInstance::allStateNames() const
+{
+    return d->allStates;
+}
 
 bool NodeInstance::isValid() const
 {
@@ -301,8 +308,54 @@ int NodeInstance::penWidth() const
 
 QVariant NodeInstance::property(const PropertyName &name) const
 {
-    if (isValid())
-        return d->propertyValues.value(name);
+    if (isValid()) {
+        if (d->propertyValues.contains(name)) {
+            return d->propertyValues.value(name);
+        } else {
+            // Query may be for a subproperty, e.g. scale.x
+            const int index = name.indexOf('.');
+            if (index != -1) {
+                PropertyName parentPropName = name.left(index);
+                QVariant varValue = d->propertyValues.value(parentPropName);
+                if (varValue.type() == QVariant::Vector2D) {
+                    auto value = varValue.value<QVector2D>();
+                    char subProp = name.right(1)[0];
+                    float subValue = 0.f;
+                    switch (subProp) {
+                    case 'x':
+                        subValue = value.x();
+                        break;
+                    case 'y':
+                        subValue = value.y();
+                        break;
+                    default:
+                        subValue = 0.f;
+                        break;
+                    }
+                    return QVariant(subValue);
+                } else if (varValue.type() == QVariant::Vector3D) {
+                    auto value = varValue.value<QVector3D>();
+                    char subProp = name.right(1)[0];
+                    float subValue = 0.f;
+                    switch (subProp) {
+                    case 'x':
+                        subValue = value.x();
+                        break;
+                    case 'y':
+                        subValue = value.y();
+                        break;
+                    case 'z':
+                        subValue = value.z();
+                        break;
+                    default:
+                        subValue = 0.f;
+                        break;
+                    }
+                    return QVariant(subValue);
+                }
+            }
+        }
+    }
 
     return QVariant();
 }
@@ -357,6 +410,46 @@ QPair<PropertyName, qint32> NodeInstance::anchor(const PropertyName &name) const
 
 void NodeInstance::setProperty(const PropertyName &name, const QVariant &value)
 {
+    const int index = name.indexOf('.');
+    if (index != -1) {
+        PropertyName parentPropName = name.left(index);
+        QVariant oldValue = d->propertyValues.value(parentPropName);
+        QVariant newValueVar;
+        bool update = false;
+        if (oldValue.type() == QVariant::Vector2D) {
+            QVector2D newValue;
+            if (oldValue.type() == QVariant::Vector2D)
+                newValue = oldValue.value<QVector2D>();
+            if (name.endsWith(".x")) {
+                newValue.setX(value.toFloat());
+                update = true;
+            } else if (name.endsWith(".y")) {
+                newValue.setY(value.toFloat());
+                update = true;
+            }
+            newValueVar = newValue;
+        } else if (oldValue.type() == QVariant::Vector3D) {
+            QVector3D newValue;
+            if (oldValue.type() == QVariant::Vector3D)
+                newValue = oldValue.value<QVector3D>();
+            if (name.endsWith(".x")) {
+                newValue.setX(value.toFloat());
+                update = true;
+            } else if (name.endsWith(".y")) {
+                newValue.setY(value.toFloat());
+                update = true;
+            } else if (name.endsWith(".z")) {
+                newValue.setZ(value.toFloat());
+                update = true;
+            }
+            newValueVar = newValue;
+        }
+        if (update) {
+            d->propertyValues.insert(parentPropName, newValueVar);
+            return;
+        }
+    }
+
     d->propertyValues.insert(name, value);
 }
 
@@ -380,9 +473,7 @@ QPixmap NodeInstance::blurredRenderPixmap() const
 void NodeInstance::setRenderPixmap(const QImage &image)
 {
     d->renderPixmap = QPixmap::fromImage(image);
-#ifndef QMLDESIGNER_TEST
-    d->renderPixmap.setDevicePixelRatio(QmlDesignerPlugin::formEditorDevicePixelRatio());
-#endif
+
     d->blurredRenderPixmap = QPixmap();
 }
 
@@ -592,6 +683,16 @@ InformationName NodeInstance::setInformationHasBindingForProperty(const Property
     return NoInformationChange;
 }
 
+InformationName NodeInstance::setAllStates(const QStringList &states)
+{
+    if (d->allStates != states) {
+        d->allStates = states;
+        return AllStates;
+    }
+
+    return NoInformationChange;
+}
+
 InformationName NodeInstance::setInformation(InformationName name, const QVariant &information, const QVariant &secondInformation, const QVariant &thirdInformation)
 {
     switch (name) {
@@ -614,6 +715,7 @@ InformationName NodeInstance::setInformation(InformationName name, const QVarian
     case Anchor: return setInformationAnchor(information.toByteArray(), secondInformation.toByteArray(), thirdInformation.value<qint32>());
     case InstanceTypeForProperty: return setInformationInstanceTypeForProperty(information.toByteArray(), secondInformation.toByteArray());
     case HasBindingForProperty: return setInformationHasBindingForProperty(information.toByteArray(), secondInformation.toBool());
+    case AllStates: return setAllStates(information.toStringList());
     case NoName:
     default: break;
     }

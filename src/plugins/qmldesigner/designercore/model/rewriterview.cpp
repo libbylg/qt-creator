@@ -53,6 +53,8 @@
 #include <utils/changeset.h>
 #include <utils/qtcassert.h>
 
+#include <QRegularExpression>
+
 #include <utility>
 #include <vector>
 
@@ -62,6 +64,19 @@ namespace QmlDesigner {
 
 const char annotationsEscapeSequence[] = "##^##";
 
+bool debugQmlPuppet()
+{
+#ifndef QMLDESIGNER_TEST
+    if (!QmlDesignerPlugin::instance())
+        return false;
+    const QString debugPuppet = QmlDesignerPlugin::instance()->settings().value(DesignerSettingsKey::
+        DEBUG_PUPPET).toString();
+    return !debugPuppet.isEmpty();
+#else
+    return false;
+#endif
+}
+
 RewriterView::RewriterView(DifferenceHandling differenceHandling, QObject *parent):
         AbstractView(parent),
         m_differenceHandling(differenceHandling),
@@ -70,7 +85,16 @@ RewriterView::RewriterView(DifferenceHandling differenceHandling, QObject *paren
         m_textToModelMerger(new Internal::TextToModelMerger(this))
 {
     m_amendTimer.setSingleShot(true);
+    m_amendTimer.setInterval(400);
     connect(&m_amendTimer, &QTimer::timeout, this, &RewriterView::amendQmlText);
+
+    QmlJS::ModelManagerInterface *modelManager = QmlJS::ModelManagerInterface::instance();
+    connect(modelManager, &QmlJS::ModelManagerInterface::libraryInfoUpdated,
+            this, &RewriterView::handleLibraryInfoUpdate, Qt::QueuedConnection);
+    connect(modelManager, &QmlJS::ModelManagerInterface::projectInfoUpdated,
+            this, &RewriterView::handleProjectUpdate, Qt::DirectConnection);
+    connect(this, &RewriterView::modelInterfaceProjectUpdated,
+            this, &RewriterView::handleLibraryInfoUpdate, Qt::QueuedConnection);
 }
 
 RewriterView::~RewriterView() = default;
@@ -87,6 +111,8 @@ Internal::TextToModelMerger *RewriterView::textToModelMerger() const
 
 void RewriterView::modelAttached(Model *model)
 {
+    m_modelAttachPending = false;
+
     if (model && model->textModifier())
         setTextModifier(model->textModifier());
 
@@ -100,10 +126,12 @@ void RewriterView::modelAttached(Model *model)
     if (!(m_errors.isEmpty() && m_warnings.isEmpty()))
         notifyErrorsAndWarnings(m_errors);
 
-    if (hasIncompleteTypeInformation())
+    if (hasIncompleteTypeInformation()) {
+        m_modelAttachPending = true;
         QTimer::singleShot(1000, this, [this, model](){
             modelAttached(model);
         });
+    }
 }
 
 void RewriterView::modelAboutToBeDetached(Model * /*model*/)
@@ -245,11 +273,12 @@ void RewriterView::importAdded(const Import &import)
     if (textToModelMerger()->isActive())
         return;
 
-    if (import.url() == QLatin1String("Qt"))
+    if (import.url() == QLatin1String("Qt")) {
         foreach (const Import &import, model()->imports()) {
             if (import.url() == QLatin1String("QtQuick"))
                 return; //QtQuick magic we do not have to add an import for Qt
         }
+    }
 
     modelToTextMerger()->addImport(import);
 
@@ -483,6 +512,42 @@ static QString replaceIllegalPropertyNameChars(const QString &str)
     return ret;
 }
 
+static bool idIsQmlKeyWord(const QString& id)
+{
+    static const QSet<QString> keywords = {
+        "as",
+        "break",
+        "case",
+        "catch",
+        "continue",
+        "debugger",
+        "default",
+        "delete",
+        "do",
+        "else",
+        "finally",
+        "for",
+        "function",
+        "if",
+        "import",
+        "in",
+        "instanceof",
+        "new",
+        "return",
+        "switch",
+        "this",
+        "throw",
+        "try",
+        "typeof",
+        "var",
+        "void",
+        "while",
+        "with"
+    };
+
+    return keywords.contains(id);
+}
+
 QString RewriterView::auxiliaryDataAsQML() const
 {
     bool hasAuxData = false;
@@ -494,10 +559,12 @@ QString RewriterView::auxiliaryDataAsQML() const
     QTC_ASSERT(!m_canonicalIntModelNode.isEmpty(), return {});
 
     int columnCount = 0;
+
+    const QRegularExpression safeName("^[a-z][a-zA-Z0-9]*$");
+
     for (const auto &node : allModelNodes()) {
         QHash<PropertyName, QVariant> data = node.auxiliaryData();
         if (!data.isEmpty()) {
-            hasAuxData = true;
             if (columnCount > 80) {
                 str += "\n";
                 columnCount = 0;
@@ -516,13 +583,18 @@ QString RewriterView::auxiliaryDataAsQML() const
             keys.sort();
 
             for (const QString &key : keys) {
-
                 if (key.endsWith("@NodeInstance"))
                     continue;
 
                 if (key.endsWith("@Internal"))
                     continue;
 
+                if (idIsQmlKeyWord(key))
+                    continue;
+
+                if (!key.contains(safeName))
+                    continue;
+                hasAuxData = true;
                 const QVariant value = data.value(key.toUtf8());
                 QString strValue = value.toString();
 
@@ -530,6 +602,14 @@ QString RewriterView::auxiliaryDataAsQML() const
 
                 if (metaType == QMetaType::QString
                         || metaType == QMetaType::QColor) {
+
+                    strValue.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+                    strValue.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+                    strValue.replace(QStringLiteral("\t"), QStringLiteral("\\t"));
+                    strValue.replace(QStringLiteral("\r"), QStringLiteral("\\r"));
+                    strValue.replace(QStringLiteral("\n"), QStringLiteral("\\n"));
+                    strValue.replace(QStringLiteral("*/"), QStringLiteral("*\\/"));
+
                     strValue = "\"" + strValue + "\"";
                 }
 
@@ -733,8 +813,8 @@ void RewriterView::setupCanonicalHashes() const
 
     for (const ModelNode &node : allModelNodes()) {
         int offset = nodeOffset(node);
-        QTC_ASSERT(offset > 0, qDebug() << Q_FUNC_INFO << "no offset" << node; return);
-        data.emplace_back(std::make_pair(node, offset));
+        if (offset > 0)
+            data.emplace_back(std::make_pair(node, offset));
     }
 
     std::sort(data.begin(), data.end(), [](myPair a, myPair b) {
@@ -747,6 +827,18 @@ void RewriterView::setupCanonicalHashes() const
         m_canonicalModelNodeInt.insert(pair.first, i);
         ++i;
     }
+}
+
+void RewriterView::handleLibraryInfoUpdate()
+{
+    // Trigger dummy amend to reload document when library info changes
+    if (isAttached() && !m_modelAttachPending && !debugQmlPuppet())
+        m_amendTimer.start();
+}
+
+void RewriterView::handleProjectUpdate()
+{
+    emit modelInterfaceProjectUpdated();
 }
 
 ModelNode RewriterView::nodeAtTextCursorPosition(int cursorPosition) const
@@ -889,27 +981,31 @@ QStringList RewriterView::autoComplete(const QString &text, int pos, bool explic
     return list;
 }
 
-QList<CppTypeData> RewriterView::getCppTypes()
+QList<QmlTypeData> RewriterView::getQMLTypes() const
 {
-    QList<CppTypeData> cppDataList;
-    for (const QmlJS::ModelManagerInterface::CppData &cppData : QmlJS::ModelManagerInterface::instance()->cppData().values())
+    QList<QmlTypeData> qmlDataList;
+
+    qmlDataList.append(m_textToModelMerger->getQMLSingletons());
+
+    for (const QmlJS::ModelManagerInterface::CppData &cppData :
+         QmlJS::ModelManagerInterface::instance()->cppData())
         for (const LanguageUtils::FakeMetaObject::ConstPtr &fakeMetaObject : cppData.exportedTypes) {
-            for (const LanguageUtils::FakeMetaObject::Export &exportItem : fakeMetaObject->exports()) {
+            for (const LanguageUtils::FakeMetaObject::Export &exportItem :
+                 fakeMetaObject->exports()) {
+                QmlTypeData qmlData;
+                qmlData.cppClassName = fakeMetaObject->className();
+                qmlData.typeName = exportItem.type;
+                qmlData.importUrl = exportItem.package;
+                qmlData.versionString = exportItem.version.toString();
+                qmlData.superClassName = fakeMetaObject->superclassName();
+                qmlData.isSingleton = fakeMetaObject->isSingleton();
 
-            CppTypeData cppData;
-            cppData.cppClassName = fakeMetaObject->className();
-            cppData.typeName = exportItem.type;
-            cppData.importUrl = exportItem.package;
-            cppData.versionString = exportItem.version.toString();
-            cppData.superClassName = fakeMetaObject->superclassName();
-            cppData.isSingleton = fakeMetaObject->isSingleton();
-
-            if (cppData.importUrl != "<cpp>") //ignore pure unregistered cpp types
-                cppDataList.append(cppData);
+                if (qmlData.importUrl != "<cpp>") //ignore pure unregistered cpp types
+                    qmlDataList.append(qmlData);
             }
         }
 
-    return cppDataList;
+    return qmlDataList;
 }
 
 void RewriterView::setWidgetStatusCallback(std::function<void (bool)> setWidgetStatusCallback)
@@ -919,7 +1015,6 @@ void RewriterView::setWidgetStatusCallback(std::function<void (bool)> setWidgetS
 
 void RewriterView::qmlTextChanged()
 {
-    getCppTypes();
     if (inErrorState())
         return;
 
@@ -948,7 +1043,7 @@ void RewriterView::qmlTextChanged()
                 auto &viewManager = QmlDesignerPlugin::instance()->viewManager();
                 if (viewManager.usesRewriterView(this)) {
                     QmlDesignerPlugin::instance()->viewManager().disableWidgets();
-                    m_amendTimer.start(400);
+                    m_amendTimer.start();
                 }
 #else
                 /*Keep test synchronous*/
@@ -1059,8 +1154,11 @@ void checkNode(const QmlJS::SimpleReaderNode::Ptr &node, RewriterView *view)
     auto properties = node->properties();
 
     for (auto i = properties.begin(); i != properties.end(); ++i) {
-        if (i.key() != "i")
-            modelNode.setAuxiliaryData(fixUpIllegalChars(i.key()).toUtf8(), i.value());
+        if (i.key() != "i") {
+            const PropertyName name = fixUpIllegalChars(i.key()).toUtf8();
+            if (!modelNode.hasAuxiliaryData(name))
+                modelNode.setAuxiliaryData(name, i.value());
+        }
     }
 
     checkChildNodes(node, view);
@@ -1070,11 +1168,16 @@ void RewriterView::restoreAuxiliaryData()
 {
     QTC_ASSERT(m_textModifier, return);
 
+    const char auxRestoredFlag[] = "AuxRestored@Internal";
+    if (rootModelNode().hasAuxiliaryData(auxRestoredFlag))
+        return;
+
     m_restoringAuxData = true;
 
     setupCanonicalHashes();
 
-    QTC_ASSERT(!m_canonicalIntModelNode.isEmpty(), return);
+    if (m_canonicalIntModelNode.isEmpty())
+        return;
 
     const QString text = m_textModifier->text();
 
@@ -1088,6 +1191,7 @@ void RewriterView::restoreAuxiliaryData()
         checkChildNodes(reader.readFromSource(auxSource), this);
     }
 
+    rootModelNode().setAuxiliaryData(auxRestoredFlag, true);
     m_restoringAuxData = false;
 }
 

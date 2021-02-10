@@ -149,12 +149,10 @@ void PdbEngine::setupEngine()
         notifyEngineSetupFailed();
         return;
     }
-    notifyEngineSetupOk();
-}
 
-void PdbEngine::runEngine()
-{
+    notifyEngineSetupOk();
     QTC_ASSERT(state() == EngineRunRequested, qDebug() << state());
+
     showStatusMessage(tr("Running requested..."), 5000);
     BreakpointManager::claimBreakpointsForEngine(this);
     notifyEngineRunAndInferiorStopOk();
@@ -499,7 +497,7 @@ void PdbEngine::handleOutput2(const QString &data)
             QTC_ASSERT(pos2 != -1, continue);
             const Utils::FilePath fileName = Utils::FilePath::fromString(
                 line.mid(pos1 + 4, pos2 - pos1 - 4));
-            const int lineNumber = line.midRef(pos2 + 1).toInt();
+            const int lineNumber = line.mid(pos2 + 1).toInt();
             const Breakpoint bp = Utils::findOrDefault(breakHandler()->breakpoints(), [&](const Breakpoint &bp) {
                 return bp->parameters().isLocatedAt(fileName, lineNumber, bp->markerFileName())
                     || bp->requestedParameters().isLocatedAt(fileName, lineNumber, bp->markerFileName());

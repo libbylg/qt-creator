@@ -23,17 +23,17 @@
 **
 ****************************************************************************/
 
-import QtQuick 2.12
-import QtQuick3D 1.14
+import QtQuick3D 1.15
 
 View3D {
     id: sceneView
     anchors.fill: parent
 
     property bool usePerspective: false
-    property bool showSceneLight: false
+    property alias showSceneLight: sceneLight.visible
+    property alias showGrid: helperGrid.visible
     property alias sceneHelpers: sceneHelpers
-    property alias perpectiveCamera: scenePerspectiveCamera
+    property alias perspectiveCamera: scenePerspectiveCamera
     property alias orthoCamera: sceneOrthoCamera
     property double cameraZoomFactor: .55;
 
@@ -62,7 +62,6 @@ View3D {
 
         PointLight {
             id: sceneLight
-            visible: showSceneLight
             position: usePerspective ? scenePerspectiveCamera.position
                                      : sceneOrthoCamera.position
             quadraticFade: 0
@@ -74,18 +73,18 @@ View3D {
         // point.
         PerspectiveCamera {
             id: scenePerspectiveCamera
-            z: -600
+            z: 600
             y: 600
-            rotation.x: 45
+            eulerRotation.x: -45
             clipFar: 100000
             clipNear: 1
         }
 
         OrthographicCamera {
             id: sceneOrthoCamera
-            z: -600
+            z: 600
             y: 600
-            rotation.x: 45
+            eulerRotation.x: -45
             clipFar: 100000
             clipNear: -10000
         }

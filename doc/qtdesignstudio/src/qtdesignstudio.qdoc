@@ -24,7 +24,6 @@
 ****************************************************************************/
 
 /*!
-    \contentspage{index.html}{Qt Design Studio}
     \page index.html
     \nextpage studio-getting-started.html
 
@@ -37,17 +36,20 @@
 
     \table
         \row
-            \li \inlineimage studio-gs.png
-            \li \inlineimage studio-projects.png
-            \li \inlineimage studio-components.png
+            \li {4,1} \b {\l{All Topics}}
+        \row
+            \li \inlineimage front-gs.png
+            \li \inlineimage front-projects.png
+            \li \inlineimage front-ui.png
             \li \inlineimage studio-animation.png
         \row
-        \li \l{Getting Started}
+        \li \b {\l{Getting Started}}
             \list
-                \li \l{Exporting Artwork from Design Tools}
+                \li \l{Exporting from Design Tools}
                 \li \l{User Interface}
                 \li \l{Editing QML Files in Design Mode}
                 \li \l{Tutorials}
+                \li \l{Qt Quick Best Practices}
             \endlist
             \li \b {\l{Managing Projects}}
                 \list
@@ -55,31 +57,33 @@
                     \li \l{Using Git}
                     \li \l{Importing Designs}
                     \li \l{Converting UI Projects to Applications}
+                    \li \l{Exporting QML}
                 \endlist
             \li \b {\l{Creating UIs}}
                 \list
+                    \li \l{Designing Application Flows}
                     \li \l{Creating Components}
                     \li \l{Managing Item Hierarchy}
                     \li \l{Specifying Item Properties}
-                    \li \l{Using Custom Fonts}
+                    \li \l{Positioning Items}
+                    \li \l{Annotating Designs}
                 \endlist
         \li \b {\l{Adding Dynamics}}
             \list
                 \li \l{Creating Animations}
                 \li \l{Adding Connections}
                 \li \l{Adding States}
-                \li \l{Editing PathView Properties}
             \endlist
         \row
             \li \inlineimage studio-3d-scenes.png
-            \li \inlineimage studio-preview.png
-            \li \inlineimage studio-settings.png
-            \li \inlineimage studio-help.png
+            \li \inlineimage front-preview.png
+            \li \inlineimage front-advanced.png
+            \li \inlineimage front-help.png
         \row
             \li \b {\l{Editing 3D Scenes}}
                 \list
                     \li \l{Editing 3D Assets in Design Mode}
-                    \li \l{Working in the 3D Editor}
+                    \li \l{Working in 3D Editor}
                     \li \l{Adding 3D Views}
                     \li \l{Using 3D Components}
                 \endlist
@@ -94,7 +98,7 @@
                     \li \l{Supported Platforms}
                     \li \l{Keyboard Shortcuts}
                     \li \l{Coding}
-                    \li \l{Simulating Application Logic}
+                    \li \l{Simulating Data Input}
                     \li \l{Debugging and Profiling}
                 \endlist
             \li \b {\l{Help}}
@@ -105,10 +109,9 @@
                     \li \l{Concepts and Terms}
                 \endlist
         \row
-            \li {4,1} \l{All Topics}
-        \row
-            \li {4,1} \note To report bugs and suggestions to the Qt Bug
-                Tracker, select \uicontrol {Help > Report Bug}.
+            \li {4,1} \note To report bugs and suggestions to the
+                \l{https://bugreports.qt.io/}{Qt Project Bug Tracker},
+                select \uicontrol {Help > Report Bug}.
                 To copy and paste detailed information about your system to the
                 bug report, select \uicontrol Help >
                 \uicontrol {System Information}.

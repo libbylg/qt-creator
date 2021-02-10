@@ -61,13 +61,14 @@ public:
                                                                     diagnosticConsumer);
     }
 
-    clang::FrontendAction *create() override
+    std::unique_ptr<clang::FrontendAction> create() override
     {
-        return new CollectUsedMacrosAction(m_usedMacros,
-                                           m_filePathCache,
-                                           m_sourceDependencies,
-                                           m_sourceFiles,
-                                           m_fileStatuses);
+        return std::make_unique<CollectUsedMacrosAction>(
+                    m_usedMacros,
+                    m_filePathCache,
+                    m_sourceDependencies,
+                    m_sourceFiles,
+                    m_fileStatuses);
     }
 
 private:

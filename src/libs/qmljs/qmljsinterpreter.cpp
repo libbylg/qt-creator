@@ -38,6 +38,7 @@
 #include <utils/qtcassert.h>
 
 #include <QApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QString>
@@ -245,8 +246,8 @@ CppComponentValue::CppComponentValue(FakeMetaObject::ConstPtr metaObject, const 
 
 CppComponentValue::~CppComponentValue()
 {
-    delete m_metaSignatures.load();
-    delete m_signalScopes.load();
+    delete m_metaSignatures.loadRelaxed();
+    delete m_signalScopes.loadRelaxed();
 }
 
 static QString generatedSlotName(const QString &base)
@@ -260,7 +261,7 @@ static QString generatedSlotName(const QString &base)
         if (c != QLatin1Char('_'))
             break;
     }
-    slotName += base.midRef(firstChar);
+    slotName += base.mid(firstChar);
     return slotName;
 }
 
@@ -284,7 +285,7 @@ void CppComponentValue::processMembers(MemberProcessor *processor) const
     QSet<QString> explicitSignals;
 
     // make MetaFunction instances lazily when first needed
-    QList<const Value *> *signatures = m_metaSignatures.load();
+    QList<const Value *> *signatures = m_metaSignatures.loadRelaxed();
     if (!signatures) {
         signatures = new QList<const Value *>;
         signatures->reserve(m_metaObject->methodCount());
@@ -292,7 +293,7 @@ void CppComponentValue::processMembers(MemberProcessor *processor) const
             signatures->append(new MetaFunction(m_metaObject->method(index), valueOwner()));
         if (!m_metaSignatures.testAndSetOrdered(nullptr, signatures)) {
             delete signatures;
-            signatures = m_metaSignatures.load();
+            signatures = m_metaSignatures.loadRelaxed();
         }
     }
 
@@ -357,6 +358,14 @@ void CppComponentValue::processMembers(MemberProcessor *processor) const
             attachedType->processMembers(processor);
     }
 
+    // look at extension types
+    const QString &extensionTypeName = m_metaObject->extensionTypeName();
+    if (!extensionTypeName.isEmpty()) {
+        const CppComponentValue *extensionType = valueOwner()->cppQmlTypes().objectByCppName(extensionTypeName);
+        if (extensionType && extensionType != this) // ### only weak protection against infinite loops
+            extensionType->processMembers(processor);
+    }
+
     ObjectValue::processMembers(processor);
 }
 
@@ -394,6 +403,8 @@ const Value *CppComponentValue::valueForCppName(const QString &typeName) const
         return valueOwner()->realValue();
     } else if (typeName == QLatin1String("QFont")) {
         return valueOwner()->qmlFontObject();
+    } else if (typeName == QLatin1String("QPalette")) {
+        return valueOwner()->qmlPaletteObject();
     } else if (typeName == QLatin1String("QPoint")
             || typeName == QLatin1String("QPointF")
             || typeName == QLatin1String("QVector2D")) {
@@ -520,7 +531,7 @@ const QmlEnumValue *CppComponentValue::getEnumValue(const QString &typeName, con
 
 const ObjectValue *CppComponentValue::signalScope(const QString &signalName) const
 {
-    QHash<QString, const ObjectValue *> *scopes = m_signalScopes.load();
+    QHash<QString, const ObjectValue *> *scopes = m_signalScopes.loadRelaxed();
     if (!scopes) {
         scopes = new QHash<QString, const ObjectValue *>;
         // usually not all methods are signals
@@ -546,7 +557,7 @@ const ObjectValue *CppComponentValue::signalScope(const QString &signalName) con
         }
         if (!m_signalScopes.testAndSetOrdered(nullptr, scopes)) {
             delete scopes;
-            scopes = m_signalScopes.load();
+            scopes = m_signalScopes.loadRelaxed();
         }
     }
 
@@ -1052,7 +1063,7 @@ void ObjectValue::setMember(const QString &name, const Value *value)
     m_members[name].value = value;
 }
 
-void ObjectValue::setMember(const QStringRef &name, const Value *value)
+void ObjectValue::setMember(const QStringView &name, const Value *value)
 {
     m_members[name.toString()].value = value;
 }
@@ -1075,25 +1086,6 @@ const ObjectValue *ObjectValue::asObjectValue() const
 void ObjectValue::accept(ValueVisitor *visitor) const
 {
     visitor->visit(this);
-}
-
-bool ObjectValue::checkPrototype(const ObjectValue *, QSet<const ObjectValue *> *) const
-{
-#if 0
-    const int previousSize = processed->size();
-    processed->insert(this);
-
-    if (previousSize != processed->size()) {
-        if (this == proto)
-            return false;
-
-        if (prototype() && ! prototype()->checkPrototype(proto, processed))
-            return false;
-
-        return true;
-    }
-#endif
-    return false;
 }
 
 void ObjectValue::processMembers(MemberProcessor *processor) const
@@ -1956,16 +1948,18 @@ const PatternElement *ASTVariableReference::ast() const
 const Value *ASTVariableReference::value(ReferenceContext *referenceContext) const
 {
     // may be assigned to later
-    if (!m_ast->expressionCast())
+    ExpressionNode *exp = ((m_ast->initializer) ? m_ast->initializer : m_ast->bindingTarget);
+    if (!exp)
         return valueOwner()->unknownValue();
 
     Document::Ptr doc = m_doc->ptr();
     ScopeChain scopeChain(doc, referenceContext->context());
     ScopeBuilder builder(&scopeChain);
-    builder.push(ScopeAstPath(doc)(m_ast->expressionCast()->firstSourceLocation().begin()));
+    builder.push(ScopeAstPath(doc)(exp->firstSourceLocation().begin()));
 
     Evaluate evaluator(&scopeChain, referenceContext);
-    return evaluator(m_ast->expressionCast());
+    const Value *res = evaluator(exp);
+    return res;
 }
 
 bool ASTVariableReference::getSourceLocation(QString *fileName, int *line, int *column) const
@@ -1992,7 +1986,7 @@ public:
     }
 
 protected:
-    bool visit(ArrayMemberExpression *ast)
+    bool visit(ArrayMemberExpression *ast) override
     {
         if (IdentifierExpression *idExp = cast<IdentifierExpression *>(ast->base)) {
             if (idExp->name == QLatin1String("arguments"))
@@ -2002,8 +1996,12 @@ protected:
     }
 
     // don't go into nested functions
-    bool visit(Program *) { return false; }
-    bool visit(StatementList *) { return false; }
+    bool visit(Program *) override { return false; }
+    bool visit(StatementList *) override { return false; }
+
+    void throwRecursionDepthError() override {
+        qWarning("Warning: Hit maximum recursion error visiting AST in UsesArgumentsArray");
+    }
 };
 } // anonymous namespace
 

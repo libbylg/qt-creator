@@ -25,10 +25,11 @@
 
 #include "qtversionmanager.h"
 
-#include "qtkitinformation.h"
-#include "qtversionfactory.h"
 #include "baseqtversion.h"
+#include "exampleslistmodel.h"
+#include "qtkitinformation.h"
 #include "qtsupportconstants.h"
+#include "qtversionfactory.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/helpmanager.h>
@@ -77,6 +78,7 @@ static QtVersionManager *m_instance = nullptr;
 static FileSystemWatcher *m_configFileWatcher = nullptr;
 static QTimer *m_fileWatcherTimer = nullptr;
 static PersistentSettingsWriter *m_writer = nullptr;
+static QVector<ExampleSetModel::ExtraExampleSet> m_pluginRegisteredExampleSets;
 
 static Q_LOGGING_CATEGORY(log, "qtc.qt.versions", QtWarningMsg);
 
@@ -99,6 +101,11 @@ bool qtVersionNumberCompare(BaseQtVersion *a, BaseQtVersion *b)
 static bool restoreQtVersions();
 static void findSystemQt();
 static void saveQtVersions();
+
+QVector<ExampleSetModel::ExtraExampleSet> ExampleSetModel::pluginRegisteredExampleSets()
+{
+    return m_pluginRegisteredExampleSets;
+}
 
 // --------------------------------------------------------------------------
 // QtVersionManager
@@ -200,7 +207,7 @@ static bool restoreQtVersions()
         if (!key.startsWith(keyPrefix))
             continue;
         bool ok;
-        int count = key.midRef(keyPrefix.count()).toInt(&ok);
+        int count = key.mid(keyPrefix.count()).toInt(&ok);
         if (!ok || count < 0)
             continue;
 
@@ -274,7 +281,7 @@ void QtVersionManager::updateFromInstaller(bool emitSignal)
         if (!key.startsWith(keyPrefix))
             continue;
         bool ok;
-        int count = key.midRef(keyPrefix.count()).toInt(&ok);
+        int count = key.mid(keyPrefix.count()).toInt(&ok);
         if (!ok || count < 0)
             continue;
 
@@ -379,7 +386,7 @@ static void saveQtVersions()
         data.insert(QString::fromLatin1(QTVERSION_DATA_KEY) + QString::number(count), tmp);
         ++count;
     }
-    m_writer->save(data, Core::ICore::mainWindow());
+    m_writer->save(data, Core::ICore::dialogParent());
 }
 
 // Executes qtchooser with arguments in a process and returns its output
@@ -471,6 +478,13 @@ void QtVersionManager::removeVersion(BaseQtVersion *version)
     delete version;
 }
 
+void QtVersionManager::registerExampleSet(const QString &displayName,
+                                          const QString &manifestPath,
+                                          const QString &examplesPath)
+{
+    m_pluginRegisteredExampleSets.append({displayName, manifestPath, examplesPath});
+}
+
 using Path = QString;
 using FileName = QString;
 static QList<std::pair<Path, FileName>> documentationFiles(BaseQtVersion *v)
@@ -488,14 +502,18 @@ static QList<std::pair<Path, FileName>> documentationFiles(BaseQtVersion *v)
 
 static QStringList documentationFiles(const QList<BaseQtVersion *> &vs, bool highestOnly = false)
 {
-    QSet<QString> includedFileNames;
+    // if highestOnly is true, register each file only once per major Qt version, even if
+    // multiple minor or patch releases of that major version are installed
+    QHash<int, QSet<QString>> includedFileNames; // major Qt version -> names
     QSet<QString> filePaths;
     const QList<BaseQtVersion *> versions = highestOnly ? QtVersionManager::sortVersions(vs) : vs;
     for (BaseQtVersion *v : versions) {
+        const int majorVersion = v->qtVersion().majorVersion;
+        QSet<QString> &majorVersionFileNames = includedFileNames[majorVersion];
         for (const std::pair<Path, FileName> &file : documentationFiles(v)) {
-            if (!highestOnly || !includedFileNames.contains(file.second)) {
+            if (!highestOnly || !majorVersionFileNames.contains(file.second)) {
                 filePaths.insert(file.first + file.second);
-                includedFileNames.insert(file.second);
+                majorVersionFileNames.insert(file.second);
             }
         }
     }
@@ -644,7 +662,7 @@ void QtVersionManager::setDocumentationSetting(const QtVersionManager::Documenta
 {
     if (setting == documentationSetting())
         return;
-    Core::ICore::settings()->setValue(DOCUMENTATION_SETTING_KEY, int(setting));
+    Core::ICore::settings()->setValueWithDefault(DOCUMENTATION_SETTING_KEY, int(setting), 0);
     // force re-evaluating which documentation should be registered
     // by claiming that all are removed and re-added
     const QList<BaseQtVersion *> vs = versions();

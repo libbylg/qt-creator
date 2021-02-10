@@ -27,6 +27,10 @@
 #include "importlabel.h"
 #include "importmanagercombobox.h"
 
+#include <designdocument.h>
+#include <qmldesignerplugin.h>
+#include <designermcumanager.h>
+
 #include <utils/algorithm.h>
 
 #include <QVBoxLayout>
@@ -50,7 +54,7 @@ void ImportsWidget::removeImports()
     updateLayout();
 }
 
-static bool isImportAlreadyUsed(const Import &import, QList<ImportLabel*> importLabels)
+static bool isImportAlreadyUsed(const Import &import, QList<ImportLabel *> importLabels)
 {
     foreach (ImportLabel *importLabel, importLabels) {
         if (importLabel->import() == import)
@@ -90,7 +94,27 @@ void ImportsWidget::setPossibleImports(QList<Import> possibleImports)
 {
     Utils::sort(possibleImports, importLess);
     m_addImportComboBox->clear();
-    foreach (const Import &possibleImport, possibleImports) {
+
+    const DesignerMcuManager &mcuManager = DesignerMcuManager::instance();
+    const bool isQtForMCUs = mcuManager.isMCUProject();
+
+    QList<Import> filteredImports;
+
+    const QStringList mcuAllowedList = mcuManager.allowedImports();
+    const QStringList mcuBannedList = mcuManager.bannedImports();
+
+    if (isQtForMCUs) {
+        filteredImports = Utils::filtered(possibleImports,
+                                          [mcuAllowedList, mcuBannedList](const Import &import) {
+                                              return (mcuAllowedList.contains(import.url())
+                                                      || !import.url().startsWith("Qt"))
+                                                     && !mcuBannedList.contains(import.url());
+                                          });
+    } else {
+        filteredImports = possibleImports;
+    }
+
+    for (const Import &possibleImport : filteredImports) {
         if (!isImportAlreadyUsed(possibleImport, m_importLabels))
             m_addImportComboBox->addItem(possibleImport.toString(true), QVariant::fromValue(possibleImport));
     }
@@ -103,9 +127,15 @@ void ImportsWidget::removePossibleImports()
 
 void ImportsWidget::setUsedImports(const QList<Import> &usedImports)
 {
-    foreach (ImportLabel *importLabel, m_importLabels)
-        importLabel->setReadOnly(usedImports.contains(importLabel->import()));
+    const QStringList excludeList = {"SimulinkConnector"};
 
+    // exclude imports in the excludeList from being readonly (i.e. always enable their x button)
+    QList<Import> filteredImports = Utils::filtered(usedImports, [excludeList](const Import &import) {
+        return !excludeList.contains(import.url());
+    });
+
+    foreach (ImportLabel *importLabel, m_importLabels)
+        importLabel->setReadOnly(filteredImports.contains(importLabel->import()));
 }
 
 void ImportsWidget::removeUsedImports()

@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-project-managing.html
     \page creator-project-creating.html
     \nextpage creator-project-opening.html
@@ -98,7 +97,26 @@
 
     \list
 
-        \li Applications
+        \li Application (Qt Quick)
+
+        \list
+            \li Qt Quick Application - Empty
+
+                Create an empty \l{Qt Quick} application that uses Qt Quick 2
+                types.
+
+                You can build the application and deploy it to desktop,
+                embedded, and mobile target platforms.
+
+            \li Qt Quick Application - Scroll, Stack, or Swipe
+
+                Create a Qt Quick application that uses \l{Qt Quick Controls} to
+                implement a scrollable list (requires Qt 5.9 or later) or a set
+                of pages with a stack-based or swipe-based navigation model
+                (requires Qt 5.7 or later).
+        \endlist
+
+        \li Application (Qt)
 
         \list
 
@@ -107,24 +125,14 @@
                 Use \QD forms to design a Qt widget based user interface for the
                 desktop and C++ to implement the application logic
 
-            \li Qt Quick Application - Empty
-
-                Create an empty Qt Quick application that uses Qt Quick 2 types.
-
-                You can build the application and deploy it to desktop,
-                embedded, and mobile target platforms.
-
-            \li Qt Quick Application - Scroll, Stack, or Swipe
-
-                Create a Qt Quick application that uses
-                \l{http://doc.qt.io/qt-5/qtquickcontrols2-index.html}
-                {Qt Quick Controls} to implement a scrollable list (requires
-                Qt 5.9 or later) or a set of pages with a stack-based or
-                swipe-based navigation model (requires Qt 5.7 or later).
-
             \li Qt Console Application
 
                 Use a single main.cpp file
+        \endlist
+
+        \li Application (Qt for Python)
+
+            \list
 
             \li Qt for Python Application - Empty, Window, Window (UI file), or
                 Qt Quick Application (Empty)
@@ -135,14 +143,18 @@
                 a widget-based UI. Alternatively, you can create an empty
                 Qt Quick Application.
 
-            \li MCU Support Application
+            \endlist
 
-                Creates an application that uses a subset of QML and
-                Qt Quick Controls (as supported by Qt for MCUs) that
-                you can deploy, run, and debug on MCU boards. For more
-                information, see \l {Connecting MCUs}.
+        \li Application (Qt for MCU)
 
-        \endlist
+            \list
+                \li MCU Support Application
+
+                    Creates an application that uses a subset of Qt QML and
+                    Qt Quick Controls types (as supported by Qt for MCUs) that
+                    you can deploy, run, and debug on MCU boards. For more
+                    information, see \l {Connecting MCUs}.
+            \endlist
 
         \li Libraries
 
@@ -270,11 +282,9 @@
 
     \list
 
-        \li C++
+        \li C/C++
 
-            C++ class, source, or header files that you can use to write the
-            application logic in both Qt Quick projects and
-            Qt widget based projects
+            C or C++ source and header files
 
         \li Qt
 
@@ -363,7 +373,8 @@
 
     The wizard supports namespaces. To use a namespace, enter a qualified
     class name in the \uicontrol {Class name} field. For example:
-    MyNamespace::MySubNamespace::MyClass.
+    \c MyNamespace::MySubNamespace::MyClass. The wizard suggests
+    existing namespaces and class names as you type.
 
     \image qtcreator-cpp-class-wizard.png "Enter Class Name dialog"
 
@@ -395,6 +406,9 @@
 
     Select \uicontrol {Add Files} to locate and add individual
     files.
+
+    To list the folders and files in ascending alphabetic order in the source
+    tree, select \uicontrol {Sort Alphabetically} in the context menu.
 
     By default, resources are accessible in the application under the same file
     name as they have in the source tree, with a \c{:/} prefix, or by a URL with
@@ -434,16 +448,16 @@
 
     \image qtcreator-new-opengl-file.png "New OpenGL file wizard"
 
-    \section2 Displaying Additional File Types in Projects Pane
+    \section2 Displaying Additional File Types in Projects View
 
     \QC determines whether to display files from the project folder
-    in the \uicontrol Projects pane depending on the file type (.pro, .pri, .cpp,
+    in the \uicontrol Projects view depending on the file type (.pro, .pri, .cpp,
     .h, .qrc, and so on). To display other types of files, edit the
     project file. Add filenames as values of the \c {DISTFILES} variable.
     You can also use wildcards.
 
     For example, the following code specifies that text files are displayed
-    in the \uicontrol Projects pane:
+    in the \uicontrol Projects view:
 
     \code
 
@@ -467,8 +481,9 @@
     subproject in the \uicontrol{Project Management} dialog. However, the root project
     must specify that qmake uses the \c subdirs template to build the project.
 
-    To create a root project, select \uicontrol {File > New File or Project >
-    Other Project > Subdirs Project > Choose}.
+    To create a root project, select \uicontrol File >
+    \uicontrol {New File or Project} > \uicontrol {Other Project} >
+    \uicontrol {Subdirs Project} > \uicontrol Choose.
 
     On the \uicontrol Summary page, select \uicontrol {Finish & Add Subproject} to create
     the root project and to add another project, such as a C++ library.
@@ -478,7 +493,7 @@
     {SUBDIRS variable}. It also adds all the necessary files for the subproject.
 
     To create more subprojects, right-click the project name in the
-    \uicontrol Projects pane to open the context menu, and select
+    \uicontrol Projects view to open the context menu, and select
     \uicontrol {New Subproject}. Follow the steps in the
      \uicontrol {New Subproject} wizard to create a subproject.
 
@@ -489,7 +504,7 @@
     In the file browser dialog, locate your subproject.
 
     To remove subprojects, right-click the project name in the \uicontrol Projects
-    pane, and select \uicontrol {Remove Subproject} in the context menu.
+    view, and select \uicontrol {Remove Subproject} in the context menu.
 
     To specify dependencies, use the \uicontrol{Add Library} wizard. For more
     information, see \l{Adding Libraries to Projects}.

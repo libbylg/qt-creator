@@ -36,10 +36,10 @@
 #include <coreplugin/dialogs/promptoverwritedialog.h>
 #include <texteditor/icodestylepreferences.h>
 #include <texteditor/icodestylepreferencesfactory.h>
-#include <texteditor/normalindenter.h>
 #include <texteditor/storagesettings.h>
 #include <texteditor/tabsettings.h>
 #include <texteditor/texteditorsettings.h>
+#include <texteditor/textindenter.h>
 
 #include <utils/algorithm.h>
 #include <utils/mimetypes/mimedatabase.h>
@@ -56,6 +56,7 @@
 
 using namespace Core;
 using namespace TextEditor;
+using namespace Utils;
 
 namespace ProjectExplorer {
 
@@ -101,7 +102,7 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
         indenter->setFileName(Utils::FilePath::fromString(file->path()));
     }
     if (!indenter)
-        indenter = new NormalIndenter(&doc);
+        indenter = new TextIndenter(&doc);
     ICodeStylePreferences *codeStylePrefs = codeStylePreferences(baseProject, languageId);
     indenter->setCodeStylePreferences(codeStylePrefs);
 
@@ -113,7 +114,7 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
     if (TextEditorSettings::storageSettings().m_cleanWhitespace) {
         QTextBlock block = doc.firstBlock();
         while (block.isValid()) {
-            codeStylePrefs->currentTabSettings().removeTrailingWhitespace(cursor, block);
+            TabSettings::removeTrailingWhitespace(cursor, block);
             block = block.next();
         }
     }

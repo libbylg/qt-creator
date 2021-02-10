@@ -60,12 +60,13 @@ public:
                                                                     diagnosticConsumer);
     }
 
-    clang::FrontendAction *create() override
+    std::unique_ptr<clang::FrontendAction> create() override
     {
-        return new CollectBuildDependencyAction(m_buildDependency,
-                                                m_filePathCache,
-                                                m_excludedIncludeUIDs,
-                                                m_alreadyIncludedFileUIDs);
+        return std::make_unique<CollectBuildDependencyAction>(
+                    m_buildDependency,
+                    m_filePathCache,
+                    m_excludedIncludeUIDs,
+                    m_alreadyIncludedFileUIDs);
     }
 
     std::vector<uint> generateExcludedIncludeFileUIDs(clang::FileManager &fileManager) const
@@ -75,12 +76,12 @@ public:
 
         for (const FilePath &filePath : m_excludedFilePaths) {
             NativeFilePath nativeFilePath{filePath};
-            const clang::FileEntry *file = fileManager.getFile({nativeFilePath.path().data(),
-                                                                nativeFilePath.path().size()},
-                                                               true);
+            auto file = fileManager.getFile({nativeFilePath.path().data(),
+                                             nativeFilePath.path().size()},
+                                            true);
 
             if (file)
-                fileUIDs.push_back(file->getUID());
+                fileUIDs.push_back(file.get()->getUID());
         }
 
         std::sort(fileUIDs.begin(), fileUIDs.end());

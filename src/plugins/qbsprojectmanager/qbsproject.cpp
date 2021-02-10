@@ -40,7 +40,6 @@
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
-#include <coreplugin/id.h>
 #include <coreplugin/iversioncontrol.h>
 #include <coreplugin/messagemanager.h>
 #include <coreplugin/progressmanager/progressmanager.h>
@@ -49,8 +48,6 @@
 #include <cpptools/cppprojectupdater.h>
 #include <cpptools/cpptoolsconstants.h>
 #include <cpptools/generatedcodemodelsupport.h>
-#include <extensionsystem/pluginmanager.h>
-#include <projectexplorer/buildenvironmentwidget.h>
 #include <projectexplorer/buildinfo.h>
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/buildtargetinfo.h>
@@ -79,6 +76,7 @@
 #include <QJsonArray>
 #include <QMessageBox>
 #include <QSet>
+#include <QTimer>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -105,8 +103,8 @@ public:
     ~OpTimer()
     {
         if (qEnvironmentVariableIsSet(Constants::QBS_PROFILING_ENV)) {
-            MessageManager::write(QString("operation %1 took %2ms")
-                                  .arg(QLatin1String(m_name)).arg(m_timer.elapsed()));
+            MessageManager::writeSilently(
+                QString("operation %1 took %2ms").arg(QLatin1String(m_name)).arg(m_timer.elapsed()));
         }
     }
 
@@ -140,10 +138,14 @@ ProjectImporter *QbsProject::projectImporter() const
     return m_importer;
 }
 
-void QbsProject::configureAsExampleProject()
+void QbsProject::configureAsExampleProject(Kit *kit)
 {
     QList<BuildInfo> infoList;
-    const QList<Kit *> kits = KitManager::kits();
+    QList<Kit *> kits;
+    if (kit)
+        kits.append(kit);
+    else
+        kits = KitManager::kits();
     for (Kit *k : kits) {
         if (QtSupport::QtKitAspect::qtVersion(k) != nullptr) {
             if (auto factory = BuildConfigurationFactory::find(k, projectFilePath()))
@@ -203,7 +205,6 @@ QbsBuildSystem::QbsBuildSystem(QbsBuildConfiguration *bc)
     });
     connect(m_session, &QbsSession::fileListUpdated, this, &QbsBuildSystem::delayParsing);
 
-    m_parsingDelay.setInterval(1000); // delay parsing by 1s.
     delayParsing();
 
     connect(bc->project(), &Project::activeTargetChanged,
@@ -211,8 +212,6 @@ QbsBuildSystem::QbsBuildSystem(QbsBuildConfiguration *bc)
 
     connect(bc->target(), &Target::activeBuildConfigurationChanged,
             this, &QbsBuildSystem::delayParsing);
-
-    connect(&m_parsingDelay, &QTimer::timeout, this, &QbsBuildSystem::triggerParsing);
 
     connect(bc->project(), &Project::projectFileIsDirty, this, &QbsBuildSystem::delayParsing);
     updateProjectNodes({});
@@ -349,7 +348,7 @@ bool QbsBuildSystem::ensureWriteableQbsFile(const QString &file)
         if (!versionControl || !versionControl->vcsOpen(file)) {
             bool makeWritable = QFile::setPermissions(file, fi.permissions() | QFile::WriteUser);
             if (!makeWritable) {
-                QMessageBox::warning(ICore::mainWindow(),
+                QMessageBox::warning(ICore::dialogParent(),
                                      tr("Failed"),
                                      tr("Could not write project file %1.").arg(file));
                 return false;
@@ -372,7 +371,7 @@ bool QbsBuildSystem::addFilesToProduct(
                 product.value("full-display-name").toString(),
                 group.value("name").toString());
     if (result.error().hasError()) {
-        MessageManager::write(result.error().toString(), Core::MessageManager::ModeSwitch);
+        MessageManager::writeDisrupting(result.error().toString());
         *notAdded = result.failedFiles();
     }
     return notAdded->isEmpty();
@@ -406,7 +405,7 @@ RemovedFilesFromProject QbsBuildSystem::removeFilesFromProduct(
 
     *notRemoved = result.failedFiles();
     if (result.error().hasError())
-        MessageManager::write(result.error().toString(), Core::MessageManager::ModeSwitch);
+        MessageManager::writeDisrupting(result.error().toString());
     const bool success = notRemoved->isEmpty();
     if (!wildcardFiles.isEmpty())
         *notRemoved += wildcardFiles;
@@ -480,7 +479,7 @@ void QbsBuildSystem::updateProjectNodes(const std::function<void ()> &continuati
     m_treeCreationWatcher = new TreeCreationWatcher(this);
     connect(m_treeCreationWatcher, &TreeCreationWatcher::finished, this,
             [this, watcher = m_treeCreationWatcher, continuation] {
-        std::unique_ptr<QbsProjectNode> rootNode(m_treeCreationWatcher->result());
+        std::unique_ptr<QbsProjectNode> rootNode(watcher->result());
         if (watcher != m_treeCreationWatcher) {
             watcher->deleteLater();
             return;
@@ -534,10 +533,20 @@ void QbsBuildSystem::handleQbsParsingDone(bool success)
     bool dataChanged = false;
     bool envChanged = m_lastParseEnv != m_qbsProjectParser->environment();
     m_lastParseEnv = m_qbsProjectParser->environment();
+    const bool isActiveBuildSystem = project()->activeTarget()
+            && project()->activeTarget()->buildSystem() == this;
     if (success) {
         const QJsonObject projectData = m_qbsProjectParser->session()->projectData();
         if (projectData != m_projectData) {
             m_projectData = projectData;
+            dataChanged = isActiveBuildSystem;
+        } else if (isActiveBuildSystem
+                   && (!project()->rootProjectNode() || static_cast<QbsProjectNode *>(
+                           project()->rootProjectNode())->projectData() != projectData)) {
+            // This is needed to trigger the necessary updates when switching targets.
+            // Nothing has changed on the BuildSystem side, but this build system's data now
+            // represents the project, so the data has changed from the overall project's
+            // point of view.
             dataChanged = true;
         }
     } else {
@@ -587,7 +596,7 @@ void QbsBuildSystem::triggerParsing()
 void QbsBuildSystem::delayParsing()
 {
     if (m_buildConfiguration->isActive())
-        m_parsingDelay.start();
+        requestDelayedParse();
 }
 
 void QbsBuildSystem::parseCurrentBuildConfiguration()
@@ -625,7 +634,7 @@ void QbsBuildSystem::parseCurrentBuildConfiguration()
 
     prepareForParsing();
 
-    m_parsingDelay.stop();
+    cancelDelayedParseRequest();
 
     QTC_ASSERT(!m_qbsProjectParser, return);
     m_qbsProjectParser = new QbsProjectParser(this, m_qbsUpdateFutureInterface);
@@ -694,13 +703,13 @@ void QbsBuildSystem::updateDocuments()
     OpTimer opTimer("updateDocuments");
     const FilePath buildDir = FilePath::fromString(
                 m_projectData.value("build-directory").toString());
-    const auto filePaths = transform<QVector<FilePath>>(
+    const auto filePaths = transform<QSet<FilePath>>(
             m_projectData.value("build-system-files").toArray(),
             [](const QJsonValue &v) { return FilePath::fromString(v.toString()); });
 
     // A changed qbs file (project, module etc) should trigger a re-parse, but not if
     // the file was generated by qbs itself, in which case that might cause an infinite loop.
-    const QVector<FilePath> nonBuildDirFilePaths = filtered(filePaths,
+    const QSet<FilePath> nonBuildDirFilePaths = filtered(filePaths,
                                                             [buildDir](const FilePath &p) {
                                                                 return !p.isChildOf(buildDir);
                                                             });
@@ -777,7 +786,9 @@ static void getExpandedCompilerFlags(QStringList &cFlags, QStringList &cxxFlags,
         cFlags = cxxFlags = commonFlags;
 
         const auto cxxLanguageVersion = arrayToStringList(getCppProp("cxxLanguageVersion"));
-        if (cxxLanguageVersion.contains("c++17"))
+        if (cxxLanguageVersion.contains("c++20"))
+            cxxFlags << "-std=c++20";
+        else if (cxxLanguageVersion.contains("c++17"))
             cxxFlags << "-std=c++17";
         else if (cxxLanguageVersion.contains("c++14"))
             cxxFlags << "-std=c++14";
@@ -796,7 +807,11 @@ static void getExpandedCompilerFlags(QStringList &cFlags, QStringList &cxxFlags,
             cxxFlags << QLatin1String(enableRtti.toBool() ? "-frtti" : "-fno-rtti");
 
         const auto cLanguageVersion = arrayToStringList(getCppProp("cLanguageVersion"));
-        if (cLanguageVersion.contains("c11"))
+        if (cLanguageVersion.contains("c18"))
+            cFlags << "-cstd=c18";
+        else if (cLanguageVersion.contains("c17"))
+            cFlags << "-std=c17";
+        else if (cLanguageVersion.contains("c11"))
             cFlags << "-std=c11";
         else if (cLanguageVersion.contains("c99"))
             cFlags << "-std=c99";
@@ -879,10 +894,12 @@ static RawProjectParts generateProjectParts(
             QStringList cFlags;
             QStringList cxxFlags;
             getExpandedCompilerFlags(cFlags, cxxFlags, props);
-            rpp.setFlagsForC({cToolChain.get(), cFlags});
-            rpp.setFlagsForCxx({cxxToolChain.get(), cxxFlags});
+            rpp.setFlagsForC({cToolChain.get(), cFlags, {}});
+            rpp.setFlagsForCxx({cxxToolChain.get(), cxxFlags, {}});
 
-            rpp.setMacros(transform<QVector>(arrayToStringList(props.value("cpp.defines")),
+            const QStringList defines = arrayToStringList(props.value("cpp.defines"))
+                    + arrayToStringList(props.value("cpp.platformDefines"));
+            rpp.setMacros(transform<QVector>(defines,
                     [](const QString &s) { return Macro::fromKeyValue(s); }));
 
             ProjectExplorer::HeaderPaths grpHeaderPaths;
@@ -890,7 +907,8 @@ static RawProjectParts generateProjectParts(
             list.removeDuplicates();
             for (const QString &p : qAsConst(list))
                 grpHeaderPaths += {FilePath::fromUserInput(p).toString(),  HeaderPathType::User};
-            list = arrayToStringList(props.value("cpp.systemIncludePaths"));
+            list = arrayToStringList(props.value("cpp.distributionIncludePaths"))
+                    + arrayToStringList(props.value("cpp.systemIncludePaths"));
             list.removeDuplicates();
             for (const QString &p : qAsConst(list))
                 grpHeaderPaths += {FilePath::fromUserInput(p).toString(),  HeaderPathType::System};
@@ -907,10 +925,19 @@ static RawProjectParts generateProjectParts(
             rpp.setProjectFileLocation(location.value("file-path").toString(),
                                        location.value("line").toInt(),
                                        location.value("column").toInt());
-            rpp.setBuildSystemTarget(productName);
-            rpp.setBuildTargetType(prd.value("is-runnable").toBool()
-                                   ? BuildTargetType::Executable
-                                   : BuildTargetType::Library);
+            rpp.setBuildSystemTarget(QbsProductNode::getBuildKey(prd));
+            if (prd.value("is-runnable").toBool()) {
+                rpp.setBuildTargetType(BuildTargetType::Executable);
+            } else {
+                const QJsonArray pType = prd.value("type").toArray();
+                if (pType.contains("staticlibrary") || pType.contains("dynamiclibrary")
+                        || pType.contains("loadablemodule")) {
+                    rpp.setBuildTargetType(BuildTargetType::Library);
+                } else {
+                    rpp.setBuildTargetType(BuildTargetType::Unknown);
+                }
+            }
+            rpp.setSelectedForBuilding(grp.value("is-enabled").toBool());
 
             QHash<QString, QJsonObject> filePathToSourceArtifact;
             bool hasCFiles = false;
@@ -957,6 +984,7 @@ static RawProjectParts generateProjectParts(
                 qCWarning(qbsPmLog) << "Expect problems with code model";
             }
             rpp.setPreCompiledHeaders(Utils::toList(pchFiles));
+            rpp.setIncludedFiles(arrayToStringList(props.value("cpp.prefixHeaders")));
             rpp.setFiles(filePathToSourceArtifact.keys(), {},
                          [filePathToSourceArtifact](const QString &filePath) {
                 // Keep this lambda thread-safe!
@@ -1069,12 +1097,12 @@ void QbsBuildSystem::updateApplicationTargets()
             }
         }
         BuildTargetInfo bti;
-        bti.buildKey = productData.value("full-display-name").toString();
+        bti.buildKey = QbsProductNode::getBuildKey(productData);
         bti.targetFilePath = FilePath::fromString(targetFile);
         bti.projectFilePath = FilePath::fromString(projectFile);
         bti.isQtcRunnable = isQtcRunnable; // Fixed up below.
         bti.usesTerminal = usesTerminal;
-        bti.displayName = bti.buildKey;
+        bti.displayName = productData.value("full-display-name").toString();
         bti.runEnvModifier = [targetFile, productData, this](Utils::Environment &env, bool usingLibraryPaths) {
             const QString productName = productData.value("full-display-name").toString();
             if (session()->projectData().isEmpty())
@@ -1098,15 +1126,15 @@ void QbsBuildSystem::updateApplicationTargets()
             RunEnvironmentResult result = session()->getRunEnvironment(productName, procEnv,
                                                                        setupRunEnvConfig);
             if (result.error().hasError()) {
-                Core::MessageManager::write(tr("Error retrieving run environment: %1")
-                                            .arg(result.error().toString()));
-            } else {
-                QProcessEnvironment fullEnv = result.environment();
-                QTC_ASSERT(!fullEnv.isEmpty(), fullEnv = procEnv);
-                env = Utils::Environment();
-                for (const QString &key : fullEnv.keys())
-                    env.set(key, fullEnv.value(key));
+                Core::MessageManager::writeFlashing(
+                    tr("Error retrieving run environment: %1").arg(result.error().toString()));
+                return;
             }
+            QProcessEnvironment fullEnv = result.environment();
+            QTC_ASSERT(!fullEnv.isEmpty(), fullEnv = procEnv);
+            env = Utils::Environment();
+            for (const QString &key : fullEnv.keys())
+                env.set(key, fullEnv.value(key));
             m_envCache.insert(key, env);
         };
 

@@ -24,10 +24,11 @@
 ****************************************************************************/
 
 #include "testsettings.h"
+
 #include "autotestconstants.h"
 #include "testframeworkmanager.h"
 
-#include <coreplugin/id.h>
+#include <utils/id.h>
 
 #include <QSettings>
 
@@ -69,10 +70,14 @@ void TestSettings::toSettings(QSettings *s) const
     s->setValue(popupOnFailKey, popupOnFail);
     s->setValue(runAfterBuildKey, int(runAfterBuild));
     // store frameworks and their current active and grouping state
-    for (const Core::Id &id : frameworks.keys()) {
-        s->setValue(QLatin1String(id.name()), frameworks.value(id));
-        s->setValue(QLatin1String(id.name().append(groupSuffix)), frameworksGrouping.value(id));
+    for (auto it = frameworks.cbegin(); it != frameworks.cend(); ++it) {
+        const Utils::Id &id = it.key();
+        s->setValue(id.toString(), it.value());
+        s->setValue(id.toString() + groupSuffix, frameworksGrouping.value(id));
     }
+    // ..and the testtools as well
+    for (auto it = tools.cbegin(); it != tools.cend(); ++it)
+        s->setValue(it.key().toString(), it.value());
     s->endGroup();
 }
 
@@ -92,17 +97,23 @@ void TestSettings::fromSettings(QSettings *s)
     runAfterBuild = RunAfterBuildMode(s->value(runAfterBuildKey,
                                                int(RunAfterBuildMode::None)).toInt());
     // try to get settings for registered frameworks
-    TestFrameworkManager *frameworkManager = TestFrameworkManager::instance();
-    const QList<Core::Id> &registered = frameworkManager->registeredFrameworkIds();
+    const TestFrameworks &registered = TestFrameworkManager::registeredFrameworks();
     frameworks.clear();
     frameworksGrouping.clear();
-    for (const Core::Id &id : registered) {
+    for (const ITestFramework *framework : registered) {
         // get their active state
-        frameworks.insert(id, s->value(QLatin1String(id.name()),
-                                       frameworkManager->isActive(id)).toBool());
+        const Utils::Id id = framework->id();
+        const QString key = id.toString();
+        frameworks.insert(id, s->value(key, framework->active()).toBool());
         // and whether grouping is enabled
-        frameworksGrouping.insert(id, s->value(QLatin1String(id.name().append(groupSuffix)),
-                                               frameworkManager->groupingEnabled(id)).toBool());
+        frameworksGrouping.insert(id, s->value(key + groupSuffix, framework->grouping()).toBool());
+    }
+    // ..and for test tools as well
+    const TestTools &registeredTools = TestFrameworkManager::registeredTestTools();
+    tools.clear();
+    for (const ITestTool *testTool : registeredTools) {
+        const Utils::Id id = testTool->id();
+        tools.insert(id, s->value(id.toString(), testTool->active()).toBool());
     }
     s->endGroup();
 }

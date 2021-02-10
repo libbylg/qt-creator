@@ -1,9 +1,9 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
-** This file is part of Qt Desing Studio.
+** This file is part of Qt Design Studio.
 **
 ** $QT_BEGIN_LICENSE:FDL$
 ** Commercial License Usage
@@ -26,14 +26,13 @@
 ****************************************************************************/
 
 /*!
-    \contentspage {Qt Design Studio Manual}
     \page studio-3d-materials.html
     \previouspage studio-3d-model.html
     \nextpage studio-3d-texture.html
 
     \title Using Materials and Shaders
 
-    \image materials.png
+    \image studio-qtquick-3d-material.png "Material attached to model in Design mode"
 
     Materials and shaders define how object surfaces are rendered in \QDS and
     live preview. As you change the properties of materials, new shaders are
@@ -49,26 +48,29 @@
     \list
         \li Default material
         \li Principled material
+        \li \l{Creating Custom Effects and Materials}{Custom material}
         \li Texture
     \endlist
 
     Before a model can be rendered in a scene, it must have at least one
     material to define how the mesh is shaded. The DefaultMaterial component
     is the easiest way to define such a material. The PrincipledMaterial
-    component specifies the minimum amount of properties.
+    component specifies the minimum amount of properties. The CustomMaterial
+    component enables you to construct your own materials.
 
     You can use the \l Texture component to apply textures to materials. It
-    defines an image and how the image is mapped to meshes in a 3D scene. To
-    use image data from a file, set the \uicontrol Source property of the
-    Texture component in the \uicontrol Properties view.
-
-    To have the material use vertex colors from the mesh, select the
-    \uicontrol {Enable vertex colors} check box. These are multiplied
-    by any other colors specified for the material.
+    defines an image and how the image is mapped to meshes in a 3D scene. For
+    more information, see \l {Attaching Textures to Materials}.
 
     You can modify material properties in the \uicontrol Properties view, as
     instructed in the following sections. The availability of the properties
     depends on the material type.
+
+    \image studio-qtquick-3d-default-material.png "DefaultMaterial properties"
+
+    To enable the material to use vertex colors from the mesh, select the
+    \uicontrol {Enable vertex colors} check box. These are multiplied
+    by any other colors specified for the material.
 
     You can animate material properties in the \uicontrol Timeline view, as
     instructed in \l {Creating Animations}.
@@ -156,7 +158,7 @@
     an easy way to add a high-quality look at a relatively low cost.
 
     To specify an image to use as the specular reflection map, set the
-    \uicontrol {Light probe} property
+    \uicontrol {Light probe} property.
 
     Crisp images cause your material to look very glossy. The more you
     blur your image, the softer your material appears.
@@ -222,8 +224,11 @@
 
     \list 1
         \li Drag and drop a material component from the \uicontrol Library to a
-            Model component in the \uicontrol Navigator or 3D editor.
-        \li Edit the properties of the material in the \uicontrol Properties
-            view.
+            Model component in the \uicontrol Navigator.
+        \li Select the Model component.
+        \li In the \uicontrol Properties view, select the material for the model
+            in the \uicontrol Materials list.
+        \li Select the material component to edit the properties of the material
+            in the \uicontrol Properties view.
     \endlist
 */

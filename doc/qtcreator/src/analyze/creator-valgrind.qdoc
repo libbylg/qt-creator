@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-valgrind-overview.html
     \page creator-analyzer.html
     \nextpage creator-cache-profiler.html
@@ -93,8 +92,9 @@
 
     Stack traces can get quite large and confusing, and therefore, reading them
     from the bottom up can help. If the stack trace is not big enough or it is
-    too big, select \uicontrol {Tools > Options > Analyzer} and define the
-    length of the stack trace in the \uicontrol {Backtrace frame count} field.
+    too big, select \uicontrol Tools > \uicontrol Options > \uicontrol Analyzer
+    and define the length of the stack trace in the
+    \uicontrol {Backtrace frame count} field.
 
     \image qtcreator-valgrind-memcheck-options.png "Memory Analysis options"
 
@@ -138,9 +138,7 @@
 
 */
 
-
 /*!
-    \contentspage index.html
     \previouspage creator-analyzer.html
     \page creator-cache-profiler.html
     \nextpage creator-running-valgrind-remotely.html
@@ -221,8 +219,9 @@
     separately for each project in the \l{Specifying Run Settings}{run settings}
     of the project.
 
-    To specify settings for Valgrind, select \uicontrol {Tools > Options >
-    Analyzer}. The \uicontrol {Profiling Options} group contains Callgrind options.
+    To specify settings for Valgrind, select \uicontrol Tools >
+    \uicontrol Options > \uicontrol Analyzer. The \uicontrol {Profiling Options}
+    group contains Callgrind options.
 
     \image qtcreator-valgrind-callgrind-options.png "Valgrind options"
 
@@ -269,9 +268,7 @@
 
 */
 
-
 /*!
-    \contentspage index.html
     \previouspage creator-cache-profiler.html
     \page creator-running-valgrind-remotely.html
     \nextpage creator-clang-tools.html

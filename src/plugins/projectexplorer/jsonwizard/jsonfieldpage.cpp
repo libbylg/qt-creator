@@ -29,28 +29,36 @@
 #include "jsonwizard.h"
 #include "jsonwizardfactory.h"
 
+#include "../project.h"
+#include "../projecttree.h"
+
 #include <coreplugin/icore.h>
+#include <coreplugin/locator/ilocatorfilter.h>
 #include <utils/algorithm.h>
 #include <utils/fancylineedit.h>
+#include <utils/fileutils.h>
 #include <utils/qtcassert.h>
+#include <utils/runextensions.h>
 #include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 
+#include <QApplication>
 #include <QComboBox>
 #include <QCheckBox>
-#include <QApplication>
+#include <QCompleter>
 #include <QDebug>
+#include <QDir>
 #include <QFormLayout>
+#include <QFutureWatcher>
+#include <QItemSelectionModel>
 #include <QLabel>
-#include <QRegularExpressionValidator>
+#include <QListView>
+#include <QRegularExpression>
+#include <QStandardItem>
 #include <QTextEdit>
 #include <QVariant>
 #include <QVariantMap>
 #include <QVBoxLayout>
-#include <QListView>
-#include <QStandardItem>
-#include <QItemSelectionModel>
-#include <QDir>
 
 using namespace Utils;
 
@@ -98,37 +106,32 @@ namespace ProjectExplorer {
 // Helper:
 // --------------------------------------------------------------------
 
-class LineEditValidator : public QRegularExpressionValidator
+class LineEdit : public FancyLineEdit
 {
 public:
-    LineEditValidator(MacroExpander *expander, const QRegularExpression &pattern, QObject *parent) :
-        QRegularExpressionValidator(pattern, parent)
+    LineEdit(MacroExpander *expander, const QRegularExpression &pattern)
     {
+        if (pattern.pattern().isEmpty() || !pattern.isValid())
+            return;
         m_expander.setDisplayName(JsonFieldPage::tr("Line Edit Validator Expander"));
         m_expander.setAccumulating(true);
         m_expander.registerVariable("INPUT", JsonFieldPage::tr("The text edit input to fix up."),
                                     [this]() { return m_currentInput; });
         m_expander.registerSubProvider([expander]() -> MacroExpander * { return expander; });
+        setValidationFunction([this, pattern](FancyLineEdit *, QString *) {
+            return pattern.match(text()).hasMatch();
+        });
     }
 
-    void setFixupExpando(const QString &expando)
-    {
-        m_fixupExpando = expando;
-    }
+    void setFixupExpando(const QString &expando) { m_fixupExpando = expando; }
 
-    QValidator::State validate(QString &input, int &pos) const override
-    {
-        fixup(input);
-        return QRegularExpressionValidator::validate(input, pos);
-    }
-
-    void fixup(QString &fixup) const override
+private:
+    QString fixInputString(const QString &string) override
     {
         if (m_fixupExpando.isEmpty())
-            return;
-
-        m_currentInput = fixup;
-        fixup = m_expander.expand(m_fixupExpando);
+            return string;
+        m_currentInput = string;
+        return m_expander.expand(m_fixupExpando);
     }
 
 private:
@@ -461,11 +464,14 @@ QWidget *SpacerField::createWidget(const QString &displayName, JsonFieldPage *pa
 {
     Q_UNUSED(displayName)
     Q_UNUSED(page)
-    int size = QApplication::style()->pixelMetric(QStyle::PM_DefaultLayoutSpacing) * m_factor;
+    int hspace = QApplication::style()->pixelMetric(QStyle::PM_LayoutHorizontalSpacing);
+    int vspace = QApplication::style()->pixelMetric(QStyle::PM_LayoutVerticalSpacing);
+    int hsize = hspace * m_factor;
+    int vsize = vspace * m_factor;
 
     auto w = new QWidget();
-    w->setMinimumSize(size, size);
-    w->setMaximumSize(size, size);
+    w->setMinimumSize(hsize, vsize);
+    w->setMaximumSize(hsize, vsize);
     w->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     return w;
 }
@@ -493,10 +499,10 @@ bool LineEditField::parseData(const QVariant &data, QString *errorMessage)
     m_disabledText = JsonWizardFactory::localizedString(consumeValue(tmp, "trDisabledText").toString());
     m_placeholderText = JsonWizardFactory::localizedString(consumeValue(tmp, "trPlaceholder").toString());
     m_historyId = consumeValue(tmp, "historyId").toString();
-    m_restoreLastHistoryItem = consumeValue(tmp, "restoreLastHistoyItem", false).toBool();
+    m_restoreLastHistoryItem = consumeValue(tmp, "restoreLastHistoryItem", false).toBool();
     QString pattern = consumeValue(tmp, "validator").toString();
     if (!pattern.isEmpty()) {
-        m_validatorRegExp = QRegularExpression(pattern);
+        m_validatorRegExp = QRegularExpression('^' + pattern + '$');
         if (!m_validatorRegExp.isValid()) {
             *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonFieldPage",
                                                         "LineEdit (\"%1\") has an invalid regular expression \"%2\" in \"validator\".")
@@ -507,6 +513,18 @@ bool LineEditField::parseData(const QVariant &data, QString *errorMessage)
     }
     m_fixupExpando = consumeValue(tmp, "fixup").toString();
 
+    const QString completion = consumeValue(tmp, "completion").toString();
+    if (completion == "classes") {
+        m_completion = Completion::Classes;
+    } else if (completion == "namespaces") {
+        m_completion = Completion::Namespaces;
+    } else if (!completion.isEmpty()) {
+        *errorMessage = QCoreApplication::translate("ProjectExplorer::JsonFieldPage",
+                "LineEdit (\"%1\") has an invalid value \"%2\" in \"completion\".")
+                .arg(name(), completion);
+        return false;
+    }
+
     warnAboutUnsupportedKeys(tmp, name(), type());
 
     return true;
@@ -515,19 +533,15 @@ bool LineEditField::parseData(const QVariant &data, QString *errorMessage)
 QWidget *LineEditField::createWidget(const QString &displayName, JsonFieldPage *page)
 {
     Q_UNUSED(displayName)
-    auto w = new FancyLineEdit;
-
-    if (m_validatorRegExp.isValid()) {
-        auto lv = new LineEditValidator(page->expander(), m_validatorRegExp, w);
-        lv->setFixupExpando(m_fixupExpando);
-        w->setValidator(lv);
-    }
+    const auto w = new LineEdit(page->expander(), m_validatorRegExp);
+    w->setFixupExpando(m_fixupExpando);
 
     if (!m_historyId.isEmpty())
         w->setHistoryCompleter(m_historyId, m_restoreLastHistoryItem);
 
     w->setEchoMode(m_isPassword ? QLineEdit::Password : QLineEdit::Normal);
     QObject::connect(w, &FancyLineEdit::textEdited, [this] { setHasUserChanges(); });
+    setupCompletion(w);
 
     return w;
 }
@@ -543,12 +557,8 @@ void LineEditField::setup(JsonFieldPage *page, const QString &name)
 
 bool LineEditField::validate(MacroExpander *expander, QString *message)
 {
-    if (!JsonFieldPage::Field::validate(expander, message))
-        return false;
-
     if (m_isValidating)
         return true;
-
     m_isValidating = true;
 
     auto w = qobject_cast<FancyLineEdit *>(widget());
@@ -569,9 +579,9 @@ bool LineEditField::validate(MacroExpander *expander, QString *message)
             m_currentText = w->text();
     }
 
+    const bool baseValid = JsonFieldPage::Field::validate(expander, message);
     m_isValidating = false;
-
-    return !w->text().isEmpty();
+    return baseValid && !w->text().isEmpty() && w->isValid();
 }
 
 void LineEditField::initializeData(MacroExpander *expander)
@@ -593,6 +603,79 @@ void LineEditField::fromSettings(const QVariant &value)
 QVariant LineEditField::toSettings() const
 {
     return qobject_cast<FancyLineEdit *>(widget())->text();
+}
+
+void LineEditField::setupCompletion(FancyLineEdit *lineEdit)
+{
+    using namespace Core;
+    using namespace Utils;
+    if (m_completion == Completion::None)
+        return;
+    ILocatorFilter * const classesFilter = findOrDefault(
+                ILocatorFilter::allLocatorFilters(),
+                equal(&ILocatorFilter::id, Id("Classes")));
+    if (!classesFilter)
+        return;
+    classesFilter->prepareSearch({});
+    const auto watcher = new QFutureWatcher<LocatorFilterEntry>;
+    const auto handleResults = [this, lineEdit, watcher](int firstIndex, int endIndex) {
+        QSet<QString> namespaces;
+        QStringList classes;
+        Project * const project = ProjectTree::currentProject();
+        for (int i = firstIndex; i < endIndex; ++i) {
+            static const auto isReservedName = [](const QString &name) {
+                static const QRegularExpression rx1("^_[A-Z].*");
+                static const QRegularExpression rx2(".*::_[A-Z].*");
+                return name.contains("__") || rx1.match(name).hasMatch()
+                        || rx2.match(name).hasMatch();
+            };
+            const LocatorFilterEntry &entry = watcher->resultAt(i);
+            const bool hasNamespace = !entry.extraInfo.isEmpty()
+                    && !entry.extraInfo.startsWith('<')  && !entry.extraInfo.contains("::<")
+                    && !isReservedName(entry.extraInfo)
+                    && !entry.extraInfo.startsWith('~')
+                    && !entry.extraInfo.contains("Anonymous:")
+                    && !FileUtils::isAbsolutePath(entry.extraInfo);
+            const bool isBaseClassCandidate = !isReservedName(entry.displayName)
+                    && !entry.displayName.startsWith("Anonymous:");
+            if (isBaseClassCandidate)
+                classes << entry.displayName;
+            if (hasNamespace) {
+                if (isBaseClassCandidate)
+                    classes << (entry.extraInfo + "::" + entry.displayName);
+                if (m_completion == Completion::Namespaces) {
+                    if (!project
+                            || entry.fileName.startsWith(project->projectDirectory().toString())) {
+                        namespaces << entry.extraInfo;
+                    }
+                }
+            }
+        }
+        QStringList completionList;
+        if (m_completion == Completion::Namespaces) {
+            completionList = toList(namespaces);
+            completionList = filtered(completionList, [&classes](const QString &ns) {
+                return !classes.contains(ns);
+            });
+            completionList = transform(completionList, [](const QString &ns) {
+                return QString(ns + "::");
+            });
+        } else {
+            completionList = classes;
+        }
+        completionList.sort();
+        lineEdit->setSpecialCompleter(new QCompleter(completionList, lineEdit));
+    };
+    QObject::connect(watcher, &QFutureWatcher<LocatorFilterEntry>::resultsReadyAt, lineEdit,
+                     handleResults);
+    QObject::connect(watcher, &QFutureWatcher<LocatorFilterEntry>::finished,
+                     watcher, &QFutureWatcher<LocatorFilterEntry>::deleteLater);
+    watcher->setFuture(runAsync([classesFilter](QFutureInterface<LocatorFilterEntry> &f) {
+        const QList<LocatorFilterEntry> matches = classesFilter->matchesFor(f, {});
+        if (!matches.isEmpty())
+            f.reportResults(QVector<LocatorFilterEntry>(matches.cbegin(), matches.cend()));
+        f.reportFinished();
+    }));
 }
 
 // --------------------------------------------------------------------
@@ -737,7 +820,7 @@ QWidget *PathChooserField::createWidget(const QString &displayName, JsonFieldPag
     if (!m_historyId.isEmpty())
         w->setHistoryCompleter(m_historyId);
     QObject::connect(w, &PathChooser::pathChanged, [this, w] {
-        if (w->path() != m_path)
+        if (w->filePath().toString() != m_path)
             setHasUserChanges();
     });
     return w;
@@ -789,7 +872,7 @@ void PathChooserField::fromSettings(const QVariant &value)
 
 QVariant PathChooserField::toSettings() const
 {
-    return qobject_cast<PathChooser *>(widget())->path();
+    return qobject_cast<PathChooser *>(widget())->filePath().toString();
 }
 
 // --------------------------------------------------------------------
@@ -840,7 +923,7 @@ void CheckBoxField::setup(JsonFieldPage *page, const QString &name)
         return page->expander()->expand(m_uncheckedValue);
     });
 
-    QObject::connect(w, &QCheckBox::stateChanged, page, [this, page]() {
+    QObject::connect(w, &QCheckBox::clicked, page, [this, page]() {
         m_isModified = true;
         setHasUserChanges();
         emit page->completeChanged();

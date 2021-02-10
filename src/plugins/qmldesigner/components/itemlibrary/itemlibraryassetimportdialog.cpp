@@ -32,6 +32,9 @@
 #include "utils/outputformatter.h"
 #include "theme.h"
 
+#include <projectexplorer/project.h>
+#include <projectexplorer/session.h>
+
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qloggingcategory.h>
@@ -68,10 +71,13 @@ static const int rowHeight = 26;
 }
 
 ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(const QStringList &importFiles,
-                                     const QString &defaulTargetDirectory, QWidget *parent) :
-    QDialog(parent),
-    ui(new Ui::ItemLibraryAssetImportDialog),
-    m_importer(this)
+                                                           const QString &defaulTargetDirectory,
+                                                           const QVariantMap &supportedExts,
+                                                           const QVariantMap &supportedOpts,
+                                                           QWidget *parent) :
+    QDialog(parent)
+    , ui(new Ui::ItemLibraryAssetImportDialog)
+    , m_importer(this)
 {
     setModal(true);
     ui->setupUi(this);
@@ -80,15 +86,24 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(const QStringList &im
     m_outputFormatter->setPlainTextEdit(ui->plainTextEdit);
 
     // Skip unsupported assets
-    bool skipSome = false;
+    QHash<QString, bool> supportMap;
     for (const auto &file : importFiles) {
-        if (m_importer.isQuick3DAsset(file))
+        QString suffix = QFileInfo(file).suffix().toLower();
+        if (!supportMap.contains(suffix)) {
+            bool supported = false;
+            for (const auto &exts : supportedExts) {
+                if (exts.toStringList().contains(suffix)) {
+                    supported = true;
+                    break;
+                }
+            }
+            supportMap.insert(suffix, supported);
+        }
+        if (supportMap[suffix])
             m_quick3DFiles << file;
-        else
-            skipSome = true;
     }
 
-    if (skipSome)
+    if (m_quick3DFiles.size() != importFiles.size())
         addWarning("Cannot import 3D and other assets simultaneously. Skipping non-3D assets.");
 
     ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Import"));
@@ -96,6 +111,20 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(const QStringList &im
             this, &ItemLibraryAssetImportDialog::onImport);
 
     ui->buttonBox->button(QDialogButtonBox::Close)->setDefault(true);
+
+    QStringList importPaths;
+    auto doc = QmlDesignerPlugin::instance()->currentDesignDocument();
+    if (doc) {
+        Model *model = doc->currentModel();
+        if (model)
+            importPaths = model->importPaths();
+    }
+
+    QString targetDir = defaulTargetDirectory;
+
+    ProjectExplorer::Project *currentProject = ProjectExplorer::SessionManager::projectForFile(doc->fileName());
+    if (currentProject)
+        targetDir = currentProject->projectDirectory().toString();
 
     // Import is always done under known folder. The order of preference for folder is:
     // 1) An existing QUICK_3D_ASSETS_FOLDER under DEFAULT_ASSET_IMPORT_FOLDER project import path
@@ -105,22 +134,14 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(const QStringList &im
     // 5) New QUICK_3D_ASSETS_FOLDER under new DEFAULT_ASSET_IMPORT_FOLDER under project
     const QString defaultAssetFolder = QLatin1String(Constants::DEFAULT_ASSET_IMPORT_FOLDER);
     const QString quick3DFolder = QLatin1String(Constants::QUICK_3D_ASSETS_FOLDER);
-    QString candidatePath = defaulTargetDirectory + defaultAssetFolder + quick3DFolder;
+    QString candidatePath = targetDir + defaultAssetFolder + quick3DFolder;
     int candidatePriority = 5;
-    QStringList importPaths;
 
-    auto doc = QmlDesignerPlugin::instance()->currentDesignDocument();
-    if (doc) {
-        Model *model = doc->currentModel();
-        if (model)
-            importPaths = model->importPaths();
-    }
-
-    for (auto importPath : qAsConst(importPaths)) {
-        if (importPath.startsWith(defaulTargetDirectory)) {
+    for (const auto &importPath : qAsConst(importPaths)) {
+        if (importPath.startsWith(targetDir)) {
             const bool isDefaultFolder = importPath.endsWith(defaultAssetFolder);
             const QString assetFolder = importPath + quick3DFolder;
-            const bool exists = QFileInfo(assetFolder).exists();
+            const bool exists = QFileInfo::exists(assetFolder);
             if (exists) {
                 if (isDefaultFolder) {
                     // Priority one location, stop looking
@@ -144,14 +165,12 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(const QStringList &im
     m_quick3DImportPath = candidatePath;
 
     if (!m_quick3DFiles.isEmpty()) {
-        const QHash<QString, QVariantMap> allOptions = m_importer.allOptions();
-        const QHash<QString, QStringList> supportedExtensions = m_importer.supportedExtensions();
         QVector<QJsonObject> groups;
 
-        auto optIt = allOptions.constBegin();
+        auto optIt = supportedOpts.constBegin();
         int optIndex = 0;
-        while (optIt != allOptions.constEnd()) {
-            QJsonObject options = QJsonObject::fromVariantMap(optIt.value());
+        while (optIt != supportedOpts.constEnd()) {
+            QJsonObject options = QJsonObject::fromVariantMap(qvariant_cast<QVariantMap>(optIt.value()));
             m_importOptions << options.value("options").toObject();
             groups << options.value("groups").toObject();
             const auto &exts = optIt.key().split(':');
@@ -164,10 +183,10 @@ ItemLibraryAssetImportDialog::ItemLibraryAssetImportDialog(const QStringList &im
         // Create tab for each supported extension group that also has files included in the import
         QMap<QString, int> tabMap; // QMap used for alphabetical order
         for (const auto &file : qAsConst(m_quick3DFiles)) {
-            auto extIt = supportedExtensions.constBegin();
+            auto extIt = supportedExts.constBegin();
             QString ext = QFileInfo(file).suffix().toLower();
-            while (extIt != supportedExtensions.constEnd()) {
-                if (!tabMap.contains(extIt.key()) && extIt.value().contains(ext)) {
+            while (extIt != supportedExts.constEnd()) {
+                if (!tabMap.contains(extIt.key()) && extIt.value().toStringList().contains(ext)) {
                     tabMap.insert(extIt.key(), m_extToImportOptionsMap.value(ext));
                     break;
                 }

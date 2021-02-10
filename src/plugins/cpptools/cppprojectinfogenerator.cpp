@@ -35,14 +35,15 @@
 
 #include <QTimer>
 
+#include <set>
+
 using namespace ProjectExplorer;
 
 namespace CppTools {
 namespace Internal {
 
-ProjectInfoGenerator::ProjectInfoGenerator(
-    const QFutureInterface<void> &futureInterface,
-    const ProjectUpdateInfo &projectUpdateInfo)
+ProjectInfoGenerator::ProjectInfoGenerator(const QFutureInterface<ProjectInfo> &futureInterface,
+                                           const ProjectUpdateInfo &projectUpdateInfo)
     : m_futureInterface(futureInterface)
     , m_projectUpdateInfo(projectUpdateInfo)
 {
@@ -56,7 +57,7 @@ ProjectInfo ProjectInfoGenerator::generate()
         if (m_futureInterface.isCanceled())
             return ProjectInfo();
 
-        for (ProjectPart::Ptr part : createProjectParts(rpp))
+        for (const ProjectPart::Ptr &part : createProjectParts(rpp))
             projectInfo.appendProjectPart(part);
     }
 
@@ -94,14 +95,23 @@ static ProjectPart::Ptr projectPartFromRawProjectPart(
     part->projectMacros = rawProjectPart.projectMacros;
     if (!part->projectConfigFile.isEmpty())
         part->projectMacros += Macro::toMacros(ProjectPart::readProjectConfigFile(part));
-    part->headerPaths = rawProjectPart.headerPaths;
+
+    // Prevent duplicate include paths.
+    std::set<QString> seenPaths;
+    for (const HeaderPath &p : qAsConst(rawProjectPart.headerPaths)) {
+        const QString cleanPath = QDir::cleanPath(p.path);
+        if (seenPaths.insert(cleanPath).second)
+            part->headerPaths << HeaderPath(cleanPath, p.type);
+    }
+
     part->precompiledHeaders = rawProjectPart.precompiledHeaders;
+    part->includedFiles = rawProjectPart.includedFiles;
     part->selectedForBuilding = rawProjectPart.selectedForBuilding;
 
     return part;
 }
 
-QVector<ProjectPart::Ptr> ProjectInfoGenerator::createProjectParts(
+const QVector<ProjectPart::Ptr> ProjectInfoGenerator::createProjectParts(
     const RawProjectPart &rawProjectPart)
 {
     using Utils::LanguageExtension;
@@ -195,6 +205,11 @@ ProjectPart::Ptr ProjectInfoGenerator::createProjectPart(
     part->extraCodeModelFlags = tcInfo.extraCodeModelFlags;
     part->compilerFlags = flags.commandLineFlags;
     part->warningFlags = flags.warningFlags;
+    if (part->includedFiles.isEmpty()) {
+        // The project manager did not provide the included files, so take
+        // the ones we were able to detect from the toolchain's command line.
+        part->includedFiles = flags.includedFiles;
+    }
     part->language = language;
     part->languageExtensions = flags.languageExtensions;
 

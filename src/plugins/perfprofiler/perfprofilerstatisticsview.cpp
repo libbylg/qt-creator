@@ -55,7 +55,7 @@ class HexNumberDelegate : public QStyledItemDelegate
 public:
     HexNumberDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
 
-    QString displayText(const QVariant &value, const QLocale &locale) const
+    QString displayText(const QVariant &value, const QLocale &locale) const final
     {
         Q_UNUSED(locale)
         return QString::fromLatin1("0x%1").arg(value.toULongLong(), 16, 16, QLatin1Char('0'));
@@ -204,7 +204,8 @@ QString StatisticsView::rowToString(int row) const
 static void sendToClipboard(const QString &str)
 {
     QClipboard *clipboard = QApplication::clipboard();
-    clipboard->setText(str, QClipboard::Selection);
+    if (clipboard->supportsSelection())
+        clipboard->setText(str, QClipboard::Selection);
     clipboard->setText(str, QClipboard::Clipboard);
 }
 

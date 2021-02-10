@@ -43,6 +43,7 @@ namespace QmlDesigner {
 namespace Internal {
 class ModelPrivate;
 class WriteLocker;
+class NodeMetaInfoPrivate;
 } //Internal
 
 class AnchorLine;
@@ -68,6 +69,7 @@ class QMLDESIGNERCORE_EXPORT Model : public QObject
     friend class QmlDesigner::AbstractView;
     friend class Internal::ModelPrivate;
     friend class Internal::WriteLocker;
+    friend class QmlDesigner::Internal::NodeMetaInfoPrivate;
 
     Q_OBJECT
 
@@ -92,9 +94,9 @@ public:
     // Editing sub-components:
 
     // Imports:
-    QList<Import> imports() const;
-    QList<Import> possibleImports() const;
-    QList<Import> usedImports() const;
+    const QList<Import> &imports() const;
+    const QList<Import> &possibleImports() const;
+    const QList<Import> &usedImports() const;
     void changeImports(const QList<Import> &importsToBeAdded, const QList<Import> &importsToBeRemoved);
     void setPossibleImports(const QList<Import> &possibleImports);
     void setUsedImports(const QList<Import> &usedImports);
@@ -117,6 +119,8 @@ public:
     void setDocumentMessages(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &warnings);
 
     QList<ModelNode> selectedNodes(AbstractView *view) const;
+
+    void clearMetaInfoCache();
 
 protected:
     Model();

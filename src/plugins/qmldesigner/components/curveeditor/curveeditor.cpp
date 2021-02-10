@@ -35,7 +35,7 @@
 #include <QSplitter>
 #include <QVBoxLayout>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 CurveEditor::CurveEditor(CurveEditorModel *model, QWidget *parent)
     : QWidget(parent)
@@ -48,15 +48,22 @@ CurveEditor::CurveEditor(CurveEditorModel *model, QWidget *parent)
     splitter->setStretchFactor(1, 2);
 
     auto *box = new QVBoxLayout;
-    box->addWidget(createToolBar());
+    box->addWidget(createToolBar(model));
     box->addWidget(splitter);
     setLayout(box);
 
-    connect(m_tree, &TreeView::treeItemLocked, m_view, &GraphicsView::setLocked);
-    connect(m_tree->selectionModel(), &SelectionModel::curvesSelected, m_view, &GraphicsView::reset);
+    connect(m_tree, &TreeView::treeItemLocked, model, &CurveEditorModel::setLocked);
+    connect(m_tree, &TreeView::treeItemPinned, model, &CurveEditorModel::setPinned);
 
-    connect(m_tree, &TreeView::treeItemLocked, model, &CurveEditorModel::curveChanged);
-    connect(m_tree, &TreeView::treeItemPinned, model, &CurveEditorModel::curveChanged);
+    connect(m_tree->selectionModel(),
+            &SelectionModel::curvesSelected,
+            m_view,
+            &GraphicsView::updateSelection);
+}
+
+bool CurveEditor::dragging() const
+{
+    return m_view->dragging();
 }
 
 void CurveEditor::zoomX(double zoom)
@@ -74,45 +81,75 @@ void CurveEditor::clearCanvas()
     m_view->reset({});
 }
 
-QToolBar *CurveEditor::createToolBar()
+QToolBar *CurveEditor::createToolBar(CurveEditorModel *model)
 {
     auto *bar = new QToolBar;
     bar->setFloatable(false);
 
-    QAction *tangentLinearAction = bar->addAction(QIcon(":/curveeditor/images/tangetToolsLinearIcon.png"), "Linear");
-    QAction *tangentStepAction = bar->addAction(QIcon(":/curveeditor/images/tangetToolsStepIcon.png"), "Step");
-    QAction *tangentSplineAction = bar->addAction(QIcon(":/curveeditor/images/tangetToolsSplineIcon.png"), "Spline");
-    QAction *tangentDefaultAction = bar->addAction("Set Default");
+    QAction *tangentLinearAction = bar->addAction(
+        QIcon(":/curveeditor/images/tangetToolsLinearIcon.png"), "Linear");
+    QAction *tangentStepAction = bar->addAction(QIcon(
+                                                    ":/curveeditor/images/tangetToolsStepIcon.png"),
+                                                "Step");
+    QAction *tangentSplineAction = bar->addAction(
+        QIcon(":/curveeditor/images/tangetToolsSplineIcon.png"), "Spline");
+
+    QAction *tangentDefaultAction = bar->addAction(tr("Set Default"));
+    QAction *tangentUnifyAction = bar->addAction(tr("Unify"));
 
     auto setLinearInterpolation = [this]() {
         m_view->setInterpolation(Keyframe::Interpolation::Linear);
     };
-    auto setStepInterpolation = [this]() {
-        m_view->setInterpolation(Keyframe::Interpolation::Step);
-    };
+    auto setStepInterpolation = [this]() { m_view->setInterpolation(Keyframe::Interpolation::Step); };
     auto setSplineInterpolation = [this]() {
         m_view->setInterpolation(Keyframe::Interpolation::Bezier);
     };
 
+    auto toggleUnifyKeyframe = [this]() { m_view->toggleUnified(); };
+
     connect(tangentLinearAction, &QAction::triggered, setLinearInterpolation);
     connect(tangentStepAction, &QAction::triggered, setStepInterpolation);
     connect(tangentSplineAction, &QAction::triggered, setSplineInterpolation);
+    connect(tangentUnifyAction, &QAction::triggered, toggleUnifyKeyframe);
 
     Q_UNUSED(tangentLinearAction);
     Q_UNUSED(tangentSplineAction);
     Q_UNUSED(tangentStepAction);
     Q_UNUSED(tangentDefaultAction);
 
-    auto *valueBox = new QHBoxLayout;
-    valueBox->addWidget(new QLabel(tr("Value")));
-    valueBox->addWidget(new QDoubleSpinBox);
-    auto *valueWidget = new QWidget;
-    valueWidget->setLayout(valueBox);
-    bar->addWidget(valueWidget);
-
     auto *durationBox = new QHBoxLayout;
-    durationBox->addWidget(new QLabel(tr("Duration")));
-    durationBox->addWidget(new QSpinBox);
+    auto *startSpin = new QSpinBox;
+    auto *endSpin = new QSpinBox;
+
+    startSpin->setRange(std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max());
+    startSpin->setValue(model->minimumTime());
+
+    auto updateStartFrame = [this, model](int frame) {
+        model->setMinimumTime(frame);
+        m_view->viewport()->update();
+    };
+    connect(startSpin, QOverload<int>::of(&QSpinBox::valueChanged), updateStartFrame);
+
+    endSpin->setRange(std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max());
+    endSpin->setValue(model->maximumTime());
+
+    auto updateEndFrame = [this, model](int frame) {
+        model->setMaximumTime(frame);
+        m_view->viewport()->update();
+    };
+    connect(endSpin, QOverload<int>::of(&QSpinBox::valueChanged), updateEndFrame);
+
+    auto setStartSlot = [startSpin](int frame) { startSpin->setValue(frame); };
+    connect(model, &CurveEditorModel::commitStartFrame, setStartSlot);
+
+    auto setEndSlot = [endSpin](int frame) { endSpin->setValue(frame); };
+    connect(model, &CurveEditorModel::commitEndFrame, setEndSlot);
+
+    durationBox->addWidget(new QLabel(tr("Start Frame")));
+    durationBox->addWidget(startSpin);
+    durationBox->addWidget(new QLabel(tr("End Frame")));
+    durationBox->addWidget(endSpin);
+
     auto *durationWidget = new QWidget;
     durationWidget->setLayout(durationBox);
     bar->addWidget(durationWidget);
@@ -122,10 +159,14 @@ QToolBar *CurveEditor::createToolBar()
     cfspin->setMaximum(std::numeric_limits<int>::max());
 
     auto intSignal = static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged);
-    connect(cfspin, intSignal, [this](int val) { m_view->setCurrentFrame(val, false); });
-    connect(m_view, &GraphicsView::notifyFrameChanged, [cfspin](int val) {
-        QSignalBlocker blocker(cfspin);
-        cfspin->setValue(val);
+    connect(cfspin, intSignal, [model](int val) { model->commitCurrentFrame(val); });
+    connect(m_view, &GraphicsView::currentFrameChanged, [cfspin](int val, bool notify) {
+        if (notify) {
+            cfspin->setValue(val);
+        } else {
+            const QSignalBlocker blocker(cfspin);
+            cfspin->setValue(val);
+        }
     });
 
     auto *positionBox = new QHBoxLayout;
@@ -138,4 +179,4 @@ QToolBar *CurveEditor::createToolBar()
     return bar;
 }
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

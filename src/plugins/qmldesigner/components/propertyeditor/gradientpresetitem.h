@@ -45,6 +45,12 @@ public:
     enum Preset {};
 #endif
 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+    static const int numPresets = Preset::NumPresets;
+#else
+    static const int numPresets = 181;
+#endif
+
     explicit GradientPresetItem();
     explicit GradientPresetItem(const QGradient &value, const QString &name = QString());
     explicit GradientPresetItem(const Preset number);

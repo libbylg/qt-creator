@@ -146,7 +146,6 @@ static bool debuggerActionsEnabledHelper(DebuggerState state)
     case InferiorRunFailed:
     case DebuggerNotReady:
     case EngineSetupRequested:
-    case EngineSetupOk:
     case EngineSetupFailed:
     case EngineRunRequested:
     case EngineRunFailed:
@@ -386,6 +385,10 @@ public:
         // This triggers activity in the EngineManager which
         // recognizes the rampdown by the m_perpective == nullptr above.
         perspective->destroy();
+
+        // disconnect the follow font size connection
+        TextEditorSettings::instance()->disconnect(this);
+
         delete perspective;
     }
 
@@ -445,6 +448,7 @@ public:
         m_stackHandler.resetLocation();
         m_disassemblerAgent.resetLocation();
         m_toolTipManager.resetLocation();
+        m_breakHandler.resetLocation();
     }
 
 public:
@@ -631,6 +635,7 @@ void DebuggerEnginePrivate::setupViews()
     m_modulesView->setModel(m_modulesHandler.model());
     m_modulesView->setSortingEnabled(true);
     m_modulesView->setSettings(settings, "Debugger.ModulesView");
+    m_modulesView->enableColumnHiding();
     connect(m_modulesView, &BaseTreeView::aboutToShow,
             m_engine, &DebuggerEngine::reloadModules,
             Qt::QueuedConnection);
@@ -642,6 +647,7 @@ void DebuggerEnginePrivate::setupViews()
     m_registerView->setModel(m_registerHandler.model());
     m_registerView->setRootIsDecorated(true);
     m_registerView->setSettings(settings, "Debugger.RegisterView");
+    m_registerView->enableColumnHiding();
     connect(m_registerView, &BaseTreeView::aboutToShow,
             m_engine, &DebuggerEngine::reloadRegisters,
             Qt::QueuedConnection);
@@ -653,6 +659,7 @@ void DebuggerEnginePrivate::setupViews()
     m_peripheralRegisterView->setModel(m_peripheralRegisterHandler.model());
     m_peripheralRegisterView->setRootIsDecorated(true);
     m_peripheralRegisterView->setSettings(settings, "Debugger.PeripheralRegisterView");
+    m_peripheralRegisterView->enableColumnHiding();
     connect(m_peripheralRegisterView, &BaseTreeView::aboutToShow,
             m_engine, &DebuggerEngine::reloadPeripheralRegisters,
             Qt::QueuedConnection);
@@ -664,6 +671,7 @@ void DebuggerEnginePrivate::setupViews()
     m_stackView->setModel(m_stackHandler.model());
     m_stackView->setSettings(settings, "Debugger.StackView");
     m_stackView->setIconSize(QSize(10, 10));
+    m_stackView->enableColumnHiding();
     m_stackWindow = addSearch(m_stackView);
     m_stackWindow->setObjectName("Debugger.Dock.Stack." + engineId);
     m_stackWindow->setWindowTitle(tr("&Stack"));
@@ -672,6 +680,7 @@ void DebuggerEnginePrivate::setupViews()
     m_sourceFilesView->setModel(m_sourceFilesHandler.model());
     m_sourceFilesView->setSortingEnabled(true);
     m_sourceFilesView->setSettings(settings, "Debugger.SourceFilesView");
+    m_sourceFilesView->enableColumnHiding();
     connect(m_sourceFilesView, &BaseTreeView::aboutToShow,
             m_engine, &DebuggerEngine::reloadSourceFiles,
             Qt::QueuedConnection);
@@ -685,6 +694,7 @@ void DebuggerEnginePrivate::setupViews()
     m_threadsView->setSettings(settings, "Debugger.ThreadsView");
     m_threadsView->setIconSize(QSize(10, 10));
     m_threadsView->setSpanColumn(ThreadData::FunctionColumn);
+    m_threadsView->enableColumnHiding();
     m_threadsWindow = addSearch(m_threadsView);
     m_threadsWindow->setObjectName("Debugger.Dock.Threads." + engineId);
     m_threadsWindow->setWindowTitle(tr("&Threads"));
@@ -734,6 +744,7 @@ void DebuggerEnginePrivate::setupViews()
     m_breakView->setSettings(settings, "Debugger.BreakWindow");
     m_breakView->setModel(m_breakHandler.model());
     m_breakView->setRootIsDecorated(true);
+    m_breakView->enableColumnHiding();
     m_breakWindow = addSearch(m_breakView);
     m_breakWindow->setObjectName("Debugger.Dock.Break." + engineId);
     m_breakWindow->setWindowTitle(tr("&Breakpoints"));
@@ -889,7 +900,6 @@ QString DebuggerEngine::stateName(int s)
     switch (s) {
         SN(DebuggerNotReady)
         SN(EngineSetupRequested)
-        SN(EngineSetupOk)
         SN(EngineSetupFailed)
         SN(EngineRunFailed)
         SN(EngineRunRequested)
@@ -1084,10 +1094,12 @@ void DebuggerEngine::gotoLocation(const Location &loc)
     const QString file = loc.fileName().toString();
     const int line = loc.lineNumber();
     bool newEditor = false;
-    IEditor *editor = EditorManager::openEditor(
-                file, Id(),
-                EditorManager::IgnoreNavigationHistory | EditorManager::DoNotSwitchToDesignMode,
-                &newEditor);
+    IEditor *editor = EditorManager::openEditor(file,
+                                                Id(),
+                                                EditorManager::IgnoreNavigationHistory
+                                                    | EditorManager::DoNotSwitchToDesignMode
+                                                    | EditorManager::SwitchSplitIfAlreadyVisible,
+                                                &newEditor);
     QTC_ASSERT(editor, return); // Unreadable file?
 
     editor->gotoLine(line, 0, !boolSetting(StationaryEditorWhileStepping));
@@ -1099,6 +1111,9 @@ void DebuggerEngine::gotoLocation(const Location &loc)
         d->m_locationMark.reset(new LocationMark(this, loc.fileName(), line));
         d->m_locationMark->setToolTip(tr("Current debugger location of %1").arg(displayName()));
     }
+
+    d->m_breakHandler.setLocation(loc);
+    d->m_watchHandler.setLocation(loc);
 }
 
 void DebuggerEngine::gotoCurrentLocation()
@@ -1163,13 +1178,13 @@ static bool isAllowedTransition(DebuggerState from, DebuggerState to)
         return to == EngineSetupRequested;
 
     case EngineSetupRequested:
-        return to == EngineSetupOk || to == EngineSetupFailed;
+        return to == EngineRunRequested
+            || to == EngineSetupFailed
+            || to == EngineShutdownRequested;
     case EngineSetupFailed:
         // In is the engine's task to go into a proper "Shutdown"
         // state before calling notifyEngineSetupFailed
         return to == DebuggerFinished;
-    case EngineSetupOk:
-        return to == EngineRunRequested || to == EngineShutdownRequested;
 
     case EngineRunRequested:
         return to == EngineRunFailed
@@ -1238,14 +1253,10 @@ void DebuggerEngine::notifyEngineSetupOk()
 //    CALLGRIND_START_INSTRUMENTATION;
 //#endif
     showMessage("NOTE: ENGINE SETUP OK");
-    d->m_progress.setProgressValue(250);
     QTC_ASSERT(state() == EngineSetupRequested, qDebug() << this << state());
-    setState(EngineSetupOk);
-    // Slaves will get called setupSlaveInferior() below.
     setState(EngineRunRequested);
     showMessage("CALL: RUN ENGINE");
     d->m_progress.setProgressValue(300);
-    runEngine();
 }
 
 void DebuggerEngine::notifyEngineRunOkAndInferiorUnrunnable()
@@ -1503,13 +1514,10 @@ void DebuggerEnginePrivate::updateState()
     m_threadsHandler.threadSwitcher()->setEnabled(threadsEnabled);
     m_threadLabel->setEnabled(threadsEnabled);
 
-    const bool isCore = m_engine->runParameters().startMode == AttachCore;
+    const bool isCore = m_engine->runParameters().startMode == AttachToCore;
     const bool stopped = state == InferiorStopOk;
     const bool detachable = stopped && !isCore;
     m_detachAction.setEnabled(detachable);
-
-    if (stopped)
-        QApplication::alert(ICore::mainWindow(), 3000);
 
     updateReverseActions();
 
@@ -1756,11 +1764,11 @@ void DebuggerEngine::showMessage(const QString &msg, int channel, int timeout) c
         case AppOutput:
         case AppStuff:
             d->m_logWindow->showOutput(channel, msg);
-            emit appendMessageRequested(msg, StdOutFormatSameLine, false);
+            emit appendMessageRequested(msg, StdOutFormat, false);
             break;
         case AppError:
             d->m_logWindow->showOutput(channel, msg);
-            emit appendMessageRequested(msg, StdErrFormatSameLine, false);
+            emit appendMessageRequested(msg, StdErrFormat, false);
             break;
         default:
             d->m_logWindow->showOutput(channel, msg);
@@ -1771,8 +1779,11 @@ void DebuggerEngine::showMessage(const QString &msg, int channel, int timeout) c
 void DebuggerEngine::notifyDebuggerProcessFinished(int exitCode,
     QProcess::ExitStatus exitStatus, const QString &backendName)
 {
-    showMessage(QString("%1 PROCESS FINISHED, status %2, exit code %3")
-                .arg(backendName).arg(exitStatus).arg(exitCode));
+    showMessage(QString("%1 PROCESS FINISHED, status %2, exit code %3 (0x%4)")
+                    .arg(backendName)
+                    .arg(exitStatus)
+                    .arg(exitCode)
+                    .arg(QString::number(exitCode, 16)));
 
     switch (state()) {
     case DebuggerFinished:
@@ -1932,7 +1943,7 @@ void DebuggerEngine::notifyInferiorPid(const ProcessHandle &pid)
     if (pid.isValid()) {
         showMessage(tr("Taking notice of pid %1").arg(pid.pid()));
         DebuggerStartMode sm = runParameters().startMode;
-        if (sm == StartInternal || sm == StartExternal || sm == AttachExternal)
+        if (sm == StartInternal || sm == StartExternal || sm == AttachToLocalProcess)
             d->m_inferiorPid.activate();
     }
 }
@@ -1980,9 +1991,6 @@ void DebuggerEngine::quitDebugger()
         interruptInferior();
         break;
     case EngineSetupRequested:
-        notifyEngineSetupFailed();
-        break;
-    case EngineSetupOk:
         notifyEngineSetupFailed();
         break;
     case EngineRunRequested:
@@ -2138,6 +2146,10 @@ void DebuggerEngine::createSnapshot()
 
 void DebuggerEngine::updateLocals()
 {
+    // if the engine is not running - do nothing
+    if (state() == DebuggerState::DebuggerFinished || state() == DebuggerState::DebuggerNotReady)
+        return;
+
     watchHandler()->resetValueCache();
     doUpdateLocals(UpdateParameters());
 }
@@ -2354,6 +2366,10 @@ void DebuggerEngine::updateItem(const QString &iname)
         QTC_CHECK(item);
         WatchModelBase *model = handler->model();
         QTC_CHECK(model);
+        if (item && !item->wantsChildren) {
+            updateToolTips();
+            return;
+        }
         if (item && !model->hasChildren(model->indexForItem(item))) {
             handler->notifyUpdateStarted(UpdateParameters(iname));
             item->setValue(decodeData({}, "notaccessible"));
@@ -2799,7 +2815,7 @@ void CppDebuggerEngine::validateRunParameters(DebuggerRunParameters &rp)
             const GlobalDebuggerOptions *options = Internal::globalDebuggerOptions();
             SourcePathRegExpMap globalRegExpSourceMap;
             globalRegExpSourceMap.reserve(options->sourcePathRegExpMap.size());
-            for (auto entry : qAsConst(options->sourcePathRegExpMap)) {
+            for (const auto &entry : qAsConst(options->sourcePathRegExpMap)) {
                 const QString expanded = Utils::globalMacroExpander()->expand(entry.second);
                 if (!expanded.isEmpty())
                     globalRegExpSourceMap.push_back(qMakePair(entry.first, expanded));
@@ -2815,10 +2831,10 @@ void CppDebuggerEngine::validateRunParameters(DebuggerRunParameters &rp)
                     for (auto itExp = globalRegExpSourceMap.begin(), itEnd = globalRegExpSourceMap.end();
                          itExp != itEnd;
                          ++itExp) {
-                        QRegExp exp = itExp->first;
-                        int index = exp.indexIn(string);
-                        if (index != -1) {
-                            rp.sourcePathMap.insert(string.left(index) + exp.cap(1), itExp->second);
+                        const QRegularExpressionMatch match = itExp->first.match(string);
+                        if (match.hasMatch()) {
+                            rp.sourcePathMap.insert(string.left(match.capturedStart()) + match.captured(1),
+                                                    itExp->second);
                             found = true;
                             break;
                         }

@@ -152,7 +152,7 @@ ApplicationLauncherPrivate::ApplicationLauncherPrivate(ApplicationLauncher *pare
             this, &ApplicationLauncherPrivate::localConsoleProcessError);
     connect(&m_consoleProcess, &ConsoleProcess::processStopped,
             this, &ApplicationLauncherPrivate::localProcessDone);
-    connect(&m_consoleProcess, QOverload<QProcess::ProcessError>::of(&ConsoleProcess::error),
+    connect(&m_consoleProcess, &ConsoleProcess::errorOccurred,
             q, &ApplicationLauncher::error);
 
 #ifdef Q_OS_WIN
@@ -194,7 +194,7 @@ void ApplicationLauncherPrivate::stop()
             localProcessDone(0, QProcess::CrashExit);
         } else {
             m_guiProcess.terminate();
-            if (!m_guiProcess.waitForFinished(1000) && m_guiProcess.state() == QProcess::Running) { // This is blocking, so be fast.
+            if (!m_guiProcess.waitForFinished(1000)) { // This is blocking, so be fast.
                 m_guiProcess.kill();
                 m_guiProcess.waitForFinished();
             }
@@ -305,7 +305,7 @@ void ApplicationLauncherPrivate::readLocalStandardOutput()
     QByteArray data = m_guiProcess.readAllStandardOutput();
     QString msg = m_outputCodec->toUnicode(
             data.constData(), data.length(), &m_outputCodecState);
-    emit q->appendMessage(msg, StdOutFormatSameLine, false);
+    emit q->appendMessage(msg, StdOutFormat, false);
 }
 
 void ApplicationLauncherPrivate::readLocalStandardError()
@@ -313,7 +313,7 @@ void ApplicationLauncherPrivate::readLocalStandardError()
     QByteArray data = m_guiProcess.readAllStandardError();
     QString msg = m_outputCodec->toUnicode(
             data.constData(), data.length(), &m_errorCodecState);
-    emit q->appendMessage(msg, StdErrFormatSameLine, false);
+    emit q->appendMessage(msg, StdErrFormat, false);
 }
 
 void ApplicationLauncherPrivate::cannotRetrieveLocalDebugOutput()

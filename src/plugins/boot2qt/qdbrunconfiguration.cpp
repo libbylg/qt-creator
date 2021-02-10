@@ -44,28 +44,47 @@ namespace Internal {
 
 // FullCommandLineAspect
 
-FullCommandLineAspect::FullCommandLineAspect(RunConfiguration *rc)
+class FullCommandLineAspect : public StringAspect
 {
-    setLabelText(QdbRunConfiguration::tr("Full command line:"));
+    Q_DECLARE_TR_FUNCTIONS(Qdb::Internal::QdbRunConfiguration);
 
-    auto exeAspect = rc->aspect<ExecutableAspect>();
-    auto argumentsAspect = rc->aspect<ArgumentsAspect>();
+public:
+    explicit FullCommandLineAspect(RunConfiguration *rc)
+    {
+        setLabelText(tr("Full command line:"));
 
-    auto updateCommandLine = [this, rc, exeAspect, argumentsAspect] {
-        const QString usedExecutable = exeAspect->executable().toString();
-        const QString args = argumentsAspect->arguments(rc->macroExpander());
-        setValue(QString(Constants::AppcontrollerFilepath)
-                    + ' ' + usedExecutable + ' ' + args);
-    };
+        auto exeAspect = rc->aspect<ExecutableAspect>();
+        auto argumentsAspect = rc->aspect<ArgumentsAspect>();
 
-    connect(argumentsAspect, &ArgumentsAspect::argumentsChanged, this, updateCommandLine);
-    connect(exeAspect, &ExecutableAspect::changed, this, updateCommandLine);
-    updateCommandLine();
-}
+        auto updateCommandLine = [this, rc, exeAspect, argumentsAspect] {
+            const QString usedExecutable = exeAspect->executable().toString();
+            const QString args = argumentsAspect->arguments(rc->macroExpander());
+            setValue(QString(Constants::AppcontrollerFilepath)
+                     + ' ' + usedExecutable + ' ' + args);
+        };
+
+        connect(argumentsAspect, &ArgumentsAspect::changed, this, updateCommandLine);
+        connect(exeAspect, &ExecutableAspect::changed, this, updateCommandLine);
+        updateCommandLine();
+    }
+};
+
 
 // QdbRunConfiguration
 
-QdbRunConfiguration::QdbRunConfiguration(Target *target, Core::Id id)
+class QdbRunConfiguration : public RunConfiguration
+{
+    Q_DECLARE_TR_FUNCTIONS(Qdb::Internal::QdbRunConfiguration);
+
+public:
+    QdbRunConfiguration(Target *target, Utils::Id id);
+
+private:
+    Tasks checkForIssues() const override;
+    QString defaultDisplayName() const;
+};
+
+QdbRunConfiguration::QdbRunConfiguration(Target *target, Utils::Id id)
     : RunConfiguration(target, id)
 {
     auto exeAspect = addAspect<ExecutableAspect>();
@@ -96,6 +115,8 @@ QdbRunConfiguration::QdbRunConfiguration(Target *target, Core::Id id)
     });
 
     connect(target, &Target::buildSystemUpdated, this, &RunConfiguration::update);
+    connect(target, &Target::deploymentDataChanged, this, &RunConfiguration::update);
+    connect(target, &Target::kitChanged, this, &RunConfiguration::update);
 
     setDefaultDisplayName(tr("Run on Boot2Qt Device"));
 }
@@ -104,8 +125,8 @@ Tasks QdbRunConfiguration::checkForIssues() const
 {
     Tasks tasks;
     if (aspect<ExecutableAspect>()->executable().toString().isEmpty()) {
-        tasks << createConfigurationIssue(tr("The remote executable must be set "
-                                             "in order to run on a Boot2Qt device."));
+        tasks << BuildSystemTask(Task::Warning, tr("The remote executable must be set "
+                                                   "in order to run on a Boot2Qt device."));
     }
     return tasks;
 }

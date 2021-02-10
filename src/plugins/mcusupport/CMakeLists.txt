@@ -1,6 +1,6 @@
 add_qtc_plugin(McuSupport
   DEPENDS Qt5::Core
-  PLUGIN_DEPENDS Core ProjectExplorer Debugger CMakeProjectManager
+  PLUGIN_DEPENDS Core BareMetal ProjectExplorer Debugger CMakeProjectManager QtSupport
   SOURCES
     mcusupport.qrc
     mcusupport_global.h
@@ -9,5 +9,6 @@ add_qtc_plugin(McuSupport
     mcusupportoptions.cpp mcusupportoptions.h
     mcusupportoptionspage.cpp mcusupportoptionspage.h
     mcusupportplugin.cpp mcusupportplugin.h
+    mcusupportsdk.cpp mcusupportsdk.h
     mcusupportrunconfiguration.cpp mcusupportrunconfiguration.h
 )

@@ -333,7 +333,7 @@ bool startCreatorAsDebugger(bool asClient, QString *errorMessage)
     // Short execution time: indicates that -client was passed on attach to
     // another running instance of Qt Creator. Keep alive as long as user
     // does not close the process. If that fails, try to launch 2nd instance.
-    const bool waitResult = p.waitForFinished(-1) || p.state() == QProcess::NotRunning;
+    const bool waitResult = p.waitForFinished(-1);
     const bool ranAsClient = asClient && (executionTime.elapsed() < 10000);
     if (waitResult && p.exitStatus() == QProcess::NormalExit && ranAsClient) {
         if (p.exitCode() == 0) {
@@ -371,7 +371,13 @@ bool startDefaultDebugger(QString *errorMessage)
     if (debug)
         qDebug() << "Default" << defaultDebugger;
     QProcess p;
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    QStringList arguments = QProcess::splitCommand(defaultDebugger);
+    const QString executable = arguments.takeFirst();
+    p.start(executable, arguments, QIODevice::NotOpen);
+#else
     p.start(defaultDebugger, QIODevice::NotOpen);
+#endif
     if (!p.waitForStarted()) {
         *errorMessage = QString::fromLatin1("Unable to start %1!").arg(defaultDebugger);
         return false;

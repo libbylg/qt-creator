@@ -9,8 +9,12 @@ HEADERS += \
     androidconstants.h \
     androidconfigurations.h \
     androidmanager.h \
+    androidmanifesteditoriconcontainerwidget.h \
+    androidmanifesteditoriconwidget.h \
     androidrunconfiguration.h \
     androidruncontrol.h \
+    androidservicewidget.h \
+    androidservicewidget_p.h \
     androidsettingswidget.h \
     androidtoolchain.h \
     androiderrormessage.h \
@@ -38,8 +42,6 @@ HEADERS += \
     avddialog.h \
     android_global.h \
     androidbuildapkstep.h \
-    androidbuildapkwidget.h \
-    androidtoolmanager.h \
     androidsdkmanager.h \
     androidavdmanager.h \
     adbcommandswidget.h \
@@ -49,13 +51,18 @@ HEADERS += \
     androidpackageinstallationstep.h \
     androidextralibrarylistmodel.h \
     createandroidmanifestwizard.h \
-    androidsdkdownloader.h
+    androidsdkdownloader.h \
+    splashscreencontainerwidget.h \
+    splashscreenwidget.h
 
 SOURCES += \
     androidconfigurations.cpp \
     androidmanager.cpp \
+    androidmanifesteditoriconcontainerwidget.cpp \
+    androidmanifesteditoriconwidget.cpp \
     androidrunconfiguration.cpp \
     androidruncontrol.cpp \
+    androidservicewidget.cpp \
     androidsettingswidget.cpp \
     androidtoolchain.cpp \
     androiderrormessage.cpp \
@@ -81,8 +88,6 @@ SOURCES += \
     javaindenter.cpp \
     avddialog.cpp \
     androidbuildapkstep.cpp \
-    androidbuildapkwidget.cpp \
-    androidtoolmanager.cpp \
     androidsdkmanager.cpp \
     androidavdmanager.cpp \
     adbcommandswidget.cpp \
@@ -92,7 +97,9 @@ SOURCES += \
     androidpackageinstallationstep.cpp \
     androidextralibrarylistmodel.cpp \
     createandroidmanifestwizard.cpp \
-    androidsdkdownloader.cpp
+    androidsdkdownloader.cpp \
+    splashscreencontainerwidget.cpp \
+    splashscreenwidget.cpp
 
 FORMS += \
     androidsettingswidget.ui \

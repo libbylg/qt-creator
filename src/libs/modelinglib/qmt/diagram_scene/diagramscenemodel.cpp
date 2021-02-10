@@ -78,17 +78,17 @@ public:
     {
     }
 
-    QRectF boundingRect() const
+    QRectF boundingRect() const final
     {
         return QRectF(0.0, 0.0, 20.0, 20.0);
     }
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) final
     {
         Q_UNUSED(option)
         Q_UNUSED(widget)
 
-        QPen pen(QBrush(Qt::gray), 1.0, Qt::DotLine);
+        QPen pen(QBrush(Qt::lightGray), 1.0, Qt::DotLine);
         painter->setPen(pen);
         painter->drawLine(QLineF(0.0, 0.0, 20.0, 0.0));
         painter->drawLine(QLineF(0.0, 0.0, 0.0, 20.0));

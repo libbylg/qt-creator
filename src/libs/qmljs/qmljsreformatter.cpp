@@ -585,9 +585,11 @@ protected:
             out(QString::fromLatin1("\"%1\"").arg(ast->fileName.toString()));
         else
             accept(ast->importUri);
-        if (ast->versionToken.isValid()) {
+        if (ast->version) {
             out(" ");
-            out(ast->versionToken);
+            out(QString::number(ast->version->majorVersion));
+            out(".");
+            out(QString::number(ast->version->minorVersion));
         }
         if (!ast->importId.isNull()) {
             out(" as ", ast->asToken);
@@ -630,6 +632,8 @@ protected:
     bool visit(UiPublicMember *ast) override
     {
         if (ast->type == UiPublicMember::Property) {
+            if (ast->isRequired)
+                out("required ", ast->requiredToken);
             if (ast->isDefaultMember)
                 out("default ", ast->defaultToken);
             else if (ast->isReadonlyMember)
@@ -797,6 +801,13 @@ protected:
     bool visit(IdentifierPropertyName *ast) override { out(ast->id.toString()); return true; }
     bool visit(StringLiteralPropertyName *ast) override { out(ast->id.toString()); return true; }
     bool visit(NumericLiteralPropertyName *ast) override { out(QString::number(ast->id)); return true; }
+
+    bool visit(TemplateLiteral *ast) override
+    {
+        out(ast->literalToken);
+        accept(ast->expression);
+        return true;
+    }
 
     bool visit(ArrayMemberExpression *ast) override
     {
@@ -1093,7 +1104,8 @@ protected:
     {
         out(ast->returnToken);
         if (ast->expression) {
-            out(" ");
+            if (ast->returnToken.isValid())
+                out(" ");
             accept(ast->expression);
         }
         return false;
@@ -1214,17 +1226,32 @@ protected:
 
     bool visit(FunctionExpression *ast) override
     {
-        out("function ", ast->functionToken);
-        if (!ast->name.isNull())
-            out(ast->identifierToken);
+        if (!ast->isArrowFunction) {
+            out("function ", ast->functionToken);
+            if (!ast->name.isNull())
+                out(ast->identifierToken);
+        }
         out(ast->lparenToken);
+        if (ast->isArrowFunction && ast->formals && ast->formals->next)
+            out("(");
         accept(ast->formals);
+        if (ast->isArrowFunction && ast->formals && ast->formals->next)
+            out(")");
         out(ast->rparenToken);
+        if (ast->isArrowFunction && !ast->formals)
+            out("()");
         out(" ");
+        if (ast->isArrowFunction)
+            out("=> ");
         out(ast->lbraceToken);
         if (ast->body) {
-            lnAcceptIndented(ast->body);
-            newLine();
+            if (ast->body->next || ast->lbraceToken.isValid()) {
+                lnAcceptIndented(ast->body);
+                newLine();
+            } else {
+                // print a single statement in one line. E.g. x => x * 2
+                accept(ast->body);
+            }
         }
         out(ast->rbraceToken);
         return false;
@@ -1338,6 +1365,10 @@ protected:
                 out(", ");
         }
         return false;
+    }
+
+    void throwRecursionDepthError() override {
+        out("/* ERROR: Hit recursion limit visiting AST, rewrite failed */");
     }
 };
 

@@ -39,7 +39,7 @@ public:
     LocatorFilter(SymbolQueryInterface &symbolQuery,
                   EditorManagerInterface &editorManager,
                   ClangBackEnd::SymbolKinds &&symbolKinds,
-                  Core::Id id,
+                  Utils::Id id,
                   const QString &displayName,
                   const QString &shortCut,
                   bool includedByDefault=false)
@@ -49,8 +49,8 @@ public:
     {
         setId(id);
         setDisplayName(displayName);
-        setShortcutString(shortCut);
-        setIncludedByDefault(includedByDefault);
+        setDefaultShortcutString(shortCut);
+        setDefaultIncludedByDefault(includedByDefault);
     }
 
     QList<Core::LocatorFilterEntry> matchesFor(QFutureInterface<Core::LocatorFilterEntry> &future,

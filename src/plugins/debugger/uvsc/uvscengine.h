@@ -29,8 +29,6 @@
 
 #include <debugger/debuggerengine.h>
 
-namespace Utils { class FilePath; }
-
 namespace Debugger {
 namespace Internal {
 
@@ -42,13 +40,14 @@ public:
     explicit UvscEngine();
 
     void setupEngine() final;
-    void runEngine() final;
+    void runEngine();
     void shutdownInferior() final;
     void shutdownEngine() final;
 
     bool hasCapability(unsigned cap) const final;
 
     void setRegisterValue(const QString &name, const QString &value) final;
+    void setPeripheralRegisterValue(quint64 address, quint64 value) final;
 
     void executeStepOver(bool byInstruction) final;
     void executeStepIn(bool byInstruction) final;
@@ -62,16 +61,19 @@ public:
 
     void activateFrame(int index) final;
 
-    bool stateAcceptsBreakpointChanges() const final;
     bool acceptsBreakpoint(const BreakpointParameters &params) const final;
-
     void insertBreakpoint(const Breakpoint &bp) final;
     void removeBreakpoint(const Breakpoint &bp) final;
     void updateBreakpoint(const Breakpoint &bp) final;
 
     void fetchDisassembler(DisassemblerAgent *agent) final;
 
+    void changeMemory(MemoryAgent *agent, quint64 address, const QByteArray &data) final;
+    void fetchMemory(MemoryAgent *agent, quint64 address, quint64 length) final;
+
     void reloadRegisters() final;
+    void reloadPeripheralRegisters() final;
+
     void reloadFullStack() final;
 
 private slots:
@@ -84,6 +86,7 @@ private slots:
     void handleThreadInfo();
     void handleReloadStack(bool isFull);
     void handleReloadRegisters();
+    void handleReloadPeripheralRegisters(const QList<quint64> &addresses);
     void handleUpdateLocals(bool partial);
     void handleInsertBreakpoint(const QString &exp, const Breakpoint &bp);
     void handleRemoveBreakpoint(const Breakpoint &bp);
@@ -94,6 +97,9 @@ private slots:
     void handleRunFailure(const QString &errorMessage);
     void handleExecutionFailure(const QString &errorMessage);
     void handleStoppingFailure(const QString &errorMessage);
+
+    void handleFetchMemory(MemoryAgent *agent, quint64 address, const QByteArray &data);
+    void handleChangeMemory(MemoryAgent *agent, quint64 address, const QByteArray &data);
 
 private:
     void doUpdateLocals(const UpdateParameters &params) final;

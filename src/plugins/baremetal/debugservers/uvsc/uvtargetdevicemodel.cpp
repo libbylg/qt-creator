@@ -23,8 +23,9 @@
 **
 ****************************************************************************/
 
-#include "uvproject.h" // for toolsFilePath()
 #include "uvtargetdevicemodel.h"
+
+#include <utils/algorithm.h>
 
 #include <QDirIterator>
 #include <QFile>
@@ -37,9 +38,9 @@ namespace BareMetal {
 namespace Internal {
 namespace Uv {
 
-static QString extractPacksPath(const QString &uVisionFilePath)
+static QString extractPacksPath(const FilePath &toolsIniFile)
 {
-    QFile f(toolsFilePath(uVisionFilePath));
+    QFile f(toolsIniFile.toString());
     if (!f.open(QIODevice::ReadOnly))
         return {};
     QTextStream in(&f);
@@ -66,8 +67,8 @@ static QString extractPackVersion(const QString &packFilePath)
 static QStringList findKeilPackFiles(const QString &path)
 {
     QStringList files;
-    // Search for the STMicroelectronics devices.
-    QDirIterator it(path, {"STM*_DFP"}, QDir::Dirs);
+    // Search for STMicroelectronics and NXP S32 devices.
+    QDirIterator it(path, {"STM*_DFP", "S32*_DFP"}, QDir::Dirs);
     while (it.hasNext()) {
         const QDir dfpDir(it.next());
         const QFileInfoList entries = dfpDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot,
@@ -82,14 +83,37 @@ static QStringList findKeilPackFiles(const QString &path)
     return files;
 }
 
+static QStringList findNordicSemiconductorPackFiles(const QString &path)
+{
+    QStringList files;
+    QDirIterator it(path, {"*_DeviceFamilyPack"}, QDir::Dirs);
+    while (it.hasNext()) {
+        const QDir dfpDir(it.next());
+        const QFileInfoList entries = dfpDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot,
+                                                           QDir::Name);
+        if (entries.isEmpty())
+            continue;
+        QDirIterator fit(entries.last().absoluteFilePath(), {"*.pdsc"},
+                         QDir::Files | QDir::NoSymLinks);
+        while (fit.hasNext())
+            files.push_back(fit.next());
+    }
+    return files;
+}
+
+static void fillElementProperty(QXmlStreamReader &in, QString &prop)
+{
+    prop = in.readElementText().trimmed();
+}
+
 static void fillCpu(QXmlStreamReader &in, DeviceSelection::Cpu &cpu)
 {
     const QXmlStreamAttributes attrs = in.attributes();
     in.skipCurrentElement();
-    cpu.core = attrs.hasAttribute("Dcore") ? attrs.value("Dcore").toString() : cpu.core;
-    cpu.clock = attrs.hasAttribute("Dclock") ? attrs.value("Dclock").toString() : cpu.clock;
-    cpu.fpu = attrs.hasAttribute("Dfpu") ? attrs.value("Dfpu").toString() : cpu.fpu;
-    cpu.mpu = attrs.hasAttribute("Dmpu") ? attrs.value("Dmpu").toString() : cpu.mpu;
+    cpu.core = attrs.value("Dcore").toString();
+    cpu.clock = attrs.value("Dclock").toString();
+    cpu.fpu = attrs.value("Dfpu").toString();
+    cpu.mpu = attrs.value("Dmpu").toString();
 }
 
 static void fillMemories(QXmlStreamReader &in, DeviceSelection::Memories &memories)
@@ -109,119 +133,57 @@ static void fillAlgorithms(QXmlStreamReader &in, DeviceSelection::Algorithms &al
     in.skipCurrentElement();
     DeviceSelection::Algorithm algorithm;
     algorithm.path = attrs.value("name").toString();
-    algorithm.start = attrs.value("start").toString();
-    algorithm.size = attrs.value("size").toString();
+    algorithm.flashStart = attrs.value("start").toString();
+    algorithm.flashSize = attrs.value("size").toString();
+    algorithm.ramStart = attrs.value("RAMstart").toString();
+    algorithm.ramSize = attrs.value("RAMsize").toString();
     algorithms.push_back(algorithm);
+}
+
+static void fillVendor(const QString &vendor, QString &vendorName, QString &vendorId)
+{
+    const auto colonIndex = vendor.lastIndexOf(':');
+    vendorName = vendor.mid(0, colonIndex);
+    if (colonIndex != -1)
+        vendorId = vendor.mid(colonIndex + 1);
+}
+
+static void fillVendor(QXmlStreamReader &in, QString &vendorName, QString &vendorId)
+{
+    QString vendor;
+    fillElementProperty(in, vendor);
+    fillVendor(vendor, vendorName, vendorId);
+}
+
+static void fillSvd(QXmlStreamReader &in, QString &svd)
+{
+    const QXmlStreamAttributes attrs = in.attributes();
+    in.skipCurrentElement();
+    svd = attrs.value("svd").toString();
 }
 
 // DeviceSelectionItem
 
-class DeviceSelectionItem : public TreeItem
+class DeviceSelectionItem final : public TreeItem
 {
 public:
-    enum class Type { Unknown, Package, Family, SubFamily, Device, DeviceVariant };
-    enum Column { NameColumn, VersionColumn, VendorColumn };
-    explicit DeviceSelectionItem(Type type = Type::Unknown)
-        : m_type(type)
-    {}
-
-    QVariant data(int column, int role) const override
-    {
-        if (role == Qt::DisplayRole && column == NameColumn)
-            return m_name;
-        return {};
-    }
-
-    Qt::ItemFlags flags(int column) const override
-    {
-        Q_UNUSED(column)
-        return Qt::ItemIsEnabled;
-    }
-
-    DeviceSelectionItem *parentPackItem() const
-    {
-        return static_cast<DeviceSelectionItem *>(parent());
-    }
-
-    QString m_name;
-    const Type m_type;
-};
-
-// PackageItem
-
-class PackageItem final : public DeviceSelectionItem
-{
-public:
-    explicit PackageItem(const QString &file)
-        : DeviceSelectionItem(Type::Package), m_file(file), m_version(extractPackVersion(file))
-    {}
+    enum Type { Root, Package, Family, SubFamily, Device, DeviceVariant };
+    enum Column { NameColumn, VersionColumn, VendorNameColumn };
+    explicit DeviceSelectionItem(const Type &type = Root)
+        : type(type) {}
 
     QVariant data(int column, int role) const final
     {
         if (role == Qt::DisplayRole) {
             if (column == NameColumn)
-                return m_name;
+                return name;
             else if (column == VersionColumn)
-                return m_version;
-            else if (column == VendorColumn)
-                return m_vendor;
+                return version;
+            else if (column == VendorNameColumn)
+                return vendorName;
         }
         return {};
     }
-
-    QString m_version;
-    QString m_file;
-    QString m_desc;
-    QString m_vendor;
-    QString m_url;
-};
-
-// FamilyItem
-
-class FamilyItem final : public DeviceSelectionItem
-{
-public:
-    explicit FamilyItem()
-        : DeviceSelectionItem(Type::Family)
-    {}
-
-    QVariant data(int column, int role) const final
-    {
-        if (role == Qt::DisplayRole) {
-            if (column == NameColumn) {
-                return m_name;
-            } else if (column == VendorColumn) {
-                const auto colonIndex = m_vendor.lastIndexOf(':');
-                return m_vendor.mid(0, colonIndex);
-            }
-        }
-        return {};
-    }
-
-    QString m_desc;
-    QString m_vendor;
-};
-
-// SubFamilyItem
-
-class SubFamilyItem final : public DeviceSelectionItem
-{
-public:
-    explicit SubFamilyItem()
-        : DeviceSelectionItem(Type::SubFamily)
-    {}
-
-    QString m_svd;
-};
-
-// DeviceItem
-
-class DeviceItem final : public DeviceSelectionItem
-{
-public:
-    explicit DeviceItem()
-        : DeviceSelectionItem(Type::Device)
-    {}
 
     Qt::ItemFlags flags(int column) const final
     {
@@ -229,25 +191,18 @@ public:
         return hasChildren() ? Qt::ItemIsEnabled : (Qt::ItemIsEnabled | Qt::ItemIsSelectable);
     }
 
-    DeviceSelection::Cpu m_cpu;
-    DeviceSelection::Memories m_memories;
-    DeviceSelection::Algorithms m_algorithms;
-};
-
-// DeviceVariantItem
-
-class DeviceVariantItem final : public DeviceSelectionItem
-{
-public:
-    explicit DeviceVariantItem()
-        : DeviceSelectionItem(Type::DeviceVariant)
-    {}
-
-    Qt::ItemFlags flags(int column) const final
-    {
-        Q_UNUSED(column)
-        return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    }
+    const Type type;
+    QString desc;
+    QString fullPath;
+    QString name;
+    QString svd;
+    QString url;
+    QString vendorId;
+    QString vendorName;
+    QString version;
+    DeviceSelection::Algorithms algorithms;
+    DeviceSelection::Cpu cpu;
+    DeviceSelection::Memories memories;
 };
 
 // DeviceSelectionModel
@@ -258,24 +213,26 @@ DeviceSelectionModel::DeviceSelectionModel(QObject *parent)
     setHeader({tr("Name"), tr("Version"), tr("Vendor")});
 }
 
-void DeviceSelectionModel::fillAllPacks(const QString &uVisionFilePath)
+void DeviceSelectionModel::fillAllPacks(const FilePath &toolsIniFile)
 {
-    if (m_uVisionFilePath == uVisionFilePath)
+    if (m_toolsIniFile == toolsIniFile)
         return;
 
     clear();
 
-    m_uVisionFilePath = uVisionFilePath;
-    const QString packsPath = extractPacksPath(m_uVisionFilePath);
+    m_toolsIniFile = toolsIniFile;
+    const QString packsPath = extractPacksPath(m_toolsIniFile);
     if (packsPath.isEmpty())
         return;
 
     QStringList allPackFiles;
-    QDirIterator it(packsPath, {"Keil"}, QDir::Dirs | QDir::NoDotAndDotDot);
+    QDirIterator it(packsPath, {"Keil", "NordicSemiconductor"}, QDir::Dirs | QDir::NoDotAndDotDot);
     while (it.hasNext()) {
         const QString path = it.next();
         if (path.endsWith("/Keil"))
             allPackFiles << findKeilPackFiles(path);
+        else if (path.endsWith("/NordicSemiconductor"))
+            allPackFiles << findNordicSemiconductorPackFiles(path);
     }
 
     if (allPackFiles.isEmpty())
@@ -291,32 +248,35 @@ void DeviceSelectionModel::parsePackage(const QString &packageFile)
         return;
     QXmlStreamReader in(&f);
     while (in.readNextStartElement()) {
-        const QStringRef elementName = in.name();
-        if (elementName == "package")
+        const auto elementName = in.name();
+        if (elementName == QLatin1String("package"))
             parsePackage(in, packageFile);
         else
             in.skipCurrentElement();
     }
 }
 
-void DeviceSelectionModel::parsePackage(QXmlStreamReader &in, const QString &file)
+void DeviceSelectionModel::parsePackage(QXmlStreamReader &in, const QString &packageFile)
 {
-    const auto child = new PackageItem(file);
+    // Create and fill the 'package' item.
+    const auto child = new DeviceSelectionItem(DeviceSelectionItem::Package);
     rootItem()->appendChild(child);
+    child->fullPath = packageFile;
+    child->version = extractPackVersion(packageFile);
     while (in.readNextStartElement()) {
-        const QStringRef elementName = in.name();
-        if (elementName == "name") {
-            child->m_name = in.readElementText().trimmed();
-        } else if (elementName == "description") {
-            child->m_desc = in.readElementText().trimmed();
-        } else if (elementName == "vendor") {
-            child->m_vendor = in.readElementText().trimmed();
-        } else if (elementName == "url") {
-            child->m_url = in.readElementText().trimmed();
-        } else if (elementName == "devices") {
+        const auto elementName = in.name();
+        if (elementName == QLatin1String("name")) {
+            fillElementProperty(in, child->name);
+        } else if (elementName == QLatin1String("description")) {
+            fillElementProperty(in, child->desc);
+        } else if (elementName == QLatin1String("vendor")) {
+            fillVendor(in, child->vendorName, child->vendorId);
+        } else if (elementName == QLatin1String("url")) {
+            fillElementProperty(in, child->url);
+        } else if (elementName == QLatin1String("devices")) {
             while (in.readNextStartElement()) {
-                const QStringRef elementName = in.name();
-                if (elementName == "family")
+                const auto elementName = in.name();
+                if (elementName == QLatin1String("family"))
                     parseFamily(in, child);
                 else
                     in.skipCurrentElement();
@@ -329,90 +289,99 @@ void DeviceSelectionModel::parsePackage(QXmlStreamReader &in, const QString &fil
 
 void DeviceSelectionModel::parseFamily(QXmlStreamReader &in, DeviceSelectionItem *parent)
 {
-    const auto child = new FamilyItem;
+    // Create and fill the 'family' item.
+    const auto child = new DeviceSelectionItem(DeviceSelectionItem::Family);
     parent->appendChild(child);
     const QXmlStreamAttributes attrs = in.attributes();
-    child->m_name = attrs.value("Dfamily").toString();
-    child->m_vendor = attrs.value("Dvendor").toString();
-    DeviceSelection::Cpu cpu;
-    DeviceSelection::Memories memories;
+    child->name = attrs.value("Dfamily").toString();
+    fillVendor(attrs.value("Dvendor").toString(), child->vendorName, child->vendorId);
     while (in.readNextStartElement()) {
-        const QStringRef elementName = in.name();
-        if (elementName == "processor") {
-            fillCpu(in, cpu);
-        } else if (elementName == "memory") {
-            fillMemories(in, memories);
-        } else if (elementName == "description") {
-            child->m_desc = in.readElementText().trimmed();
-        } else if (elementName == "subFamily") {
-            parseSubFamily(in, child, cpu);
-        } else if (elementName == "device") {
-            parseDevice(in, child, cpu, memories);
+        const auto elementName = in.name();
+        if (elementName == QLatin1String("processor")) {
+            fillCpu(in, child->cpu);
+        } else if (elementName == QLatin1String("algorithm")) {
+            fillAlgorithms(in, child->algorithms);
+        } else if (elementName == QLatin1String("memory")) {
+            fillMemories(in, child->memories);
+        } else if (elementName == QLatin1String("description")) {
+            fillElementProperty(in, child->desc);
+        } else if (elementName == QLatin1String("subFamily")) {
+            parseSubFamily(in, child);
+        } else if (elementName == QLatin1String("device")) {
+            parseDevice(in, child);
         } else {
             in.skipCurrentElement();
         }
     }
 }
 
-void DeviceSelectionModel::parseSubFamily(QXmlStreamReader &in, DeviceSelectionItem *parent,
-                                          DeviceSelection::Cpu &cpu)
+void DeviceSelectionModel::parseSubFamily(QXmlStreamReader &in, DeviceSelectionItem *parent)
 {
-    const auto child = new SubFamilyItem;
+    // Create and fill the 'sub-family' item.
+    const auto child = new DeviceSelectionItem(DeviceSelectionItem::SubFamily);
     parent->appendChild(child);
     const QXmlStreamAttributes attrs = in.attributes();
-    child->m_name = attrs.value("DsubFamily").toString();
+    child->name = attrs.value("DsubFamily").toString();
     while (in.readNextStartElement()) {
-        const QStringRef elementName = in.name();
-        if (elementName == "processor") {
-            fillCpu(in, cpu);
-        } else if (elementName == "debug") {
-            const QXmlStreamAttributes attrs = in.attributes();
-            in.skipCurrentElement();
-            child->m_svd = attrs.value("svd").toString();
-        } else if (elementName == "device") {
-            DeviceSelection::Memories memories;
-            parseDevice(in, child, cpu, memories);
+        const auto elementName = in.name();
+        if (elementName == QLatin1String("processor")) {
+            fillCpu(in, child->cpu);
+        } else if (elementName == QLatin1String("debug")) {
+            fillSvd(in, child->svd);
+        } else if (elementName == QLatin1String("device")) {
+            parseDevice(in, child);
         } else {
             in.skipCurrentElement();
         }
     }
 }
 
-void DeviceSelectionModel::parseDevice(QXmlStreamReader &in, DeviceSelectionItem *parent,
-                                       DeviceSelection::Cpu &cpu,
-                                       DeviceSelection::Memories &memories)
+void DeviceSelectionModel::parseDevice(QXmlStreamReader &in, DeviceSelectionItem *parent)
 {
-    const auto child = new DeviceItem;
+    // Create and fill the 'device' item.
+    const auto child = new DeviceSelectionItem(DeviceSelectionItem::Device);
     parent->appendChild(child);
     const QXmlStreamAttributes attrs = in.attributes();
-    child->m_name = attrs.value("Dname").toString();
-    DeviceSelection::Algorithms algorithms;
+    child->name = attrs.value("Dname").toString();
     while (in.readNextStartElement()) {
-        const QStringRef elementName = in.name();
-        if (elementName == "processor") {
-            fillCpu(in, cpu);
-        } else if (elementName == "memory") {
-            fillMemories(in, memories);
-        } else if (elementName == "algorithm") {
-            fillAlgorithms(in, algorithms);
-        } else if (elementName == "variant") {
+        const auto elementName = in.name();
+        if (elementName == QLatin1String("processor")) {
+            fillCpu(in, child->cpu);
+        } else if (elementName == QLatin1String("debug")) {
+            fillSvd(in, child->svd);
+        } else if (elementName == QLatin1String("description")) {
+            fillElementProperty(in, child->desc);
+        } else if (elementName == QLatin1String("memory")) {
+            fillMemories(in, child->memories);
+        } else if (elementName == QLatin1String("algorithm")) {
+            fillAlgorithms(in, child->algorithms);
+        } else if (elementName == QLatin1String("variant")) {
             parseDeviceVariant(in, child);
         } else {
             in.skipCurrentElement();
         }
     }
-    child->m_cpu = cpu;
-    child->m_memories = memories;
-    child->m_algorithms = algorithms;
 }
 
 void DeviceSelectionModel::parseDeviceVariant(QXmlStreamReader &in, DeviceSelectionItem *parent)
 {
-    const auto child = new DeviceVariantItem;
+    // Create and fill the 'device-variant' item.
+    const auto child = new DeviceSelectionItem(DeviceSelectionItem::DeviceVariant);
     parent->appendChild(child);
     const QXmlStreamAttributes attrs = in.attributes();
-    in.skipCurrentElement();
-    child->m_name = attrs.value("Dvariant").toString();
+    child->name = attrs.value("Dvariant").toString();
+    while (in.readNextStartElement()) {
+        const auto elementName = in.name();
+        if (elementName == QLatin1String("processor")) {
+            fillCpu(in, child->cpu);
+        } else if (elementName == QLatin1String("memory")) {
+            fillMemories(in, child->memories);
+        } else if (elementName == QLatin1String("algorithm")) {
+            fillAlgorithms(in, child->algorithms);
+        } else {
+            in.skipCurrentElement();
+        }
+    }
 }
 
 // DeviceSelectionView
@@ -434,70 +403,100 @@ void DeviceSelectionView::currentChanged(const QModelIndex &current, const QMode
     if (!selectionModel)
         return;
     const DeviceSelectionItem *item = selectionModel->itemForIndex(current);
-    if (isValidItem(item)) {
-        const auto selection = buildSelection(item);
-        if (!selection.name.isEmpty())
-            emit deviceSelected(selection);
-    }
-}
+    if (!item || item->hasChildren())
+        return; // We need only in a last 'device' or 'device-variant' item!
 
-bool DeviceSelectionView::isValidItem(const DeviceSelectionItem *item) const
-{
-    if (!item)
-        return false;
-    if (item->m_type == DeviceSelectionItem::Type::DeviceVariant)
-        return true;
-    if (item->m_type == DeviceSelectionItem::Type::Device && !item->hasChildren())
-        return true;
-    return false;
+    const auto selection = buildSelection(item);
+    if (!selection.name.isEmpty())
+        emit deviceSelected(selection);
 }
 
 DeviceSelection DeviceSelectionView::buildSelection(const DeviceSelectionItem *item) const
 {
     DeviceSelection selection;
-    // We need to iterate from the lower 'Device|DeviceVariant' items to
-    // the upper 'Package' item to fill whole information.
+    // We need to iterate from the lower 'device' or 'device-variant' item to
+    // the upper 'package' item to fill a whole information.
+    DeviceSelection::Algorithms &algs = selection.algorithms;
+    DeviceSelection::Cpu &cpu = selection.cpu;
+    DeviceSelection::Memories &mems = selection.memories;
+    DeviceSelection::Package &pkg = selection.package;
+
+    auto extractBaseProps = [&selection, &algs, &cpu, &mems](const DeviceSelectionItem *item) {
+        if (selection.name.isEmpty())
+            selection.name = item->name;
+        if (selection.desc.isEmpty())
+            selection.desc = item->desc;
+        if (selection.vendorId.isEmpty())
+            selection.vendorId = item->vendorId;
+        if (selection.vendorName.isEmpty())
+            selection.vendorName = item->vendorName;
+        if (selection.svd.isEmpty())
+            selection.svd = item->svd;
+
+        if (cpu.clock.isEmpty())
+            cpu.clock = item->cpu.clock;
+        if (cpu.core.isEmpty())
+            cpu.core = item->cpu.core;
+        if (cpu.fpu.isEmpty())
+            cpu.fpu = item->cpu.fpu;
+        if (cpu.mpu.isEmpty())
+            cpu.mpu = item->cpu.mpu;
+
+        // Add only new flash algorithms.
+        for (const DeviceSelection::Algorithm &newAlg : item->algorithms) {
+            const bool contains = Utils::contains(algs, [&newAlg](const DeviceSelection::Algorithm &existAlg) {
+                return newAlg.path == existAlg.path;
+            });
+            if (!contains)
+                algs.push_back(newAlg);
+        }
+
+        // Add only new memory regions.
+        for (const DeviceSelection::Memory &newMem : item->memories) {
+            const bool contains = Utils::contains(mems, [&newMem](const DeviceSelection::Memory &existMem) {
+                return newMem.id == existMem.id;
+            });
+            if (!contains)
+                mems.push_back(newMem);
+        }
+    };
+
+    auto extractPackageProps = [&pkg](const DeviceSelectionItem *item) {
+        pkg.desc = item->desc;
+        pkg.file = item->fullPath;
+        pkg.name = item->name;
+        pkg.url = item->url;
+        pkg.vendorId = item->vendorId;
+        pkg.vendorName = item->vendorName;
+        pkg.version = item->version;
+    };
+
     do {
-        switch (item->m_type) {
-        case DeviceSelectionItem::Type::DeviceVariant:
-            selection.name = item->m_name;
-            break;
-        case DeviceSelectionItem::Type::Device: {
-            const auto deviceItem = static_cast<const DeviceItem *>(item);
-            if (!deviceItem->hasChildren())
-                selection.name = item->m_name;
-            selection.cpu = deviceItem->m_cpu;
-            selection.memories = deviceItem->m_memories;
-            selection.algorithms = deviceItem->m_algorithms;
+        if (item->type == DeviceSelectionItem::DeviceVariant
+                || item->type == DeviceSelectionItem::Device) {
+            extractBaseProps(item);
+        } else if (item->type == DeviceSelectionItem::SubFamily) {
+            extractBaseProps(item);
+            if (selection.subfamily.isEmpty())
+                selection.subfamily = item->name;
+        } else if (item->type == DeviceSelectionItem::Family) {
+            extractBaseProps(item);
+            if (selection.family.isEmpty())
+                selection.family = item->name;
+        } else if (item->type == DeviceSelectionItem::Package) {
+            extractPackageProps(item);
         }
-            break;
-        case DeviceSelectionItem::Type::SubFamily: {
-            const auto subFamilyItem = static_cast<const SubFamilyItem *>(item);
-            selection.subfamily = subFamilyItem->m_name;
-            selection.svd = subFamilyItem->m_svd;
+    } while ((item->level() > 1) && (item = static_cast<const DeviceSelectionItem *>(item->parent())));
+
+    // Fix relative SVD file sub-path to make it as an absolute file path.
+    if (!selection.svd.isEmpty()) {
+        const QFileInfo fi(selection.svd);
+        if (!fi.isAbsolute()) {
+            const QDir dir(QFileInfo(selection.package.file).path());
+            selection.svd = QFileInfo(dir, fi.filePath()).absoluteFilePath();
         }
-            break;
-        case DeviceSelectionItem::Type::Family: {
-            const auto familyItem = static_cast<const FamilyItem *>(item);
-            selection.family = familyItem->m_name;
-            selection.desc = familyItem->m_desc;
-            selection.vendor = familyItem->m_vendor;
-        }
-            break;
-        case DeviceSelectionItem::Type::Package: {
-            const auto packageItem = static_cast<const PackageItem *>(item);
-            selection.package.desc = packageItem->m_desc;
-            selection.package.file = packageItem->m_file;
-            selection.package.name = packageItem->m_name;
-            selection.package.url = packageItem->m_url;
-            selection.package.vendor = packageItem->m_vendor;
-            selection.package.version = packageItem->m_version;
-        }
-            break;
-        default:
-            break;
-        }
-    } while (item = item->parentPackItem());
+    }
+
     return selection;
 }
 

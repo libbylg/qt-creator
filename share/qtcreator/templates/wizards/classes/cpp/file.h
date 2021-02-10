@@ -6,6 +6,7 @@
 #define %{GUARD}
 @endif
 
+%{JS: Cpp.includeStatement('%{Base}', Util.preferredSuffix('text/x-c++hdr'), ['QObject', 'QWidget', 'QMainWindow', 'QQuickItem', 'QSharedData'], '%{TargetPath}')}\
 %{JS: QtSupport.qtIncludes([ ( '%{IncludeQObject}' )          ? 'QtCore/%{IncludeQObject}'                 : '',
                              ( '%{IncludeQWidget}' )          ? 'QtGui/%{IncludeQWidget}'                  : '',
                              ( '%{IncludeQMainWindow}' )      ? 'QtGui/%{IncludeQMainWindow}'              : '',
@@ -32,7 +33,7 @@ class %{CN}
      Q_OBJECT
 @endif
 public:
-@if '%{Base}' === 'QObject'
+@if '%{Base}' === 'QObject' || %{JS: Cpp.hasQObjectParent('%{Base}')}
     explicit %{CN}(QObject *parent = nullptr);
 @elsif '%{Base}' === 'QWidget' || '%{Base}' === 'QMainWindow'
     explicit %{CN}(QWidget *parent = nullptr);

@@ -32,7 +32,7 @@
 #include "model_p.h"
 #include <qmlobjectnode.h>
 
-
+#include <cmath>
 
 namespace QmlDesigner {
 
@@ -63,7 +63,7 @@ static QList<ModelNode> internalNodesToModelNodes(const QList<Internal::Internal
     return modelNodeList;
 }
 
-const QList<ModelNode> NodeListProperty::toModelNodeList() const
+QList<ModelNode> NodeListProperty::toModelNodeList() const
 {
     if (!isValid())
         throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<invalid node list property>");
@@ -77,7 +77,7 @@ const QList<ModelNode> NodeListProperty::toModelNodeList() const
     return QList<ModelNode>();
 }
 
-const QList<QmlObjectNode> NodeListProperty::toQmlObjectNodeList() const
+QList<QmlObjectNode> NodeListProperty::toQmlObjectNodeList() const
 {
     if (model()->nodeInstanceView())
         return QList<QmlObjectNode>();
@@ -95,10 +95,28 @@ void NodeListProperty::slide(int from, int to) const
     Internal::WriteLocker locker(model());
     if (!isValid())
         throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<invalid node list property>");
-    if (to > count() - 1)
+    if (to < 0 || to > count() - 1 || from < 0 || from > count() - 1)
         throw InvalidPropertyException(__LINE__, __FUNCTION__, __FILE__, "<invalid node list sliding>");
 
      privateModel()->changeNodeOrder(internalNode(), name(), from, to);
+}
+
+void NodeListProperty::swap(int from, int to) const
+{
+    if (from == to)
+        return;
+
+    // Prerequisite a < b
+    int a = from;
+    int b = to;
+
+    if (a > b) {
+        a = to;
+        b = from;
+    }
+
+    slide(b, a);
+    slide(a + 1, b);
 }
 
 void NodeListProperty::reparentHere(const ModelNode &modelNode)
@@ -117,6 +135,26 @@ ModelNode NodeListProperty::at(int index) const
 
 
     return ModelNode();
+}
+
+void NodeListProperty::reverseModelNodes(const QList<ModelNode> &nodes)
+{
+    ModelNode firstNode = nodes.first();
+    if (!firstNode.isValid())
+        return;
+
+    NodeListProperty parentProperty = firstNode.parentProperty().toNodeListProperty();
+    std::vector<int> selectedNodeIndices;
+
+    for (ModelNode modelNode : nodes)
+        selectedNodeIndices.push_back(parentProperty.indexOf(modelNode));
+
+    std::sort(selectedNodeIndices.begin(), selectedNodeIndices.end());
+
+    int mid = std::ceil(selectedNodeIndices.size() / 2);
+
+    for (int i = 0; i != mid; ++i)
+        parentProperty.swap(selectedNodeIndices[i], selectedNodeIndices[selectedNodeIndices.size() - 1 - i]);
 }
 
 } // namespace QmlDesigner

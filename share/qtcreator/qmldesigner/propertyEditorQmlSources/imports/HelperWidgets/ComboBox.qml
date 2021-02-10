@@ -35,7 +35,31 @@ StudioControls.ComboBox {
     labelColor: edit && !colorLogic.errorState ? StudioTheme.Values.themeTextColor : colorLogic.textColor
     property string scope: "Qt"
 
+    enum ValueType { String, Integer, Enum }
+    property int valueType: ComboBox.ValueType.Enum
+
+    onModelChanged: colorLogic.invalidate()
+
+    // This is available in all editors.
+
+    onValueTypeChanged: {
+        if (comboBox.valueType === ComboBox.ValueType.Integer)
+            comboBox.useInteger = true
+        else
+            comboBox.useInteger = false
+    }
+
+    // This property shouldn't be used anymore, valueType has come to replace it.
     property bool useInteger: false
+
+    onUseIntegerChanged: {
+        if (comboBox.useInteger) {
+            comboBox.valueType = ComboBox.ValueType.Integer
+        } else {
+            if (comboBox.valueType === ComboBox.ValueType.Integer)
+                comboBox.valueType = ComboBox.ValueType.Enum // set to default
+        }
+    }
 
     property bool __isCompleted: false
 
@@ -57,6 +81,7 @@ StudioControls.ComboBox {
     actionIndicator.icon.color: extFuncLogic.color
     actionIndicator.icon.text: extFuncLogic.glyph
     actionIndicator.onClicked: extFuncLogic.show()
+    actionIndicator.forceVisible: extFuncLogic.menuVisible
 
     actionIndicator.visible: comboBox.showExtendedFunctionButton
 
@@ -74,23 +99,37 @@ StudioControls.ComboBox {
 
             if (comboBox.manualMapping) {
                 comboBox.valueFromBackendChanged()
-            } else if (!comboBox.useInteger) {
-                var enumString = comboBox.backendValue.enumeration
-
-                if (enumString === "")
-                    enumString = comboBox.backendValue.value
-
-                var index = comboBox.find(enumString)
-
-                if (index < 0)
-                    index = 0
-
-                if (index !== comboBox.currentIndex)
-                    comboBox.currentIndex = index
-
             } else {
-                if (comboBox.currentIndex !== comboBox.backendValue.value)
-                    comboBox.currentIndex = comboBox.backendValue.value
+                switch (comboBox.valueType) {
+                case ComboBox.ValueType.String:
+                    if (comboBox.currentText !== comboBox.backendValue.value) {
+                        var index = comboBox.find(comboBox.backendValue.value)
+                        if (index < 0)
+                            index = 0
+
+                        if (index !== comboBox.currentIndex)
+                            comboBox.currentIndex = index
+                    }
+                    break
+                case ComboBox.ValueType.Integer:
+                    if (comboBox.currentIndex !== comboBox.backendValue.value)
+                        comboBox.currentIndex = comboBox.backendValue.value
+                    break
+                case ComboBox.ValueType.Enum:
+                default:
+                    var enumString = comboBox.backendValue.enumeration
+
+                    if (enumString === "")
+                        enumString = comboBox.backendValue.value
+
+                    index = comboBox.find(enumString)
+
+                    if (index < 0)
+                        index = 0
+
+                    if (index !== comboBox.currentIndex)
+                        comboBox.currentIndex = index
+                }
             }
 
             comboBox.block = false
@@ -107,15 +146,26 @@ StudioControls.ComboBox {
         if (comboBox.manualMapping)
             return
 
-        if (!comboBox.useInteger) {
-            comboBox.backendValue.setEnumeration(comboBox.scope, comboBox.currentText)
-        } else {
+        switch (comboBox.valueType) {
+        case ComboBox.ValueType.String:
+            comboBox.backendValue.value = comboBox.currentText
+            break
+        case ComboBox.ValueType.Integer:
             comboBox.backendValue.value = comboBox.currentIndex
+            break
+        case ComboBox.ValueType.Enum:
+        default:
+            comboBox.backendValue.setEnumeration(comboBox.scope, comboBox.currentText)
         }
     }
 
     Component.onCompleted: {
         colorLogic.invalidate()
         comboBox.__isCompleted = true
+    }
+
+    Connections {
+        target: modelNodeBackend
+        onSelectionToBeChanged: comboBox.popup.close()
     }
 }

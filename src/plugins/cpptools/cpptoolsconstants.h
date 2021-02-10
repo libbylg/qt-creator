@@ -36,6 +36,7 @@ const char OPEN_HEADER_SOURCE_IN_NEXT_SPLIT[] = "CppTools.OpenHeaderSourceInNext
 const char TASK_INDEX[]               = "CppTools.Task.Index";
 const char TASK_SEARCH[]              = "CppTools.Task.Search";
 const char C_SOURCE_MIMETYPE[] = "text/x-csrc";
+const char CUDA_SOURCE_MIMETYPE[] = "text/vnd.nvidia.cuda.csrc";
 const char C_HEADER_MIMETYPE[] = "text/x-chdr";
 const char CPP_SOURCE_MIMETYPE[] = "text/x-c++src";
 const char OBJECTIVE_C_SOURCE_MIMETYPE[] = "text/x-objcsrc";
@@ -48,7 +49,7 @@ const char AMBIGUOUS_HEADER_MIMETYPE[] = "application/vnd.qtc.ambiguousheader"; 
 // QSettings keys for use by the "New Class" wizards.
 const char CPPTOOLS_SETTINGSGROUP[] = "CppTools";
 const char LOWERCASE_CPPFILES_KEY[] = "LowerCaseFiles";
-enum { lowerCaseFilesDefault = 1 };
+const bool LOWERCASE_CPPFILES_DEFAULT = true;
 const char CPPTOOLS_SORT_EDITOR_DOCUMENT_OUTLINE[] = "SortedMethodOverview";
 const char CPPTOOLS_SHOW_INFO_BAR_FOR_HEADER_ERRORS[] = "ShowInfoBarForHeaderErrors";
 const char CPPTOOLS_SHOW_INFO_BAR_FOR_FOR_NO_PROJECT[] = "ShowInfoBarForNoProject";
@@ -88,7 +89,7 @@ const char INCLUDES_FILTER_ID[] = "All Included C/C++ Files";
 const char INCLUDES_FILTER_DISPLAY_NAME[] = QT_TRANSLATE_NOOP("CppTools", "All Included C/C++ Files");
 
 const char LOCATOR_FILTER_ID[] = "Classes and Methods";
-const char LOCATOR_FILTER_DISPLAY_NAME[] = QT_TRANSLATE_NOOP("CppTools", "C++ Classes, Enums and Functions");
+const char LOCATOR_FILTER_DISPLAY_NAME[] = QT_TRANSLATE_NOOP("CppTools", "C++ Classes, Enums, Functions and Type Aliases");
 
 const char SYMBOLS_FIND_FILTER_ID[] = "Symbols";
 const char SYMBOLS_FIND_FILTER_DISPLAY_NAME[] = QT_TRANSLATE_NOOP("CppTools", "C++ Symbols");
@@ -99,7 +100,7 @@ const char SYMBOLS_FIND_FILTER_DISPLAY_NAME[] = QT_TRANSLATE_NOOP("CppTools", "C
 // CLANG_VERSION here because it might denote a version that was not yet
 // released (e.g. 6.0.1, but only 6.0.0 was released).
 constexpr const char TIDY_DOCUMENTATION_URL_TEMPLATE[]
-    = "https://releases.llvm.org/8.0.1/tools/clang/tools/extra/docs/clang-tidy/checks/%1.html";
+    = "https://releases.llvm.org/11.0.0/tools/clang/tools/extra/docs/clang-tidy/checks/%1.html";
 
 constexpr const char CLANG_STATIC_ANALYZER_DOCUMENTATION_URL[]
     = "https://clang-analyzer.llvm.org/available_checks.html";

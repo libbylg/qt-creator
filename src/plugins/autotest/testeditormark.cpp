@@ -24,13 +24,14 @@
 ****************************************************************************/
 
 #include "testeditormark.h"
+
 #include "testresultspane.h"
 
 namespace Autotest {
 namespace Internal {
 
 TestEditorMark::TestEditorMark(QPersistentModelIndex item, const Utils::FilePath &file, int line)
-    : TextEditor::TextMark(file, line, Core::Id(Constants::TASK_MARK_ID)),
+    : TextEditor::TextMark(file, line, Utils::Id(Constants::TASK_MARK_ID)),
       m_item(item)
 {
 }

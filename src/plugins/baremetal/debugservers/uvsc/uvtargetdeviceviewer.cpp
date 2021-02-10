@@ -23,9 +23,11 @@
 **
 ****************************************************************************/
 
-#include "uvproject.h" // for targetUVisionPath()
+#include "uvproject.h" // for buildPackageId()
 #include "uvtargetdevicemodel.h"
 #include "uvtargetdeviceviewer.h"
+
+#include <utils/pathchooser.h>
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -73,16 +75,24 @@ DeviceSelectorDetailsPanel::DeviceSelectorDetailsPanel(DeviceSelection &selectio
     m_vendorEdit = new QLineEdit;
     m_vendorEdit->setReadOnly(true);
     layout->addRow(tr("Vendor:"), m_vendorEdit);
-    m_fimilyEdit = new QLineEdit;;
-    m_fimilyEdit->setReadOnly(true);
-    layout->addRow(tr("Family:"), m_fimilyEdit);
-    m_descEdit = new QPlainTextEdit;;
+    m_packageEdit = new QLineEdit;
+    m_packageEdit->setReadOnly(true);
+    layout->addRow(tr("Package:"), m_packageEdit);
+    m_descEdit = new QPlainTextEdit;
     m_descEdit->setReadOnly(true);
     layout->addRow(tr("Description:"), m_descEdit);
     m_memoryView = new DeviceSelectionMemoryView(m_selection);
     layout->addRow(tr("Memory:"), m_memoryView);
     m_algorithmView = new DeviceSelectionAlgorithmView(m_selection);
-    layout->addRow(tr("Flash algorithm"), m_algorithmView);
+    layout->addRow(tr("Flash algorithm:"), m_algorithmView);
+    m_peripheralDescriptionFileChooser = new Utils::PathChooser(this);
+    m_peripheralDescriptionFileChooser->setExpectedKind(Utils::PathChooser::File);
+    m_peripheralDescriptionFileChooser->setPromptDialogFilter(
+                tr("Peripheral description files (*.svd)"));
+    m_peripheralDescriptionFileChooser->setPromptDialogTitle(
+                tr("Select Peripheral Description File"));
+    layout->addRow(tr("Peripheral description file:"),
+                   m_peripheralDescriptionFileChooser);
     setLayout(layout);
 
     refresh();
@@ -95,6 +105,8 @@ DeviceSelectorDetailsPanel::DeviceSelectorDetailsPanel(DeviceSelection &selectio
             m_selection.algorithmIndex = index;
         emit selectionChanged();
     });
+    connect(m_peripheralDescriptionFileChooser, &Utils::PathChooser::pathChanged,
+            this, &DeviceSelectorDetailsPanel::selectionChanged);
 }
 
 static QString trimVendor(const QString &vendor)
@@ -105,12 +117,13 @@ static QString trimVendor(const QString &vendor)
 
 void DeviceSelectorDetailsPanel::refresh()
 {
-    m_vendorEdit->setText(trimVendor(m_selection.vendor));
-    m_fimilyEdit->setText(m_selection.family);
+    m_vendorEdit->setText(trimVendor(m_selection.vendorName));
+    m_packageEdit->setText(buildPackageId(m_selection));
     m_descEdit->setPlainText(m_selection.desc);
     m_memoryView->refresh();
     m_algorithmView->refresh();
     m_algorithmView->setAlgorithm(m_selection.algorithmIndex);
+    m_peripheralDescriptionFileChooser->setPath(m_selection.svd);
 }
 
 // DeviceSelector
@@ -124,26 +137,28 @@ DeviceSelector::DeviceSelector(QWidget *parent)
     setWidget(detailsPanel);
 
     connect(toolPanel, &DeviceSelectorToolPanel::clicked, this, [this]() {
-        const QString uVisionPath = targetUVisionPath();
-        if (uVisionPath.isEmpty()) {
-            QMessageBox::warning(this,
-                                 tr("uVision path not found"),
-                                 tr("Please open a configured project before\n"
-                                    "the target device selection."),
-                                 QMessageBox::Ok);
-        } else {
-            DeviceSelectionDialog dialog(uVisionPath, this);
-            const int result = dialog.exec();
-            if (result != QDialog::Accepted)
-                return;
-            DeviceSelection selection;
-            selection = dialog.selection();
-            setSelection(selection);
-        }
+        DeviceSelectionDialog dialog(m_toolsIniFile, this);
+        const int result = dialog.exec();
+        if (result != QDialog::Accepted)
+            return;
+        DeviceSelection selection;
+        selection = dialog.selection();
+        setSelection(selection);
     });
 
     connect(detailsPanel, &DeviceSelectorDetailsPanel::selectionChanged,
             this, &DeviceSelector::selectionChanged);
+}
+
+void DeviceSelector::setToolsIniFile(const Utils::FilePath &toolsIniFile)
+{
+    m_toolsIniFile = toolsIniFile;
+    setEnabled(m_toolsIniFile.exists());
+}
+
+Utils::FilePath DeviceSelector::toolsIniFile() const
+{
+    return m_toolsIniFile;
 }
 
 void DeviceSelector::setSelection(const DeviceSelection &selection)
@@ -167,10 +182,10 @@ DeviceSelection DeviceSelector::selection() const
 
 // DeviceSelectionDialog
 
-DeviceSelectionDialog::DeviceSelectionDialog(const QString &uVisionPath, QWidget *parent)
+DeviceSelectionDialog::DeviceSelectionDialog(const Utils::FilePath &toolsIniFile, QWidget *parent)
     : QDialog(parent), m_model(new DeviceSelectionModel(this)), m_view(new DeviceSelectionView(this))
 {
-    setWindowTitle(tr("Available target devices"));
+    setWindowTitle(tr("Available Target Devices"));
 
     const auto layout = new QVBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
@@ -187,7 +202,7 @@ DeviceSelectionDialog::DeviceSelectionDialog(const QString &uVisionPath, QWidget
         m_selection = selection;
     });
 
-    m_model->fillAllPacks(uVisionPath);
+    m_model->fillAllPacks(toolsIniFile);
     m_view->setModel(m_model);
 }
 

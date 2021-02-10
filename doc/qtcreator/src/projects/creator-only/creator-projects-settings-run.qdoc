@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-build-settings.html
     \page creator-run-settings.html
     \nextpage creator-editor-settings.html
@@ -44,16 +43,24 @@
     To view and modify them, select \uicontrol Projects >
     \uicontrol {Build & Run} > \uicontrol Run.
 
-    The available run configurations are listed in the
-    \uicontrol {Run configuration} field.
-    To add run configurations for a project, select \uicontrol Add.
-    To remove the current run configuration, select \uicontrol Remove.
-    To rename the current run configuration, select \uicontrol Rename.
+    \image qtcreator-settings-run.png "Run Settings"
 
     To prevent \QC from automatically creating run configurations, select
     \uicontrol Tools > \uicontrol Options > \uicontrol {Build & Run},
     and then deselect the \uicontrol {Create suitable run configurations
     automatically} check box.
+
+    \section1 Managing Run Configurations
+
+    The available run configurations are listed in the
+    \uicontrol {Run configuration} field.
+    To add run configurations for a project, select \uicontrol Add. To
+    add a run configuration that is based on the current one, select
+    \uicontrol Clone.
+
+    To rename the current run configuration, select \uicontrol Rename.
+
+    To remove the current run configuration, select \uicontrol Remove.
 
     The run configurations for qmake projects derive their executable from the
     parsed .pro files. For more information on how the commands are constructed,
@@ -61,6 +68,9 @@
 
     \QC automatically adds run configurations for all targets specified in the
     CMake project file, \c {CMakeLists.txt}.
+
+    \QC automatically adds run configurations for all targets declared with
+    \c {executable()} function in Meson build descriptions.
 
     \section1 Creating Run Configurations for Subprojects
 
@@ -77,7 +87,7 @@
     \include creator-projects-settings-run-android.qdocinc run settings android
     \include creator-projects-settings-run-linux.qdocinc run settings linux
     \include creator-projects-settings-run-qnx.qdocinc run settings qnx
-    \include linux-mobile/creator-projects-settings-run-b2qt.qdocinc run settings embedded
+    \include linux-mobile/creator-projects-settings-run-b2qt.qdocinc run settings boot2qt
 
     \section1 Selecting the Run Environment
 
@@ -106,7 +116,7 @@
 
     \section1 Specifying a Custom Executable to Run
 
-    If you use CMake or the generic project type in \QC, or want
+    If you use CMake, Meson or the generic project type in \QC, or want
     to run a custom desktop executable, create a \uicontrol {Custom Executable}
     run configuration for your project. For example, when working on a library,
     you can run a test application that links against the library.

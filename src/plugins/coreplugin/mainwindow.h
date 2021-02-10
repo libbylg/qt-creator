@@ -31,22 +31,25 @@
 #include <utils/appmainwindow.h>
 #include <utils/dropsupport.h>
 
-#include <QMap>
 #include <QColor>
 
 #include <functional>
+#include <unordered_map>
 
 QT_BEGIN_NAMESPACE
 class QPrinter;
 class QToolButton;
 QT_END_NAMESPACE
 
+namespace Utils {
+class InfoBar;
+}
+
 namespace Core {
 
 class EditorManager;
 class ExternalToolManager;
 class IDocument;
-class InfoBar;
 class JsExpander;
 class MessageManager;
 class ModeManager;
@@ -82,22 +85,25 @@ public:
     void extensionsInitialized();
     void aboutToShutdown();
 
-    IContext *contextObject(QWidget *widget);
+    IContext *contextObject(QWidget *widget) const;
     void addContextObject(IContext *context);
     void removeContextObject(IContext *context);
 
-    IDocument *openFiles(const QStringList &fileNames,
-                         ICore::OpenFilesFlags flags,
-                         const QString &workingDirectory = QString());
+    static IDocument *openFiles(const QStringList &fileNames,
+                                ICore::OpenFilesFlags flags,
+                                const QString &workingDirectory = QString());
 
     inline SettingsDatabase *settingsDatabase() const { return m_settingsDatabase; }
     virtual QPrinter *printer() const;
     IContext * currentContextObject() const;
     QStatusBar *statusBar() const;
-    InfoBar *infoBar() const;
+    Utils::InfoBar *infoBar() const;
 
     void updateAdditionalContexts(const Context &remove, const Context &add,
                                   ICore::ContextPriority priority);
+
+    bool askConfirmationBeforeExit() const;
+    void setAskConfirmationBeforeExit(bool ask);
 
     void setOverrideColor(const QColor &color);
 
@@ -111,18 +117,16 @@ public:
     void restart();
 
 public slots:
-    void openFileWith();
+    static void openFileWith();
     void exit();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
-    void changeEvent(QEvent *event) override;
 
 private:
-    void openFile();
+    static void openFile();
     void aboutToShowRecentFiles();
-    void setFocusToEditor();
-    void saveAll();
+    static void setFocusToEditor();
     void aboutQtCreator();
     void aboutPlugins();
     void updateFocusWidget(QWidget *old, QWidget *now);
@@ -166,7 +170,7 @@ private:
 
     QList<IContext *> m_activeContext;
 
-    QMap<QWidget *, IContext *> m_contextWidgets;
+    std::unordered_map<QWidget *, IContext *> m_contextWidgets;
 
     GeneralSettings *m_generalSettings = nullptr;
     SystemSettings *m_systemSettings = nullptr;
@@ -193,9 +197,9 @@ private:
 
     QToolButton *m_toggleLeftSideBarButton = nullptr;
     QToolButton *m_toggleRightSideBarButton = nullptr;
+    bool m_askConfirmationBeforeExit = false;
     QColor m_overrideColor;
     QList<std::function<bool()>> m_preCloseListeners;
-    Qt::WindowStates m_previousWindowStates = Qt::WindowNoState;
 };
 
 } // namespace Internal

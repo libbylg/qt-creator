@@ -35,8 +35,8 @@ CppClassesFilter::CppClassesFilter(CppLocatorData *locatorData)
 {
     setId(Constants::CLASSES_FILTER_ID);
     setDisplayName(Constants::CLASSES_FILTER_DISPLAY_NAME);
-    setShortcutString(QLatin1String("c"));
-    setIncludedByDefault(false);
+    setDefaultShortcutString("c");
+    setDefaultIncludedByDefault(false);
 }
 
 CppClassesFilter::~CppClassesFilter() = default;
@@ -48,6 +48,6 @@ Core::LocatorFilterEntry CppClassesFilter::filterEntryFromIndexItem(IndexItem::P
     filterEntry.extraInfo = info->symbolScope().isEmpty()
         ? info->shortNativeFilePath()
         : info->symbolScope();
-
+    filterEntry.fileName = info->fileName();
     return filterEntry;
 }

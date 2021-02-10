@@ -33,6 +33,7 @@
 #include "compileoutputwindow.h"
 #include "configtaskhandler.h"
 #include "customexecutablerunconfiguration.h"
+#include "customparserssettingspage.h"
 #include "customwizard/customwizard.h"
 #include "deployablefile.h"
 #include "deployconfiguration.h"
@@ -98,6 +99,7 @@
 #include "targetsettingspanel.h"
 #include "projectpanelfactory.h"
 #include "projectexplorericons.h"
+#include "simpleprojectwizard.h"
 
 #include "windebuginterface.h"
 #include "msvctoolchain.h"
@@ -117,7 +119,6 @@
 #include <coreplugin/fileutils.h>
 #include <coreplugin/findplaceholder.h>
 #include <coreplugin/icore.h>
-#include <coreplugin/id.h>
 #include <coreplugin/idocument.h>
 #include <coreplugin/idocumentfactory.h>
 #include <coreplugin/imode.h>
@@ -145,20 +146,23 @@
 #include <utils/stringutils.h>
 #include <utils/utilsicons.h>
 
-#include <QFileInfo>
-#include <QSettings>
-
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPair>
+#include <QSettings>
 #include <QThreadPool>
 #include <QTimer>
 
 #include <functional>
+#include <memory>
+#include <vector>
 
 /*!
     \namespace ProjectExplorer
@@ -181,6 +185,7 @@
 
 using namespace Core;
 using namespace ProjectExplorer::Internal;
+using namespace Utils;
 
 namespace ProjectExplorer {
 
@@ -227,7 +232,6 @@ const char ADDNEWSUBPROJECT[]     = "ProjectExplorer.AddNewSubproject";
 const char REMOVEPROJECT[]        = "ProjectExplorer.RemoveProject";
 const char OPENFILE[]             = "ProjectExplorer.OpenFile";
 const char SEARCHONFILESYSTEM[]   = "ProjectExplorer.SearchOnFileSystem";
-const char SHOWINGRAPHICALSHELL[] = "ProjectExplorer.ShowInGraphicalShell";
 const char OPENTERMINALHERE[]     = "ProjectExplorer.OpenTerminalHere";
 const char DUPLICATEFILE[]        = "ProjectExplorer.DuplicateFile";
 const char DELETEFILE[]           = "ProjectExplorer.DeleteFile";
@@ -253,9 +257,12 @@ const char FOLDER_OPEN_LOCATIONS_CONTEXT_MENU[]  = "Project.F.OpenLocation.CtxMe
 const char PROJECT_OPEN_LOCATIONS_CONTEXT_MENU[]  = "Project.P.OpenLocation.CtxMenu";
 
 // Default directories:
-const char DEFAULT_BUILD_DIRECTORY_TEMPLATE[] = "../%{JS: Util.asciify(\"build-%{CurrentProject:Name}-%{CurrentKit:FileSystemName}-%{CurrentBuild:Name}\")}";
-const char DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY[] = "Directories/BuildDirectory.Template";
+const char DEFAULT_BUILD_DIRECTORY_TEMPLATE[] = "../%{JS: Util.asciify(\"build-%{Project:Name}-%{Kit:FileSystemName}-%{BuildConfig:Name}\")}";
+const char DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY_OLD[] = "Directories/BuildDirectory.Template"; // TODO: Remove in ~4.16
+const char DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY[] = "Directories/BuildDirectory.TemplateV2";
 
+const char RECENTPROJECTS_FILE_NAMES_KEY[] = "ProjectExplorer/RecentProjects/FileNames";
+const char RECENTPROJECTS_DISPLAY_NAMES_KEY[] = "ProjectExplorer/RecentProjects/DisplayNames";
 const char BUILD_BEFORE_DEPLOY_SETTINGS_KEY[] = "ProjectExplorer/Settings/BuildBeforeDeploy";
 const char DEPLOY_BEFORE_RUN_SETTINGS_KEY[] = "ProjectExplorer/Settings/DeployBeforeRun";
 const char SAVE_BEFORE_BUILD_SETTINGS_KEY[] = "ProjectExplorer/Settings/SaveBeforeBuild";
@@ -281,6 +288,9 @@ const char SEPARATE_DEBUG_INFO_SETTINGS_KEY[] = "ProjectExplorer/Settings/Separa
 const char QML_DEBUGGING_SETTINGS_KEY[] = "ProjectExplorer/Settings/QmlDebugging";
 const char QT_QUICK_COMPILER_SETTINGS_KEY[] = "ProjectExplorer/Settings/QtQuickCompiler";
 
+const char CUSTOM_PARSER_COUNT_KEY[] = "ProjectExplorer/Settings/CustomParserCount";
+const char CUSTOM_PARSER_PREFIX_KEY[] = "ProjectExplorer/Settings/CustomParser";
+
 } // namespace Constants
 
 
@@ -296,14 +306,26 @@ static Utils::optional<Utils::Environment> buildEnv(const Project *project)
     return project->activeTarget()->activeBuildConfiguration()->environment();
 }
 
-static bool canOpenTerminalWithRunEnv(const Project *project)
+static const RunConfiguration *runConfigForNode(const Target *target, const ProjectNode *node)
+{
+    if (node && node->productType() == ProductType::App) {
+        const QString buildKey = node->buildKey();
+        for (const RunConfiguration * const rc : target->runConfigurations()) {
+            if (rc->buildKey() == buildKey)
+                return rc;
+        }
+    }
+    return target->activeRunConfiguration();
+}
+
+static bool canOpenTerminalWithRunEnv(const Project *project, const ProjectNode *node)
 {
     if (!project)
         return false;
     const Target * const target = project->activeTarget();
     if (!target)
         return false;
-    const RunConfiguration * const runConfig = target->activeRunConfiguration();
+    const RunConfiguration * const runConfig = runConfigForNode(target, node);
     if (!runConfig)
         return false;
     IDevice::ConstPtr device = runConfig->runnable().device;
@@ -312,28 +334,23 @@ static bool canOpenTerminalWithRunEnv(const Project *project)
     return device && device->canOpenTerminal();
 }
 
+static BuildConfiguration *currentBuildConfiguration()
+{
+    const Project * const project = ProjectTree::currentProject();
+    const Target * const target = project ? project->activeTarget() : nullptr;
+    return target ? target->activeBuildConfiguration() : nullptr;
+}
+
 static Target *activeTarget()
 {
-    Project *project = ProjectTree::currentProject();
+    const Project * const project = SessionManager::startupProject();
     return project ? project->activeTarget() : nullptr;
 }
 
 static BuildConfiguration *activeBuildConfiguration()
 {
-    Target *target = activeTarget();
+    const Target * const target = activeTarget();
     return target ? target->activeBuildConfiguration() : nullptr;
-}
-
-static RunConfiguration *activeRunConfiguration()
-{
-    Target *target = activeTarget();
-    return target ? target->activeRunConfiguration() : nullptr;
-}
-
-static Kit *currentKit()
-{
-    Target *target = activeTarget();
-    return target ? target->kit() : nullptr;
 }
 
 static bool isTextFile(const QString &fileName)
@@ -389,7 +406,7 @@ public:
 
     void updateContextMenuActions();
     void updateLocationSubMenus();
-    void executeRunConfiguration(RunConfiguration *, Core::Id mode);
+    void executeRunConfiguration(RunConfiguration *, Utils::Id mode);
     QPair<bool, QString> buildSettingsEnabledForSession();
     QPair<bool, QString> buildSettingsEnabled(const Project *pro);
 
@@ -448,14 +465,10 @@ public:
     void projectAdded(ProjectExplorer::Project *pro);
     void projectRemoved(ProjectExplorer::Project *pro);
     void projectDisplayNameChanged(ProjectExplorer::Project *pro);
-    void startupProjectChanged(); // Calls updateRunAction
-    void activeTargetChanged();
-    void activeRunConfigurationChanged();
-    void activeBuildConfigurationChanged();
 
-    void slotUpdateRunActions();
+    void doUpdateRunActions();
 
-    void currentModeChanged(Core::Id mode, Core::Id oldMode);
+    void currentModeChanged(Utils::Id mode, Utils::Id oldMode);
 
     void updateWelcomePage();
 
@@ -522,6 +535,7 @@ public:
     QAction *m_openFileAction;
     QAction *m_projectTreeCollapseAllAction;
     QAction *m_projectTreeExpandAllAction;
+    QAction *m_projectTreeExpandNodeAction = nullptr;
     Utils::ParameterAction *m_closeProjectFilesActionFileMenu;
     Utils::ParameterAction *m_closeProjectFilesActionContextMenu;
     QAction *m_searchOnFileSystem;
@@ -552,9 +566,10 @@ public:
     MiniProjectTargetSelector * m_targetSelector;
     ProjectExplorerSettings m_projectExplorerSettings;
     BuildPropertiesSettings m_buildPropertiesSettings;
+    QList<CustomParserSettings> m_customParsers;
     bool m_shouldHaveRunConfiguration = false;
     bool m_shuttingDown = false;
-    Core::Id m_runMode = Constants::NO_RUN_MODE;
+    Utils::Id m_runMode = Constants::NO_RUN_MODE;
 
     ToolChainManager *m_toolChainManager = nullptr;
     QStringList m_arguments;
@@ -620,7 +635,7 @@ public:
     RunWorkerFactory m_customExecutableRunWorkerFactory{
         RunWorkerFactory::make<SimpleTargetRunner>(),
         {Constants::NORMAL_RUN_MODE},
-        {m_customExecutableRunConfigFactory.id()}
+        {m_customExecutableRunConfigFactory.runConfigurationId()}
     };
 
     ProjectFileWizardExtension m_projectFileWizardExtension;
@@ -632,6 +647,7 @@ public:
     CompileOutputSettingsPage m_compileOutputSettingsPage;
     DeviceSettingsPage m_deviceSettingsPage;
     SshSettingsPage m_sshSettingsPage;
+    CustomParsersSettingsPage m_customParsersSettingsPage;
 
     ProjectTreeWidgetFactory m_projectTreeFactory;
     FolderNavigationWidgetFactory m_folderNavigationWidgetFactory;
@@ -652,7 +668,9 @@ public:
     RunWorkerFactory desktopRunWorkerFactory{
         RunWorkerFactory::make<SimpleTargetRunner>(),
         {ProjectExplorer::Constants::NORMAL_RUN_MODE},
-        {qmakeRunConfigFactory.id(), qbsRunConfigFactory.id(), cmakeRunConfigFactory.id()}
+        {qmakeRunConfigFactory.runConfigurationId(),
+         qbsRunConfigFactory.runConfigurationId(),
+         cmakeRunConfigFactory.runConfigurationId()}
     };
 
 };
@@ -712,6 +730,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
         QList<IWizardFactory *> result;
         result << CustomWizard::createWizards();
         result << JsonWizardFactory::createWizardFactories();
+        result << new SimpleProjectWizard;
         return result;
     });
 
@@ -729,8 +748,6 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
             dd, &ProjectExplorerPluginPrivate::projectAdded);
     connect(sessionManager, &SessionManager::projectRemoved,
             dd, &ProjectExplorerPluginPrivate::projectRemoved);
-    connect(sessionManager, &SessionManager::startupProjectChanged,
-            dd, &ProjectExplorerPluginPrivate::startupProjectChanged);
     connect(sessionManager, &SessionManager::projectDisplayNameChanged,
             dd, &ProjectExplorerPluginPrivate::projectDisplayNameChanged);
     connect(sessionManager, &SessionManager::dependencyChanged,
@@ -755,6 +772,8 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
 
     ProjectTree *tree = &dd->m_projectTree;
     connect(tree, &ProjectTree::currentProjectChanged,
+            dd, &ProjectExplorerPluginPrivate::updateContextMenuActions);
+    connect(tree, &ProjectTree::nodeActionsChanged,
             dd, &ProjectExplorerPluginPrivate::updateContextMenuActions);
     connect(tree, &ProjectTree::currentNodeChanged,
             dd, &ProjectExplorerPluginPrivate::updateContextMenuActions);
@@ -816,6 +835,8 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
         return new ProjectEnvironmentWidget(project);
     });
     ProjectPanelFactory::registerFactory(panelFactory);
+
+    RunConfiguration::registerAspect<CustomParsersAspect>();
 
     // context menus
     ActionContainer *msessionContextMenu =
@@ -930,7 +951,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
             ActionManager::createMenu(ProjectExplorer::Constants::M_OPENTERMINALCONTEXT);
     openTerminal->setOnAllDisabledBehavior(ActionContainer::Show);
     dd->m_openTerminalMenu = openTerminal->menu();
-    dd->m_openTerminalMenu->setTitle(FileUtils::msgTerminalWithAction());
+    dd->m_openTerminalMenu->setTitle(Core::FileUtils::msgTerminalWithAction());
 
     // "open with" submenu
     ActionContainer * const openWith =
@@ -984,7 +1005,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
                        projectTreeContext);
     mfileContextMenu->addAction(cmd, Constants::G_FILE_OPEN);
 
-    dd->m_searchOnFileSystem = new QAction(FileUtils::msgFindInDirectory(), this);
+    dd->m_searchOnFileSystem = new QAction(Core::FileUtils::msgFindInDirectory(), this);
     cmd = ActionManager::registerAction(dd->m_searchOnFileSystem, Constants::SEARCHONFILESYSTEM, projectTreeContext);
 
     mfileContextMenu->addAction(cmd, Constants::G_FILE_OTHER);
@@ -992,22 +1013,28 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     msubProjectContextMenu->addAction(cmd, Constants::G_PROJECT_LAST);
     mprojectContextMenu->addAction(cmd, Constants::G_PROJECT_LAST);
 
-    dd->m_showInGraphicalShell = new QAction(FileUtils::msgGraphicalShellAction(), this);
-    cmd = ActionManager::registerAction(dd->m_showInGraphicalShell, Constants::SHOWINGRAPHICALSHELL,
-                       projectTreeContext);
+    dd->m_showInGraphicalShell = new QAction(Core::FileUtils::msgGraphicalShellAction(), this);
+    cmd = ActionManager::registerAction(dd->m_showInGraphicalShell,
+                                        Core::Constants::SHOWINGRAPHICALSHELL,
+                                        projectTreeContext);
     mfileContextMenu->addAction(cmd, Constants::G_FILE_OPEN);
     mfolderContextMenu->addAction(cmd, Constants::G_FOLDER_FILES);
 
     // Open Terminal Here menu
-    dd->m_openTerminalHere = new QAction(FileUtils::msgTerminalHereAction(), this);
+    dd->m_openTerminalHere = new QAction(Core::FileUtils::msgTerminalHereAction(), this);
     cmd = ActionManager::registerAction(dd->m_openTerminalHere, Constants::OPENTERMINALHERE,
                                         projectTreeContext);
 
     mfileContextMenu->addAction(cmd, Constants::G_FILE_OPEN);
     mfolderContextMenu->addAction(cmd, Constants::G_FOLDER_FILES);
+    msubProjectContextMenu->addAction(cmd, Constants::G_PROJECT_LAST);
+    mprojectContextMenu->addAction(cmd, Constants::G_PROJECT_LAST);
 
     mfileContextMenu->addMenu(openTerminal, Constants::G_FILE_OPEN);
     mfolderContextMenu->addMenu(openTerminal, Constants::G_FOLDER_FILES);
+    msubProjectContextMenu->addMenu(openTerminal, Constants::G_PROJECT_LAST);
+    mprojectContextMenu->addMenu(openTerminal, Constants::G_PROJECT_LAST);
+
 
     dd->m_openTerminalHereBuildEnv = new QAction(tr("Build Environment"), this);
     dd->m_openTerminalHereRunEnv = new QAction(tr("Run Environment"), this);
@@ -1090,7 +1117,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     msessionContextMenu->addAction(cmd, Constants::G_SESSION_BUILD);
 
     dd->m_buildSessionForAllConfigsAction
-            = new QAction(buildIcon, tr("Build All Projects For All Configurations"), this);
+            = new QAction(buildIcon, tr("Build All Projects for All Configurations"), this);
     cmd = ActionManager::registerAction(dd->m_buildSessionForAllConfigsAction,
                                         Constants::BUILDSESSIONALLCONFIGS);
     mbuild->addAction(cmd, Constants::G_BUILD_BUILD);
@@ -1110,7 +1137,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     msessionContextMenu->addAction(cmd, Constants::G_SESSION_REBUILD);
 
     dd->m_rebuildSessionForAllConfigsAction
-            = new QAction(Icons::REBUILD.icon(), tr("Rebuild All Projects For All Configurations"),
+            = new QAction(Icons::REBUILD.icon(), tr("Rebuild All Projects for All Configurations"),
                           this);
     cmd = ActionManager::registerAction(dd->m_rebuildSessionForAllConfigsAction,
                                         Constants::REBUILDSESSIONALLCONFIGS);
@@ -1125,7 +1152,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     msessionContextMenu->addAction(cmd, Constants::G_SESSION_REBUILD);
 
     dd->m_cleanSessionForAllConfigsAction = new QAction(Utils::Icons::CLEAN.icon(),
-            tr("Clean All Projects For All Configurations"), this);
+            tr("Clean All Projects for All Configurations"), this);
     cmd = ActionManager::registerAction(dd->m_cleanSessionForAllConfigsAction,
                                         Constants::CLEANSESSIONALLCONFIGS);
     mbuild->addAction(cmd, Constants::G_BUILD_CLEAN);
@@ -1162,7 +1189,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
 
     // build for run config
     dd->m_buildForRunConfigAction = new Utils::ParameterAction(
-                tr("Build for Run Configuration"), tr("Build for Run Configuration \"%1\""),
+                tr("Build for &Run Configuration"), tr("Build for &Run Configuration \"%1\""),
                 Utils::ParameterAction::EnabledWithParameter, this);
     dd->m_buildForRunConfigAction->setIcon(buildIcon);
     cmd = ActionManager::registerAction(dd->m_buildForRunConfigAction,
@@ -1365,7 +1392,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     dd->m_removeFileAction = new QAction(this);
     cmd = ActionManager::registerAction(dd->m_removeFileAction, Constants::REMOVEFILE,
                        projectTreeContext);
-    cmd->setDefaultKeySequence(QKeySequence::Delete);
+    cmd->setDefaultKeySequences({QKeySequence::Delete, QKeySequence::Backspace});
     mfileContextMenu->addAction(cmd, Constants::G_FILE_OTHER);
 
     // duplicate file action
@@ -1384,7 +1411,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     dd->m_deleteFileAction = new QAction(tr("Delete File..."), this);
     cmd = ActionManager::registerAction(dd->m_deleteFileAction, Constants::DELETEFILE,
                              projectTreeContext);
-    cmd->setDefaultKeySequence(QKeySequence::Delete);
+    cmd->setDefaultKeySequences({QKeySequence::Delete, QKeySequence::Backspace});
     mfileContextMenu->addAction(cmd, Constants::G_FILE_OTHER);
 
     // renamefile action
@@ -1416,6 +1443,13 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
 
     // Collapse & Expand.
     const Id treeGroup = Constants::G_PROJECT_TREE;
+
+    dd->m_projectTreeExpandNodeAction = new QAction(tr("Expand"), this);
+    connect(dd->m_projectTreeExpandNodeAction, &QAction::triggered,
+            ProjectTree::instance(), &ProjectTree::expandCurrentNodeRecursively);
+    Command * const expandNodeCmd = ActionManager::registerAction(
+                dd->m_projectTreeExpandNodeAction, "ProjectExplorer.ExpandNode",
+                projectTreeContext);
     dd->m_projectTreeCollapseAllAction = new QAction(tr("Collapse All"), this);
     Command * const collapseCmd = ActionManager::registerAction(
                 dd->m_projectTreeCollapseAllAction, Constants::PROJECTTREE_COLLAPSE_ALL,
@@ -1427,6 +1461,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     for (Core::ActionContainer * const ac : {mfileContextMenu, msubProjectContextMenu,
          mfolderContextMenu, mprojectContextMenu, msessionContextMenu}) {
         ac->addSeparator(treeGroup);
+        ac->addAction(expandNodeCmd, treeGroup);
         ac->addAction(collapseCmd, treeGroup);
         ac->addAction(expandCmd, treeGroup);
     }
@@ -1436,8 +1471,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     dd->m_projectSelectorAction->setObjectName("KitSelector"); // used for UI introduction
     dd->m_projectSelectorAction->setCheckable(true);
     dd->m_projectSelectorAction->setEnabled(false);
-    QWidget *mainWindow = ICore::mainWindow();
-    dd->m_targetSelector = new MiniProjectTargetSelector(dd->m_projectSelectorAction, mainWindow);
+    dd->m_targetSelector = new MiniProjectTargetSelector(dd->m_projectSelectorAction, ICore::dialogParent());
     connect(dd->m_projectSelectorAction, &QAction::triggered,
             dd->m_targetSelector, &QWidget::show);
     ModeManager::addProjectSelector(dd->m_projectSelectorAction);
@@ -1471,10 +1505,9 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     });
 
     QSettings *s = ICore::settings();
-    const QStringList fileNames =
-            s->value(QLatin1String("ProjectExplorer/RecentProjects/FileNames")).toStringList();
-    const QStringList displayNames =
-            s->value(QLatin1String("ProjectExplorer/RecentProjects/DisplayNames")).toStringList();
+    const QStringList fileNames = s->value(Constants::RECENTPROJECTS_FILE_NAMES_KEY).toStringList();
+    const QStringList displayNames = s->value(Constants::RECENTPROJECTS_DISPLAY_NAMES_KEY)
+                                         .toStringList();
     if (fileNames.size() == displayNames.size()) {
         for (int i = 0; i < fileNames.size(); ++i) {
             dd->m_recentProjects.append(qMakePair(fileNames.at(i), displayNames.at(i)));
@@ -1492,42 +1525,77 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
                 = static_cast<BuildBeforeRunMode>(buildBeforeDeploy.toInt());
     }
 
-    dd->m_projectExplorerSettings.deployBeforeRun =
-            s->value(Constants::DEPLOY_BEFORE_RUN_SETTINGS_KEY, true).toBool();
-    dd->m_projectExplorerSettings.saveBeforeBuild =
-            s->value(Constants::SAVE_BEFORE_BUILD_SETTINGS_KEY, false).toBool();
-    dd->m_projectExplorerSettings.useJom = s->value(Constants::USE_JOM_SETTINGS_KEY, true).toBool();
-    dd->m_projectExplorerSettings.autorestoreLastSession =
-            s->value(Constants::AUTO_RESTORE_SESSION_SETTINGS_KEY, false).toBool();
-    dd->m_projectExplorerSettings.addLibraryPathsToRunEnv =
-            s->value(Constants::ADD_LIBRARY_PATHS_TO_RUN_ENV_SETTINGS_KEY, true).toBool();
-    dd->m_projectExplorerSettings.prompToStopRunControl =
-            s->value(Constants::PROMPT_TO_STOP_RUN_CONTROL_SETTINGS_KEY, false).toBool();
-    dd->m_projectExplorerSettings.automaticallyCreateRunConfigurations =
-            s->value(Constants::AUTO_CREATE_RUN_CONFIGS_SETTINGS_KEY, true).toBool();
+    static const ProjectExplorerSettings defaultSettings;
+
+    dd->m_projectExplorerSettings.deployBeforeRun
+        = s->value(Constants::DEPLOY_BEFORE_RUN_SETTINGS_KEY, defaultSettings.deployBeforeRun)
+              .toBool();
+    dd->m_projectExplorerSettings.saveBeforeBuild
+        = s->value(Constants::SAVE_BEFORE_BUILD_SETTINGS_KEY, defaultSettings.saveBeforeBuild)
+              .toBool();
+    dd->m_projectExplorerSettings.useJom
+        = s->value(Constants::USE_JOM_SETTINGS_KEY, defaultSettings.useJom).toBool();
+    dd->m_projectExplorerSettings.autorestoreLastSession
+        = s->value(Constants::AUTO_RESTORE_SESSION_SETTINGS_KEY,
+                   defaultSettings.autorestoreLastSession)
+              .toBool();
+    dd->m_projectExplorerSettings.addLibraryPathsToRunEnv
+        = s->value(Constants::ADD_LIBRARY_PATHS_TO_RUN_ENV_SETTINGS_KEY,
+                   defaultSettings.addLibraryPathsToRunEnv)
+              .toBool();
+    dd->m_projectExplorerSettings.prompToStopRunControl
+        = s->value(Constants::PROMPT_TO_STOP_RUN_CONTROL_SETTINGS_KEY,
+                   defaultSettings.prompToStopRunControl)
+              .toBool();
+    dd->m_projectExplorerSettings.automaticallyCreateRunConfigurations
+        = s->value(Constants::AUTO_CREATE_RUN_CONFIGS_SETTINGS_KEY,
+                   defaultSettings.automaticallyCreateRunConfigurations)
+              .toBool();
     dd->m_projectExplorerSettings.environmentId =
             QUuid(s->value(Constants::ENVIRONMENT_ID_SETTINGS_KEY).toByteArray());
     if (dd->m_projectExplorerSettings.environmentId.isNull())
         dd->m_projectExplorerSettings.environmentId = QUuid::createUuid();
     int tmp = s->value(Constants::STOP_BEFORE_BUILD_SETTINGS_KEY,
-                            Utils::HostOsInfo::isWindowsHost() ? 1 : 0).toInt();
+                       int(defaultSettings.stopBeforeBuild))
+                  .toInt();
     if (tmp < 0 || tmp > int(StopBeforeBuild::SameApp))
-        tmp = Utils::HostOsInfo::isWindowsHost() ? 1 : 0;
+        tmp = int(defaultSettings.stopBeforeBuild);
     dd->m_projectExplorerSettings.stopBeforeBuild = StopBeforeBuild(tmp);
-    dd->m_projectExplorerSettings.terminalMode = static_cast<TerminalMode>(s->value(
-        Constants::TERMINAL_MODE_SETTINGS_KEY, int(TerminalMode::Smart)).toInt());
+    dd->m_projectExplorerSettings.terminalMode = static_cast<TerminalMode>(
+        s->value(Constants::TERMINAL_MODE_SETTINGS_KEY, int(defaultSettings.terminalMode)).toInt());
     dd->m_projectExplorerSettings.closeSourceFilesWithProject
-            = s->value(Constants::CLOSE_FILES_WITH_PROJECT_SETTINGS_KEY, true).toBool();
+        = s->value(Constants::CLOSE_FILES_WITH_PROJECT_SETTINGS_KEY,
+                   defaultSettings.closeSourceFilesWithProject)
+              .toBool();
     dd->m_projectExplorerSettings.clearIssuesOnRebuild
-            = s->value(Constants::CLEAR_ISSUES_ON_REBUILD_SETTINGS_KEY, true).toBool();
+        = s->value(Constants::CLEAR_ISSUES_ON_REBUILD_SETTINGS_KEY,
+                   defaultSettings.clearIssuesOnRebuild)
+              .toBool();
     dd->m_projectExplorerSettings.abortBuildAllOnError
-            = s->value(Constants::ABORT_BUILD_ALL_ON_ERROR_SETTINGS_KEY, true).toBool();
+        = s->value(Constants::ABORT_BUILD_ALL_ON_ERROR_SETTINGS_KEY,
+                   defaultSettings.abortBuildAllOnError)
+              .toBool();
     dd->m_projectExplorerSettings.lowBuildPriority
-            = s->value(Constants::LOW_BUILD_PRIORITY_SETTINGS_KEY, false).toBool();
+        = s->value(Constants::LOW_BUILD_PRIORITY_SETTINGS_KEY, defaultSettings.lowBuildPriority)
+              .toBool();
+
+    dd->m_buildPropertiesSettings.buildDirectoryTemplateOld
+            = s->value(Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY_OLD).toString();
     dd->m_buildPropertiesSettings.buildDirectoryTemplate
             = s->value(Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY).toString();
+    if (dd->m_buildPropertiesSettings.buildDirectoryTemplate.isEmpty()) {
+        dd->m_buildPropertiesSettings.buildDirectoryTemplate
+                = dd->m_buildPropertiesSettings.buildDirectoryTemplateOld;
+    }
     if (dd->m_buildPropertiesSettings.buildDirectoryTemplate.isEmpty())
         dd->m_buildPropertiesSettings.buildDirectoryTemplate = Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE;
+    // TODO: Remove in ~4.16
+    dd->m_buildPropertiesSettings.buildDirectoryTemplate.replace("%{CurrentProject:Name}",
+                                                                 "%{Project:Name}");
+    dd->m_buildPropertiesSettings.buildDirectoryTemplate.replace("%{CurrentKit:FileSystemName}",
+                                                                 "%{Kit:FileSystemName}");
+    dd->m_buildPropertiesSettings.buildDirectoryTemplate.replace("%{CurrentBuild:Name}",
+                                                                 "%{BuildConfig:Name}");
 
     const auto loadTriStateValue = [&s](const QString &key) {
       return TriState::fromVariant(s->value(key, TriState::Default.toVariant()));
@@ -1538,6 +1606,14 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
             = loadTriStateValue(Constants::QML_DEBUGGING_SETTINGS_KEY);
     dd->m_buildPropertiesSettings.qtQuickCompiler
             = loadTriStateValue(Constants::QT_QUICK_COMPILER_SETTINGS_KEY);
+
+    const int customParserCount = s->value(Constants::CUSTOM_PARSER_COUNT_KEY).toInt();
+    for (int i = 0; i < customParserCount; ++i) {
+        CustomParserSettings settings;
+        settings.fromMap(s->value(Constants::CUSTOM_PARSER_PREFIX_KEY
+                                  + QString::number(i)).toMap());
+        dd->m_customParsers << settings;
+    }
 
     auto buildManager = new BuildManager(this, dd->m_cancelBuildAction);
     connect(buildManager, &BuildManager::buildStateChanged,
@@ -1572,6 +1648,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
         const RunConfiguration * const runConfig = target->activeRunConfiguration();
         QTC_ASSERT(runConfig, return);
         ProjectNode * const productNode = runConfig->productNode();
+        QTC_ASSERT(productNode, return);
         QTC_ASSERT(productNode->isProduct(), return);
         productNode->build();
     });
@@ -1645,11 +1722,11 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
         BuildManager::cleanProjects(SessionManager::projectOrder(), ConfigSelection::All);
     });
     connect(dd->m_runAction, &QAction::triggered,
-            dd, []() { m_instance->runStartupProject(Constants::NORMAL_RUN_MODE); });
+            dd, []() { runStartupProject(Constants::NORMAL_RUN_MODE); });
     connect(dd->m_runActionContextMenu, &QAction::triggered,
             dd, &ProjectExplorerPluginPrivate::runProjectContextMenu);
     connect(dd->m_runWithoutDeployAction, &QAction::triggered,
-            dd, []() { m_instance->runStartupProject(Constants::NORMAL_RUN_MODE, true); });
+            dd, []() { runStartupProject(Constants::NORMAL_RUN_MODE, true); });
     connect(dd->m_cancelBuildAction, &QAction::triggered,
             BuildManager::instance(), &BuildManager::cancel);
     connect(dd->m_unloadAction, &QAction::triggered,
@@ -1684,6 +1761,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     connect(dd->m_filePropertiesAction, &QAction::triggered, this, []() {
                 const Node *currentNode = ProjectTree::currentNode();
                 QTC_ASSERT(currentNode && currentNode->asFileNode(), return);
+                ProjectTree::CurrentNodeKeeper nodeKeeper;
                 DocumentManager::showFilePropertiesDialog(currentNode->filePath());
             });
     connect(dd->m_removeFileAction, &QAction::triggered,
@@ -1705,8 +1783,6 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     connect(dd->m_projectTreeExpandAllAction, &QAction::triggered,
             ProjectTree::instance(), &ProjectTree::expandAll);
 
-    connect(this, &ProjectExplorerPlugin::updateRunActions,
-            dd, &ProjectExplorerPluginPrivate::slotUpdateRunActions);
     connect(this, &ProjectExplorerPlugin::settingsChanged,
             dd, &ProjectExplorerPluginPrivate::updateRunWithoutDeployMenu);
 
@@ -1718,6 +1794,7 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
     // FIXME: These are mostly "legacy"/"convenience" entries, relying on
     // the global entry point ProjectExplorer::currentProject(). They should
     // not be used in the Run/Build configuration pages.
+    // TODO: Remove the CurrentProject versions in ~4.16
     Utils::MacroExpander *expander = Utils::globalMacroExpander();
     expander->registerFileVariables(Constants::VAR_CURRENTPROJECT_PREFIX,
         tr("Current project's main file."),
@@ -1726,145 +1803,123 @@ bool ProjectExplorerPlugin::initialize(const QStringList &arguments, QString *er
             if (Project *project = ProjectTree::currentProject())
                 projectFilePath = project->projectFilePath();
             return projectFilePath.toString();
-        });
-
-    expander->registerVariable("CurrentProject:BuildPath",
-        tr("Full build path of the current project's active build configuration."),
+        }, false);
+    expander->registerFileVariables("CurrentDocument:Project",
+        tr("Main file of the project the current document belongs to."),
         []() -> QString {
-            BuildConfiguration *bc = activeBuildConfiguration();
-            return bc ? bc->buildDirectory().toUserOutput() : QString();
-        });
+            Utils::FilePath projectFilePath;
+            if (Project *project = ProjectTree::currentProject())
+                projectFilePath = project->projectFilePath();
+            return projectFilePath.toString();
+        }, false);
 
     expander->registerVariable(Constants::VAR_CURRENTPROJECT_NAME,
         tr("The name of the current project."),
         []() -> QString {
             Project *project = ProjectTree::currentProject();
             return project ? project->displayName() : QString();
-        });
-
-    expander->registerVariable(Constants::VAR_CURRENTKIT_NAME,
-        tr("The name of the currently active kit."),
+        }, false);
+    expander->registerVariable("CurrentDocument:Project:Name",
+        tr("The name of the project the current document belongs to."),
         []() -> QString {
-            Kit *kit = currentKit();
-            return kit ? kit->displayName() : QString();
-        });
-
-    expander->registerVariable(Constants::VAR_CURRENTKIT_FILESYSTEMNAME,
-        tr("The name of the currently active kit as a filesystem-friendly version."),
-        []() -> QString {
-            Kit *kit = currentKit();
-            return kit ? kit->fileSystemFriendlyName() : QString();
-        });
-
-    expander->registerVariable(Constants::VAR_CURRENTKIT_ID,
-        tr("The ID of the currently active kit."),
-        []() -> QString {
-            Kit *kit = currentKit();
-            return kit ? kit->id().toString() : QString();
-        });
-
-    expander->registerVariable("CurrentDevice:HostAddress",
-        tr("The host address of the device in the currently active kit."),
-        []() -> QString {
-            Kit *kit = currentKit();
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? device->sshParameters().host() : QString();
-        });
-
-    expander->registerVariable("CurrentDevice:SshPort",
-        tr("The SSH port of the device in the currently active kit."),
-        []() -> QString {
-            Kit *kit = currentKit();
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? QString::number(device->sshParameters().port()) : QString();
-        });
-
-    expander->registerVariable("CurrentDevice:UserName",
-        tr("The username with which to log into the device in the currently active kit."),
-        []() -> QString {
-            Kit *kit = currentKit();
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? device->sshParameters().userName() : QString();
-        });
-
-
-    expander->registerVariable("CurrentDevice:PrivateKeyFile",
-        tr("The private key file with which to authenticate when logging into the device "
-           "in the currently active kit."),
-        []() -> QString {
-            Kit *kit = currentKit();
-            const IDevice::ConstPtr device = DeviceKitAspect::device(kit);
-            return device ? device->sshParameters().privateKeyFile : QString();
-        });
-
-    expander->registerVariable(Constants::VAR_CURRENTBUILD_NAME,
-        tr("The currently active build configuration's name."),
-        [&]() -> QString {
-            BuildConfiguration *bc = activeBuildConfiguration();
-            return bc ? bc->displayName() : QString();
-        });
-
-    expander->registerVariable(Constants::VAR_CURRENTRUN_NAME,
-        tr("The currently active run configuration's name."),
-        []() -> QString {
-            if (Target *target = activeTarget()) {
-                if (RunConfiguration *rc = target->activeRunConfiguration())
-                    return rc->displayName();
-            }
-            return QString();
-        });
-
-    expander->registerFileVariables("CurrentRun:Executable",
-        tr("The currently active run configuration's executable (if applicable)."),
-        []() -> QString {
-            if (Target *target = activeTarget()) {
-                if (RunConfiguration *rc = target->activeRunConfiguration())
-                    return rc->commandLine().executable().toString();
-            }
-            return QString();
-        });
-
-    expander->registerVariable(Constants::VAR_CURRENTBUILD_TYPE,
-        tr("The currently active build configuration's type."),
-        [&]() -> QString {
-            BuildConfiguration *bc = activeBuildConfiguration();
-            const BuildConfiguration::BuildType type
-                                   = bc ? bc->buildType() : BuildConfiguration::Unknown;
-            return BuildConfiguration::buildTypeName(type);
+            Project *project = ProjectTree::currentProject();
+            return project ? project->displayName() : QString();
         });
 
     expander->registerPrefix(Constants::VAR_CURRENTBUILD_ENV,
-                             BuildConfiguration::tr("Variables in the current build environment"),
+                             BuildConfiguration::tr("Variables in the current build environment."),
                              [](const QString &var) {
-                                 if (BuildConfiguration *bc = activeBuildConfiguration())
+                                 if (BuildConfiguration *bc = currentBuildConfiguration())
+                                     return bc->environment().expandedValueForKey(var);
+                                 return QString();
+                             }, false);
+    expander->registerPrefix("CurrentDocument:Project:BuildConfig:Env",
+                             BuildConfiguration::tr("Variables in the active build environment "
+                                     "of the project containing the currently open document."),
+                             [](const QString &var) {
+                                 if (BuildConfiguration *bc = currentBuildConfiguration())
+                                     return bc->environment().expandedValueForKey(var);
+                                 return QString();
+                             });
+    Utils::EnvironmentProvider::addProvider(
+        {Constants::VAR_CURRENTBUILD_ENV, tr("Current Build Environment"), []() {
+             if (BuildConfiguration *bc = currentBuildConfiguration())
+                 return bc->environment();
+             return Utils::Environment::systemEnvironment();
+         }});
+    Utils::EnvironmentProvider::addProvider(
+        {"CurrentDocument:Project:BuildConfig:Env", tr("Current Build Environment"), []() {
+             if (BuildConfiguration *bc = currentBuildConfiguration())
+                  return bc->environment();
+              return Utils::Environment::systemEnvironment();
+         }});
+
+    // Global variables for the active project.
+    expander->registerVariable("ActiveProject:Name", tr("The name of the active project."),
+        []() -> QString {
+            if (const Project * const project = SessionManager::startupProject())
+                return project->displayName();
+            return {};
+        });
+    expander->registerFileVariables("ActiveProject", tr("Active project's main file."),
+        []() -> QString {
+            if (const Project * const project = SessionManager::startupProject())
+                return project->projectFilePath().toString();
+            return {};
+        });
+    expander->registerVariable("ActiveProject:Kit:Name",
+        "The name of the active project's active kit.", // TODO: tr()
+        []() -> QString {
+            if (const Target * const target = activeTarget())
+                return target->kit()->displayName();
+            return {};
+    });
+    expander->registerVariable("ActiveProject:BuildConfig:Name",
+        "The name of the active project's active build configuration.", // TODO: tr()
+        []() -> QString {
+            if (const BuildConfiguration * const bc = activeBuildConfiguration())
+                return bc->displayName();
+            return {};
+    });
+    expander->registerVariable("ActiveProject:BuildConfig:Type",
+        tr("The type of the active project's active build configuration."),
+        []() -> QString {
+            const BuildConfiguration * const bc = activeBuildConfiguration();
+            const BuildConfiguration::BuildType type = bc
+                    ? bc->buildType() : BuildConfiguration::Unknown;
+            return BuildConfiguration::buildTypeName(type);
+    });
+    expander->registerVariable("ActiveProject:BuildConfig:Path",
+        tr("Full build path of the active project's active build configuration."),
+        []() -> QString {
+            if (const BuildConfiguration * const bc = activeBuildConfiguration())
+                return bc->buildDirectory().toUserOutput();
+            return {};
+    });
+    const char activeBuildEnvVar[] = "ActiveProject:BuildConfig:Env";
+    Utils::EnvironmentProvider::addProvider(
+        {activeBuildEnvVar, tr("Active build environment of the active project."), [] {
+             if (const BuildConfiguration * const bc = activeBuildConfiguration())
+                 return bc->environment();
+             return Utils::Environment::systemEnvironment();
+         }});
+    expander->registerPrefix("ActiveProject:BuildConfig:Env",
+                             BuildConfiguration::tr("Variables in the active build environment "
+                                     "of the active project."),
+                             [](const QString &var) {
+                                 if (BuildConfiguration * const bc = activeBuildConfiguration())
                                      return bc->environment().expandedValueForKey(var);
                                  return QString();
                              });
 
-    Utils::EnvironmentProvider::addProvider(
-        {Constants::VAR_CURRENTBUILD_ENV, tr("Current Build Environment"), []() {
-             if (BuildConfiguration *bc = activeBuildConfiguration())
-                 return bc->environment();
-             return Utils::Environment::systemEnvironment();
-         }});
-
-    Utils::EnvironmentProvider::addProvider(
-        {"CurrentRun:Env", tr("Current Run Environment"), []() {
-             if (RunConfiguration *rc = activeRunConfiguration())
-                if (auto envAspect = rc->aspect<EnvironmentAspect>())
-                    return envAspect->environment();
-             return Utils::Environment::systemEnvironment();
-         }});
-
-    QString fileDescription = tr("File where current session is saved.");
-    auto fileHandler = [] { return SessionManager::sessionNameToFileName(SessionManager::activeSession()).toString(); };
-    expander->registerFileVariables("Session", fileDescription, fileHandler);
-    expander->registerFileVariables("CurrentSession", fileDescription, fileHandler, false);
-
-    QString nameDescription = tr("Name of current session.");
-    auto nameHandler = [] { return SessionManager::activeSession(); };
-    expander->registerVariable("Session:Name", nameDescription, nameHandler);
-    expander->registerVariable("CurrentSession:Name", nameDescription, nameHandler, false);
+    const auto fileHandler = [] {
+        return SessionManager::sessionNameToFileName(SessionManager::activeSession()).toString();
+    };
+    expander->registerFileVariables("Session", tr("File where current session is saved."),
+                                    fileHandler);
+    expander->registerVariable("Session:Name", tr("Name of current session."), [] {
+        return SessionManager::activeSession();
+    });
 
     return true;
 }
@@ -1964,7 +2019,8 @@ void ProjectExplorerPlugin::extensionsInitialized()
     });
 
     dd->m_documentFactory.addMimeType(QStringLiteral("inode/directory"));
-    for (const QString &mimeType : dd->m_projectCreators.keys()) {
+    for (auto it = dd->m_projectCreators.cbegin(); it != dd->m_projectCreators.cend(); ++it) {
+        const QString &mimeType = it.key();
         dd->m_documentFactory.addMimeType(mimeType);
         Utils::MimeType mime = Utils::mimeTypeForName(mimeType);
         allGlobPatterns.append(mime.globPatterns());
@@ -1990,7 +2046,7 @@ void ProjectExplorerPlugin::extensionsInitialized()
             const QString gitBinary = Core::ICore::settings()->value("Git/BinaryPath", "git")
                     .toString();
             const QStringList rawGitSearchPaths = Core::ICore::settings()->value("Git/Path")
-                    .toString().split(':', QString::SkipEmptyParts);
+                    .toString().split(':', Qt::SkipEmptyParts);
             const Utils::FilePaths gitSearchPaths = Utils::transform(rawGitSearchPaths,
                     [](const QString &rawPath) { return Utils::FilePath::fromString(rawPath); });
             const Utils::FilePath fullGitPath = Utils::Environment::systemEnvironment()
@@ -2009,7 +2065,7 @@ void ProjectExplorerPlugin::extensionsInitialized()
     Command * const cmd = ActionManager::registerAction(parseIssuesAction,
                                                         "ProjectExplorer.ParseIssuesAction");
     connect(parseIssuesAction, &QAction::triggered, this, [] {
-        ParseIssuesDialog dlg(ICore::mainWindow());
+        ParseIssuesDialog dlg(ICore::dialogParent());
         dlg.exec();
     });
     mtools->addAction(cmd);
@@ -2073,7 +2129,7 @@ void ProjectExplorerPlugin::openNewProjectDialog()
 void ProjectExplorerPluginPrivate::showSessionManager()
 {
     SessionManager::save();
-    SessionDialog sessionDialog(ICore::mainWindow());
+    SessionDialog sessionDialog(ICore::dialogParent());
     sessionDialog.setAutoLoadSession(dd->m_projectExplorerSettings.autorestoreLastSession);
     sessionDialog.exec();
     dd->m_projectExplorerSettings.autorestoreLastSession = sessionDialog.autoLoadSession();
@@ -2121,7 +2177,7 @@ void ProjectExplorerPluginPrivate::savePersistentSettings()
         SessionManager::save();
     }
 
-    QSettings *s = ICore::settings();
+    QtcSettings *s = ICore::settings();
     if (SessionManager::isDefaultVirgin()) {
         s->remove(Constants::STARTUPSESSION_KEY);
     } else {
@@ -2139,41 +2195,83 @@ void ProjectExplorerPluginPrivate::savePersistentSettings()
         displayNames << (*it).second;
     }
 
-    s->setValue(QLatin1String("ProjectExplorer/RecentProjects/FileNames"), fileNames);
-    s->setValue(QLatin1String("ProjectExplorer/RecentProjects/DisplayNames"), displayNames);
+    s->setValueWithDefault(Constants::RECENTPROJECTS_FILE_NAMES_KEY, fileNames);
+    s->setValueWithDefault(Constants::RECENTPROJECTS_DISPLAY_NAMES_KEY, displayNames);
 
-    s->setValue(Constants::BUILD_BEFORE_DEPLOY_SETTINGS_KEY, int(dd->m_projectExplorerSettings.buildBeforeDeploy));
-    s->setValue(Constants::DEPLOY_BEFORE_RUN_SETTINGS_KEY, dd->m_projectExplorerSettings.deployBeforeRun);
-    s->setValue(Constants::SAVE_BEFORE_BUILD_SETTINGS_KEY, dd->m_projectExplorerSettings.saveBeforeBuild);
-    s->setValue(Constants::USE_JOM_SETTINGS_KEY, dd->m_projectExplorerSettings.useJom);
-    s->setValue(Constants::AUTO_RESTORE_SESSION_SETTINGS_KEY, dd->m_projectExplorerSettings.autorestoreLastSession);
-    s->setValue(Constants::ADD_LIBRARY_PATHS_TO_RUN_ENV_SETTINGS_KEY, dd->m_projectExplorerSettings.addLibraryPathsToRunEnv);
-    s->setValue(Constants::PROMPT_TO_STOP_RUN_CONTROL_SETTINGS_KEY, dd->m_projectExplorerSettings.prompToStopRunControl);
-    s->setValue(Constants::TERMINAL_MODE_SETTINGS_KEY,
-                int(dd->m_projectExplorerSettings.terminalMode));
-    s->setValue(Constants::CLOSE_FILES_WITH_PROJECT_SETTINGS_KEY,
-                dd->m_projectExplorerSettings.closeSourceFilesWithProject);
-    s->setValue(Constants::CLEAR_ISSUES_ON_REBUILD_SETTINGS_KEY,
-                dd->m_projectExplorerSettings.clearIssuesOnRebuild);
-    s->setValue(Constants::ABORT_BUILD_ALL_ON_ERROR_SETTINGS_KEY,
-                dd->m_projectExplorerSettings.abortBuildAllOnError);
-    s->setValue(Constants::LOW_BUILD_PRIORITY_SETTINGS_KEY,
-                dd->m_projectExplorerSettings.lowBuildPriority);
-    s->setValue(Constants::AUTO_CREATE_RUN_CONFIGS_SETTINGS_KEY,
-                dd->m_projectExplorerSettings.automaticallyCreateRunConfigurations);
-    s->setValue(Constants::ENVIRONMENT_ID_SETTINGS_KEY, dd->m_projectExplorerSettings.environmentId.toByteArray());
-    s->setValue(Constants::STOP_BEFORE_BUILD_SETTINGS_KEY, int(dd->m_projectExplorerSettings.stopBeforeBuild));
+    static const ProjectExplorerSettings defaultSettings;
+
+    s->setValueWithDefault(Constants::BUILD_BEFORE_DEPLOY_SETTINGS_KEY,
+                           int(dd->m_projectExplorerSettings.buildBeforeDeploy),
+                           int(defaultSettings.buildBeforeDeploy));
+    s->setValueWithDefault(Constants::DEPLOY_BEFORE_RUN_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.deployBeforeRun,
+                           defaultSettings.deployBeforeRun);
+    s->setValueWithDefault(Constants::SAVE_BEFORE_BUILD_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.saveBeforeBuild,
+                           defaultSettings.saveBeforeBuild);
+    s->setValueWithDefault(Constants::USE_JOM_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.useJom,
+                           defaultSettings.useJom);
+    s->setValueWithDefault(Constants::AUTO_RESTORE_SESSION_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.autorestoreLastSession,
+                           defaultSettings.autorestoreLastSession);
+    s->setValueWithDefault(Constants::ADD_LIBRARY_PATHS_TO_RUN_ENV_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.addLibraryPathsToRunEnv,
+                           defaultSettings.addLibraryPathsToRunEnv);
+    s->setValueWithDefault(Constants::PROMPT_TO_STOP_RUN_CONTROL_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.prompToStopRunControl,
+                           defaultSettings.prompToStopRunControl);
+    s->setValueWithDefault(Constants::TERMINAL_MODE_SETTINGS_KEY,
+                           int(dd->m_projectExplorerSettings.terminalMode),
+                           int(defaultSettings.terminalMode));
+    s->setValueWithDefault(Constants::CLOSE_FILES_WITH_PROJECT_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.closeSourceFilesWithProject,
+                           defaultSettings.closeSourceFilesWithProject);
+    s->setValueWithDefault(Constants::CLEAR_ISSUES_ON_REBUILD_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.clearIssuesOnRebuild,
+                           defaultSettings.clearIssuesOnRebuild);
+    s->setValueWithDefault(Constants::ABORT_BUILD_ALL_ON_ERROR_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.abortBuildAllOnError,
+                           defaultSettings.abortBuildAllOnError);
+    s->setValueWithDefault(Constants::LOW_BUILD_PRIORITY_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.lowBuildPriority,
+                           defaultSettings.lowBuildPriority);
+    s->setValueWithDefault(Constants::AUTO_CREATE_RUN_CONFIGS_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.automaticallyCreateRunConfigurations,
+                           defaultSettings.automaticallyCreateRunConfigurations);
+    s->setValueWithDefault(Constants::ENVIRONMENT_ID_SETTINGS_KEY,
+                           dd->m_projectExplorerSettings.environmentId.toByteArray());
+    s->setValueWithDefault(Constants::STOP_BEFORE_BUILD_SETTINGS_KEY,
+                           int(dd->m_projectExplorerSettings.stopBeforeBuild),
+                           int(defaultSettings.stopBeforeBuild));
 
     // Store this in the Core directory scope for backward compatibility!
-    s->setValue(Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY,
-                dd->m_buildPropertiesSettings.buildDirectoryTemplate);
+    if (dd->m_buildPropertiesSettings.buildDirectoryTemplate
+        == Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE) {
+        s->remove(Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY_OLD);
+        s->remove(Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY);
+    } else {
+        s->setValue(Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY_OLD,
+                    dd->m_buildPropertiesSettings.buildDirectoryTemplateOld);
+        s->setValue(Constants::DEFAULT_BUILD_DIRECTORY_TEMPLATE_KEY,
+                    dd->m_buildPropertiesSettings.buildDirectoryTemplate);
+    }
 
-    s->setValue(Constants::SEPARATE_DEBUG_INFO_SETTINGS_KEY,
-                dd->m_buildPropertiesSettings.separateDebugInfo.toVariant());
-    s->setValue(Constants::QML_DEBUGGING_SETTINGS_KEY,
-                dd->m_buildPropertiesSettings.qmlDebugging.toVariant());
-    s->setValue(Constants::QT_QUICK_COMPILER_SETTINGS_KEY,
-                dd->m_buildPropertiesSettings.qtQuickCompiler.toVariant());
+    s->setValueWithDefault(Constants::SEPARATE_DEBUG_INFO_SETTINGS_KEY,
+                           dd->m_buildPropertiesSettings.separateDebugInfo.toVariant(),
+                           TriState::Default.toVariant());
+    s->setValueWithDefault(Constants::QML_DEBUGGING_SETTINGS_KEY,
+                           dd->m_buildPropertiesSettings.qmlDebugging.toVariant(),
+                           TriState::Default.toVariant());
+    s->setValueWithDefault(Constants::QT_QUICK_COMPILER_SETTINGS_KEY,
+                           dd->m_buildPropertiesSettings.qtQuickCompiler.toVariant(),
+                           TriState::Default.toVariant());
+
+    s->setValueWithDefault(Constants::CUSTOM_PARSER_COUNT_KEY, int(dd->m_customParsers.count()), 0);
+    for (int i = 0; i < dd->m_customParsers.count(); ++i) {
+        s->setValue(Constants::CUSTOM_PARSER_PREFIX_KEY + QString::number(i),
+                    dd->m_customParsers.at(i).toMap());
+    }
 }
 
 void ProjectExplorerPlugin::openProjectWelcomePage(const QString &fileName)
@@ -2214,7 +2312,7 @@ void ProjectExplorerPlugin::showOpenProjectError(const OpenProjectResult &result
     QString errorMessage = result.errorMessage();
     if (!errorMessage.isEmpty()) {
         // ignore alreadyOpen
-        QMessageBox::critical(ICore::mainWindow(), tr("Failed to Open Project"), errorMessage);
+        QMessageBox::critical(ICore::dialogParent(), tr("Failed to Open Project"), errorMessage);
     } else {
         // ignore multiple alreadyOpen
         Project *alreadyOpen = result.alreadyOpen().constFirst();
@@ -2340,8 +2438,8 @@ void ProjectExplorerPluginPrivate::determineSessionToRestoreAtStartup()
 QStringList ProjectExplorerPlugin::projectFileGlobs()
 {
     QStringList result;
-    for (const QString &mt : dd->m_projectCreators.keys()) {
-        Utils::MimeType mimeType = Utils::mimeTypeForName(mt);
+    for (auto it = dd->m_projectCreators.cbegin(); it != dd->m_projectCreators.cend(); ++it) {
+        Utils::MimeType mimeType = Utils::mimeTypeForName(it.key());
         if (mimeType.isValid()) {
             const QStringList patterns = mimeType.globPatterns();
             if (!patterns.isEmpty())
@@ -2354,6 +2452,11 @@ QStringList ProjectExplorerPlugin::projectFileGlobs()
 QThreadPool *ProjectExplorerPlugin::sharedThreadPool()
 {
     return &(dd->m_threadPool);
+}
+
+MiniProjectTargetSelector *ProjectExplorerPlugin::targetSelector()
+{
+    return dd->m_targetSelector;
 }
 
 /*!
@@ -2419,7 +2522,7 @@ void ProjectExplorerPluginPrivate::restoreSession()
     updateActions();
 }
 
-void ProjectExplorerPluginPrivate::executeRunConfiguration(RunConfiguration *runConfiguration, Core::Id runMode)
+void ProjectExplorerPluginPrivate::executeRunConfiguration(RunConfiguration *runConfiguration, Utils::Id runMode)
 {
     const Tasks runConfigIssues = runConfiguration->checkForIssues();
     if (!runConfigIssues.isEmpty()) {
@@ -2458,7 +2561,7 @@ void ProjectExplorerPluginPrivate::startRunControl(RunControl *runControl)
     m_outputPane.createNewOutputWindow(runControl);
     m_outputPane.flash(); // one flash for starting
     m_outputPane.showTabFor(runControl);
-    Core::Id runMode = runControl->runMode();
+    Utils::Id runMode = runControl->runMode();
     const auto popupMode = runMode == Constants::NORMAL_RUN_MODE
             ? m_outputPane.settings().runOutputMode
             : runMode == Constants::DEBUG_RUN_MODE
@@ -2469,7 +2572,7 @@ void ProjectExplorerPluginPrivate::startRunControl(RunControl *runControl)
             Qt::QueuedConnection);
     ++m_activeRunControlCount;
     runControl->initiateStart();
-    emit m_instance->updateRunActions();
+    doUpdateRunActions();
 }
 
 void ProjectExplorerPluginPrivate::showOutputPaneForRunControl(RunControl *runControl)
@@ -2526,7 +2629,7 @@ void ProjectExplorerPluginPrivate::buildQueueFinished(bool success)
     m_delayedRunConfiguration = nullptr;
     m_shouldHaveRunConfiguration = false;
     m_runMode = Constants::NO_RUN_MODE;
-    emit m_instance->updateRunActions();
+    doUpdateRunActions();
 }
 
 QList<QPair<QString, QString> > ProjectExplorerPluginPrivate::recentProjects() const
@@ -2695,21 +2798,11 @@ ProjectExplorerPluginPrivate::ProjectExplorerPluginPrivate()
     : m_allProjectDirectoriesFilter("Files in All Project Directories")
 {
     m_allProjectDirectoriesFilter.setDisplayName(m_allProjectDirectoriesFilter.id().toString());
-    m_allProjectDirectoriesFilter.setShortcutString("a");      // shared with "Files in Any Project"
-    m_allProjectDirectoriesFilter.setIncludedByDefault(false); // but not included in default
+    // shared with "Files in Any Project":
+    m_allProjectDirectoriesFilter.setDefaultShortcutString("a");
+    m_allProjectDirectoriesFilter.setDefaultIncludedByDefault(false); // but not included in default
     m_allProjectDirectoriesFilter.setFilters({});
     m_allProjectDirectoriesFilter.setIsCustomFilter(false);
-}
-
-QString ProjectExplorerPlugin::displayNameForStepId(Id stepId)
-{
-    if (stepId == Constants::BUILDSTEPS_CLEAN)
-        return tr("Clean");
-    if (stepId == Constants::BUILDSTEPS_BUILD)
-        return tr("Build", "Build step");
-    if (stepId == Constants::BUILDSTEPS_DEPLOY)
-        return tr("Deploy");
-    return tr("Build", "Build step");
 }
 
 void ProjectExplorerPluginPrivate::runProjectContextMenu()
@@ -2717,7 +2810,8 @@ void ProjectExplorerPluginPrivate::runProjectContextMenu()
     const Node *node = ProjectTree::currentNode();
     const ProjectNode *projectNode = node ? node->asProjectNode() : nullptr;
     if (projectNode == ProjectTree::currentProject()->rootProjectNode() || !projectNode) {
-        m_instance->runProject(ProjectTree::currentProject(), Constants::NORMAL_RUN_MODE);
+        ProjectExplorerPlugin::runProject(ProjectTree::currentProject(),
+                                          Constants::NORMAL_RUN_MODE);
     } else {
         auto act = qobject_cast<QAction *>(sender());
         if (!act)
@@ -2725,7 +2819,7 @@ void ProjectExplorerPluginPrivate::runProjectContextMenu()
         auto *rc = act->data().value<RunConfiguration *>();
         if (!rc)
             return;
-        m_instance->runRunConfiguration(rc, Constants::NORMAL_RUN_MODE);
+        ProjectExplorerPlugin::runRunConfiguration(rc, Constants::NORMAL_RUN_MODE);
     }
 }
 
@@ -2845,12 +2939,11 @@ static bool hasDeploySettings(Project *pro)
 {
     return Utils::anyOf(SessionManager::projectOrder(pro), [](Project *project) {
         return project->activeTarget()
-                && project->activeTarget()->activeDeployConfiguration()
-                && !project->activeTarget()->activeDeployConfiguration()->stepList()->isEmpty();
+                && project->activeTarget()->activeDeployConfiguration();
     });
 }
 
-void ProjectExplorerPlugin::runProject(Project *pro, Core::Id mode, const bool forceSkipDeploy)
+void ProjectExplorerPlugin::runProject(Project *pro, Utils::Id mode, const bool forceSkipDeploy)
 {
     if (!pro)
         return;
@@ -2860,17 +2953,22 @@ void ProjectExplorerPlugin::runProject(Project *pro, Core::Id mode, const bool f
             runRunConfiguration(rc, mode, forceSkipDeploy);
 }
 
-void ProjectExplorerPlugin::runStartupProject(Core::Id runMode, bool forceSkipDeploy)
+void ProjectExplorerPlugin::runStartupProject(Utils::Id runMode, bool forceSkipDeploy)
 {
     runProject(SessionManager::startupProject(), runMode, forceSkipDeploy);
 }
 
 void ProjectExplorerPlugin::runRunConfiguration(RunConfiguration *rc,
-                                                Core::Id runMode,
+                                                Utils::Id runMode,
                                                 const bool forceSkipDeploy)
 {
     if (!rc->isEnabled())
         return;
+    const auto delay = [rc, runMode] {
+        dd->m_runMode = runMode;
+        dd->m_delayedRunConfiguration = rc;
+        dd->m_shouldHaveRunConfiguration = true;
+    };
     const BuildForRunConfigStatus buildStatus = forceSkipDeploy
             ? BuildManager::isBuilding(rc->project())
                 ? BuildForRunConfigStatus::Building : BuildForRunConfigStatus::NotBuilding
@@ -2880,17 +2978,17 @@ void ProjectExplorerPlugin::runRunConfiguration(RunConfiguration *rc,
         return;
     case BuildForRunConfigStatus::Building:
         QTC_ASSERT(dd->m_runMode == Constants::NO_RUN_MODE, return);
-
-        // delay running till after our queued steps were processed
-        dd->m_runMode = runMode;
-        dd->m_delayedRunConfiguration = rc;
-        dd->m_shouldHaveRunConfiguration = true;
+        delay();
         break;
     case BuildForRunConfigStatus::NotBuilding:
-        dd->executeRunConfiguration(rc, runMode);
+        if (rc->isEnabled())
+            dd->executeRunConfiguration(rc, runMode);
+        else
+            delay();
         break;
     }
-    emit m_instance->updateRunActions();
+
+    dd->doUpdateRunActions();
 }
 
 QList<QPair<Runnable, Utils::ProcessHandle>> ProjectExplorerPlugin::runningRunControlProcesses()
@@ -2924,85 +3022,6 @@ void ProjectExplorerPluginPrivate::projectDisplayNameChanged(Project *pro)
 {
     addToRecentProjects(pro->projectFilePath().toString(), pro->displayName());
     updateActions();
-}
-
-void ProjectExplorerPluginPrivate::startupProjectChanged()
-{
-    static QPointer<Project> previousStartupProject = nullptr;
-    Project *project = SessionManager::startupProject();
-    if (project == previousStartupProject)
-        return;
-
-    if (previousStartupProject) {
-        disconnect(previousStartupProject.data(), &Project::activeTargetChanged,
-                   this, &ProjectExplorerPluginPrivate::activeTargetChanged);
-    }
-
-    previousStartupProject = project;
-
-    if (project) {
-        connect(project, &Project::activeTargetChanged,
-                this, &ProjectExplorerPluginPrivate::activeTargetChanged);
-    }
-
-    activeTargetChanged();
-    updateActions();
-}
-
-void ProjectExplorerPluginPrivate::activeTargetChanged()
-{
-    static QPointer<Target> previousTarget = nullptr;
-    Target *target = nullptr;
-    Project *startupProject = SessionManager::startupProject();
-    if (startupProject)
-        target = startupProject->activeTarget();
-    if (target == previousTarget)
-        return;
-
-    if (previousTarget) {
-        disconnect(previousTarget.data(), &Target::activeRunConfigurationChanged,
-                   this, &ProjectExplorerPluginPrivate::activeRunConfigurationChanged);
-        disconnect(previousTarget.data(), &Target::activeBuildConfigurationChanged,
-                   this, &ProjectExplorerPluginPrivate::activeBuildConfigurationChanged);
-    }
-    previousTarget = target;
-    if (target) {
-        connect(target, &Target::activeRunConfigurationChanged,
-                this, &ProjectExplorerPluginPrivate::activeRunConfigurationChanged);
-        connect(previousTarget.data(), &Target::activeBuildConfigurationChanged,
-                this, &ProjectExplorerPluginPrivate::activeBuildConfigurationChanged);
-    }
-
-    activeBuildConfigurationChanged();
-    activeRunConfigurationChanged();
-    updateDeployActions();
-}
-
-void ProjectExplorerPluginPrivate::activeRunConfigurationChanged()
-{
-    static QPointer<RunConfiguration> previousRunConfiguration = nullptr;
-    RunConfiguration *rc = nullptr;
-    Project *startupProject = SessionManager::startupProject();
-    if (startupProject && startupProject->activeTarget())
-        rc = startupProject->activeTarget()->activeRunConfiguration();
-    if (rc == previousRunConfiguration)
-        return;
-    updateActions();
-    emit m_instance->updateRunActions();
-}
-
-void ProjectExplorerPluginPrivate::activeBuildConfigurationChanged()
-{
-    static QPointer<BuildConfiguration> previousBuildConfiguration = nullptr;
-
-    BuildConfiguration *bc = nullptr;
-    if (Target *target = SessionManager::startupTarget())
-        bc = target->activeBuildConfiguration();
-    if (bc == previousBuildConfiguration)
-        return;
-
-    updateActions();
-    emit m_instance->updateRunActions();
 }
 
 void ProjectExplorerPluginPrivate::updateDeployActions()
@@ -3051,10 +3070,10 @@ void ProjectExplorerPluginPrivate::updateDeployActions()
         enableDeploySessionAction = false;
     m_deploySessionAction->setEnabled(enableDeploySessionAction);
 
-    emit m_instance->updateRunActions();
+    doUpdateRunActions();
 }
 
-bool ProjectExplorerPlugin::canRunStartupProject(Core::Id runMode, QString *whyNot)
+bool ProjectExplorerPlugin::canRunStartupProject(Utils::Id runMode, QString *whyNot)
 {
     Project *project = SessionManager::startupProject();
     if (!project) {
@@ -3126,13 +3145,15 @@ bool ProjectExplorerPlugin::canRunStartupProject(Core::Id runMode, QString *whyN
     return true;
 }
 
-void ProjectExplorerPluginPrivate::slotUpdateRunActions()
+void ProjectExplorerPluginPrivate::doUpdateRunActions()
 {
     QString whyNot;
     const bool state = ProjectExplorerPlugin::canRunStartupProject(Constants::NORMAL_RUN_MODE, &whyNot);
     m_runAction->setEnabled(state);
     m_runAction->setToolTip(whyNot);
     m_runWithoutDeployAction->setEnabled(state);
+
+    emit m_instance->runActionsUpdated();
 }
 
 void ProjectExplorerPluginPrivate::addToRecentProjects(const QString &fileName, const QString &displayName)
@@ -3283,7 +3304,7 @@ void ProjectExplorerPluginPrivate::updateContextMenuActions()
 
         Project *project = ProjectTree::currentProject();
         m_openTerminalHereBuildEnv->setVisible(bool(buildEnv(project)));
-        m_openTerminalHereRunEnv->setVisible(canOpenTerminalWithRunEnv(project));
+        m_openTerminalHereRunEnv->setVisible(canOpenTerminalWithRunEnv(project, pn));
 
         if (pn && project) {
             if (pn == project->rootProjectNode()) {
@@ -3318,20 +3339,28 @@ void ProjectExplorerPluginPrivate::updateContextMenuActions()
             return currentNode->supportsAction(action, currentNode);
         };
 
+        bool canEditProject = true;
+        if (project && project->activeTarget()) {
+            const BuildSystem * const bs = project->activeTarget()->buildSystem();
+            if (bs->isParsing() || bs->isWaitingForParse())
+                canEditProject = false;
+        }
         if (currentNode->asFolderNode()) {
             // Also handles ProjectNode
-            m_addNewFileAction->setEnabled(supports(AddNewFile)
+            m_addNewFileAction->setEnabled(canEditProject && supports(AddNewFile)
                                               && !ICore::isNewItemDialogRunning());
-            m_addNewSubprojectAction->setEnabled(currentNode->isProjectNodeType()
+            m_addNewSubprojectAction->setEnabled(canEditProject && currentNode->isProjectNodeType()
                                                     && supports(AddSubProject)
                                                     && !ICore::isNewItemDialogRunning());
-            m_addExistingProjectsAction->setEnabled(currentNode->isProjectNodeType()
+            m_addExistingProjectsAction->setEnabled(canEditProject
+                                                    && currentNode->isProjectNodeType()
                                                     && supports(AddExistingProject));
-            m_removeProjectAction->setEnabled(currentNode->isProjectNodeType()
+            m_removeProjectAction->setEnabled(canEditProject && currentNode->isProjectNodeType()
                                                     && supports(RemoveSubProject));
-            m_addExistingFilesAction->setEnabled(supports(AddExistingFile));
-            m_addExistingDirectoryAction->setEnabled(supports(AddExistingDirectory));
-            m_renameFileAction->setEnabled(supports(Rename));
+            m_addExistingFilesAction->setEnabled(canEditProject && supports(AddExistingFile));
+            m_addExistingDirectoryAction->setEnabled(canEditProject
+                                                     && supports(AddExistingDirectory));
+            m_renameFileAction->setEnabled(canEditProject && supports(Rename));
         } else if (auto fileNode = currentNode->asFileNode()) {
             // Enable and show remove / delete in magic ways:
             // If both are disabled show Remove
@@ -3339,20 +3368,20 @@ void ProjectExplorerPluginPrivate::updateContextMenuActions()
             // If only removeFile is enabled only show it
             // If only deleteFile is enable only show it
             bool isTypeProject = fileNode->fileType() == FileType::Project;
-            bool enableRemove = !isTypeProject && supports(RemoveFile);
+            bool enableRemove = canEditProject && !isTypeProject && supports(RemoveFile);
             m_removeFileAction->setEnabled(enableRemove);
-            bool enableDelete = !isTypeProject && supports(EraseFile);
+            bool enableDelete = canEditProject && !isTypeProject && supports(EraseFile);
             m_deleteFileAction->setEnabled(enableDelete);
             m_deleteFileAction->setVisible(enableDelete);
 
             m_removeFileAction->setVisible(!enableDelete || enableRemove);
-            m_renameFileAction->setEnabled(!isTypeProject && supports(Rename));
+            m_renameFileAction->setEnabled(canEditProject && !isTypeProject && supports(Rename));
             const bool currentNodeIsTextFile = isTextFile(
                         currentNode->filePath().toString());
             m_diffFileAction->setEnabled(DiffService::instance()
                         && currentNodeIsTextFile && TextEditor::TextDocument::currentTextDocument());
 
-            const bool canDuplicate = supports(AddNewFile)
+            const bool canDuplicate = canEditProject && supports(AddNewFile)
                     && currentNode->asFileNode()->fileType() != FileType::Project;
             m_duplicateFileAction->setVisible(canDuplicate);
             m_duplicateFileAction->setEnabled(canDuplicate);
@@ -3472,7 +3501,7 @@ void ProjectExplorerPluginPrivate::addNewSubproject()
         QVariantMap map;
         map.insert(QLatin1String(Constants::PREFERRED_PROJECT_NODE), QVariant::fromValue(currentNode));
         Project *project = ProjectTree::currentProject();
-        Core::Id projectType;
+        Utils::Id projectType;
         if (project) {
             const QStringList profileIds = Utils::transform(ProjectTree::currentProject()->targets(),
                                                             [](const Target *t) {
@@ -3502,7 +3531,7 @@ void ProjectExplorerPluginPrivate::addExistingProjects()
     QTC_ASSERT(projectNode, return);
     const QString dir = currentNode->directory();
     QStringList subProjectFilePaths = QFileDialog::getOpenFileNames(
-                ICore::mainWindow(), tr("Choose Project File"), dir,
+                ICore::dialogParent(), tr("Choose Project File"), dir,
                 projectNode->subProjectFileNamePatterns().join(";;"));
     if (!ProjectTree::hasNode(projectNode))
         return;
@@ -3525,7 +3554,7 @@ void ProjectExplorerPluginPrivate::addExistingProjects()
     if (!failedProjects.empty()) {
         const QString message = tr("The following subprojects could not be added to project "
                                    "\"%1\":").arg(projectNode->managingProject()->displayName());
-        QMessageBox::warning(ICore::mainWindow(), tr("Adding Subproject Failed"),
+        QMessageBox::warning(ICore::dialogParent(), tr("Adding Subproject Failed"),
                              message + "\n  " + failedProjects.join("\n  "));
         return;
     }
@@ -3539,7 +3568,7 @@ void ProjectExplorerPluginPrivate::handleAddExistingFiles()
 
     QTC_ASSERT(folderNode, return);
 
-    QStringList fileNames = QFileDialog::getOpenFileNames(ICore::mainWindow(),
+    QStringList fileNames = QFileDialog::getOpenFileNames(ICore::dialogParent(),
         tr("Add Existing Files"), node->directory());
     if (fileNames.isEmpty())
         return;
@@ -3555,7 +3584,7 @@ void ProjectExplorerPluginPrivate::addExistingDirectory()
     QTC_ASSERT(folderNode, return);
 
     SelectableFilesDialogAddDirectory dialog(Utils::FilePath::fromString(node->directory()),
-                                             Utils::FilePaths(), ICore::mainWindow());
+                                             Utils::FilePaths(), ICore::dialogParent());
     dialog.setAddFileFilter({});
 
     if (dialog.exec() == QDialog::Accepted)
@@ -3578,7 +3607,7 @@ void ProjectExplorerPlugin::addExistingFiles(FolderNode *folderNode, const QStri
                 .arg(folderNode->managingProject()->displayName()) + QLatin1Char('\n');
         const QStringList nativeFiles
                 = Utils::transform(notAdded, &QDir::toNativeSeparators);
-        QMessageBox::warning(ICore::mainWindow(), tr("Adding Files to Project Failed"),
+        QMessageBox::warning(ICore::dialogParent(), tr("Adding Files to Project Failed"),
                              message + nativeFiles.join(QLatin1Char('\n')));
         fileNames = Utils::filtered(fileNames,
                                     [&notAdded](const QString &f) { return !notAdded.contains(f); });
@@ -3594,7 +3623,7 @@ void ProjectExplorerPluginPrivate::removeProject()
         return;
     ProjectNode *projectNode = node->managingProject();
     if (projectNode) {
-        Utils::RemoveFileDialog removeFileDialog(node->filePath().toString(), ICore::mainWindow());
+        Utils::RemoveFileDialog removeFileDialog(node->filePath().toString(), ICore::dialogParent());
         removeFileDialog.setDeleteFileVisible(false);
         if (removeFileDialog.exec() == QDialog::Accepted)
             projectNode->removeSubProject(node->filePath().toString());
@@ -3619,7 +3648,7 @@ void ProjectExplorerPluginPrivate::showInGraphicalShell()
 {
     Node *currentNode = ProjectTree::currentNode();
     QTC_ASSERT(currentNode, return);
-    FileUtils::showInGraphicalShell(ICore::mainWindow(), currentNode->path());
+    Core::FileUtils::showInGraphicalShell(ICore::dialogParent(), currentNode->path());
 }
 
 void ProjectExplorerPluginPrivate::openTerminalHere(const EnvironmentGetter &env)
@@ -3631,7 +3660,7 @@ void ProjectExplorerPluginPrivate::openTerminalHere(const EnvironmentGetter &env
     if (!environment)
         return;
 
-    FileUtils::openTerminal(currentNode->directory(), environment.value());
+    Core::FileUtils::openTerminal(currentNode->directory(), environment.value());
 }
 
 void ProjectExplorerPluginPrivate::openTerminalHereWithRunEnv()
@@ -3643,7 +3672,8 @@ void ProjectExplorerPluginPrivate::openTerminalHereWithRunEnv()
     QTC_ASSERT(project, return);
     const Target * const target = project->activeTarget();
     QTC_ASSERT(target, return);
-    const RunConfiguration * const runConfig = target->activeRunConfiguration();
+    const RunConfiguration * const runConfig = runConfigForNode(target,
+                                                                currentNode->asProjectNode());
     QTC_ASSERT(runConfig, return);
 
     const Runnable runnable = runConfig->runnable();
@@ -3661,48 +3691,76 @@ void ProjectExplorerPluginPrivate::removeFile()
     const Node *currentNode = ProjectTree::currentNode();
     QTC_ASSERT(currentNode && currentNode->asFileNode(), return);
 
+    ProjectTree::CurrentNodeKeeper nodeKeeper;
+
     const Utils::FilePath filePath = currentNode->filePath();
-    Utils::RemoveFileDialog removeFileDialog(filePath.toString(), ICore::mainWindow());
+    using NodeAndPath = QPair<const Node *, Utils::FilePath>;
+    QList<NodeAndPath> filesToRemove{qMakePair(currentNode, currentNode->filePath())};
+    QList<NodeAndPath> siblings;
+    for (const Node * const n : ProjectTree::siblingsWithSameBaseName(currentNode))
+        siblings << qMakePair(n, n->filePath());
 
-    if (removeFileDialog.exec() == QDialog::Accepted) {
-        const bool deleteFile = removeFileDialog.isDeleteFileChecked();
+    Utils::RemoveFileDialog removeFileDialog(filePath.toString(), ICore::dialogParent());
+    if (removeFileDialog.exec() != QDialog::Accepted)
+        return;
 
-        // Re-read the current node, in case the project is re-parsed while the dialog is open
-        if (!ProjectTree::hasNode(currentNode)) {
-            QMessageBox::warning(ICore::mainWindow(), tr("Removing File Failed"),
-                                 tr("File %1 was not removed, because the project has changed "
+    const bool deleteFile = removeFileDialog.isDeleteFileChecked();
+
+    if (!siblings.isEmpty()) {
+        const QMessageBox::StandardButton reply = QMessageBox::question(
+                    Core::ICore::dialogParent(), tr("Remove More Files?"),
+                    tr("Remove these files as well?\n    %1")
+                    .arg(Utils::transform<QStringList>(siblings, [](const NodeAndPath &np) {
+            return np.second.toFileInfo().fileName();
+        }).join("\n    ")));
+        if (reply == QMessageBox::Yes)
+            filesToRemove << siblings;
+    }
+
+    for (const NodeAndPath &file : qAsConst(filesToRemove)) {
+        // Nodes can become invalid if the project was re-parsed while the dialog was open
+        if (!ProjectTree::hasNode(file.first)) {
+            QMessageBox::warning(ICore::dialogParent(), tr("Removing File Failed"),
+                                 tr("File \"%1\" was not removed, because the project has changed "
                                     "in the meantime.\nPlease try again.")
-                                 .arg(filePath.toUserOutput()));
+                                 .arg(file.second.toUserOutput()));
             return;
         }
 
         // remove from project
-        FolderNode *folderNode = currentNode->asFileNode()->parentFolderNode();
+        FolderNode *folderNode = file.first->asFileNode()->parentFolderNode();
         QTC_ASSERT(folderNode, return);
 
+        const Utils::FilePath &currentFilePath = file.second;
         const RemovedFilesFromProject status
-                = folderNode->removeFiles(QStringList(filePath.toString()));
+                = folderNode->removeFiles(QStringList(currentFilePath.toString()));
         const bool success = status == RemovedFilesFromProject::Ok
                 || (status == RemovedFilesFromProject::Wildcard
                     && removeFileDialog.isDeleteFileChecked());
         if (!success) {
-            QMessageBox::warning(ICore::mainWindow(), tr("Removing File Failed"),
-                                 tr("Could not remove file %1 from project %2.")
-                                 .arg(filePath.toUserOutput())
-                                 .arg(folderNode->managingProject()->displayName()));
-            if (!deleteFile)
-                return;
+            TaskHub::addTask(BuildSystemTask(Task::Error,
+                    tr("Could not remove file \"%1\" from project \"%2\".")
+                        .arg(currentFilePath.toUserOutput(), folderNode->managingProject()->displayName()),
+                    folderNode->managingProject()->filePath()));
         }
-
-        FileChangeBlocker changeGuard(filePath.toString());
-        FileUtils::removeFile(filePath.toString(), deleteFile);
     }
+
+    std::vector<std::unique_ptr<FileChangeBlocker>> changeGuards;
+    FilePaths pathList;
+    for (const NodeAndPath &file : qAsConst(filesToRemove)) {
+        pathList << file.second;
+        changeGuards.emplace_back(std::make_unique<FileChangeBlocker>(file.second.toString()));
+    }
+
+    Core::FileUtils::removeFiles(pathList, deleteFile);
 }
 
 void ProjectExplorerPluginPrivate::duplicateFile()
 {
     Node *currentNode = ProjectTree::currentNode();
     QTC_ASSERT(currentNode && currentNode->asFileNode(), return);
+
+    ProjectTree::CurrentNodeKeeper nodeKeeper;
 
     FileNode *fileNode = currentNode->asFileNode();
     QString filePath = currentNode->filePath().toString();
@@ -3714,7 +3772,7 @@ void ProjectExplorerPluginPrivate::duplicateFile()
     newFileName.insert(copyTokenIndex, tr("_copy"));
 
     bool okPressed;
-    newFileName = QInputDialog::getText(ICore::mainWindow(), tr("Choose File Name"),
+    newFileName = QInputDialog::getText(ICore::dialogParent(), tr("Choose File Name"),
             tr("New file name:"), QLineEdit::Normal, newFileName, &okPressed);
     if (!okPressed)
         return;
@@ -3726,14 +3784,14 @@ void ProjectExplorerPluginPrivate::duplicateFile()
     QTC_ASSERT(folderNode, return);
     QFile sourceFile(filePath);
     if (!sourceFile.copy(newFilePath)) {
-        QMessageBox::critical(ICore::mainWindow(), tr("Duplicating File Failed"),
+        QMessageBox::critical(ICore::dialogParent(), tr("Duplicating File Failed"),
                              tr("Failed to copy file \"%1\" to \"%2\": %3.")
                              .arg(QDir::toNativeSeparators(filePath),
                                   QDir::toNativeSeparators(newFilePath), sourceFile.errorString()));
         return;
     }
     if (!folderNode->addFiles(QStringList(newFilePath))) {
-        QMessageBox::critical(ICore::mainWindow(), tr("Duplicating File Failed"),
+        QMessageBox::critical(ICore::dialogParent(), tr("Duplicating File Failed"),
                               tr("Failed to add new file \"%1\" to the project.")
                               .arg(QDir::toNativeSeparators(newFilePath)));
     }
@@ -3744,11 +3802,13 @@ void ProjectExplorerPluginPrivate::deleteFile()
     Node *currentNode = ProjectTree::currentNode();
     QTC_ASSERT(currentNode && currentNode->asFileNode(), return);
 
+    ProjectTree::CurrentNodeKeeper nodeKeeper;
+
     FileNode *fileNode = currentNode->asFileNode();
 
     QString filePath = currentNode->filePath().toString();
     QMessageBox::StandardButton button =
-            QMessageBox::question(ICore::mainWindow(),
+            QMessageBox::question(ICore::dialogParent(),
                                   tr("Delete File"),
                                   tr("Delete %1 from file system?")
                                   .arg(QDir::toNativeSeparators(filePath)),
@@ -3769,7 +3829,7 @@ void ProjectExplorerPluginPrivate::deleteFile()
     QFile file(filePath);
     if (file.exists()) {
         if (!file.remove())
-            QMessageBox::warning(ICore::mainWindow(), tr("Deleting File Failed"),
+            QMessageBox::warning(ICore::dialogParent(), tr("Deleting File Failed"),
                                  tr("Could not delete file %1.")
                                  .arg(QDir::toNativeSeparators(filePath)));
     }
@@ -3798,9 +3858,12 @@ void ProjectExplorerPlugin::renameFile(Node *node, const QString &newFilePath)
     if (oldFilePath == newFilePath)
         return;
 
+    auto handleGuards = Core::HandleIncludeGuards::No;
+    if (node->asFileNode() && node->asFileNode()->fileType() == FileType::Header)
+        handleGuards = Core::HandleIncludeGuards::Yes;
     if (!folderNode->canRenameFile(oldFilePath, newFilePath)) {
-        QTimer::singleShot(0, [oldFilePath, newFilePath, projectFileName] {
-            int res = QMessageBox::question(ICore::mainWindow(),
+        QTimer::singleShot(0, [oldFilePath, newFilePath, projectFileName, handleGuards] {
+            int res = QMessageBox::question(ICore::dialogParent(),
                                             tr("Project Editing Failed"),
                                             tr("The project file %1 cannot be automatically changed.\n\n"
                                                "Rename %2 to %3 anyway?")
@@ -3808,14 +3871,13 @@ void ProjectExplorerPlugin::renameFile(Node *node, const QString &newFilePath)
                                             .arg(QDir::toNativeSeparators(oldFilePath))
                                             .arg(QDir::toNativeSeparators(newFilePath)));
             if (res == QMessageBox::Yes) {
-                QTC_CHECK(FileUtils::renameFile(oldFilePath, newFilePath));
+                QTC_CHECK(Core::FileUtils::renameFile(oldFilePath, newFilePath, handleGuards));
             }
-
         });
         return;
     }
 
-    if (FileUtils::renameFile(oldFilePath, newFilePath)) {
+    if (Core::FileUtils::renameFile(oldFilePath, newFilePath, handleGuards)) {
         // Tell the project plugin about rename
         if (!folderNode->renameFile(oldFilePath, newFilePath)) {
             const QString renameFileError
@@ -3825,7 +3887,7 @@ void ProjectExplorerPlugin::renameFile(Node *node, const QString &newFilePath)
                     .arg(projectFileName);
 
             QTimer::singleShot(0, [renameFileError]() {
-                QMessageBox::warning(ICore::mainWindow(),
+                QMessageBox::warning(ICore::dialogParent(),
                                      tr("Project Editing Failed"),
                                      renameFileError);
             });
@@ -3836,9 +3898,7 @@ void ProjectExplorerPlugin::renameFile(Node *node, const QString &newFilePath)
                 .arg(QDir::toNativeSeparators(newFilePath));
 
         QTimer::singleShot(0, [renameFileError]() {
-            QMessageBox::warning(ICore::mainWindow(),
-                                 tr("Cannot Rename File"),
-                                 renameFileError);
+            QMessageBox::warning(ICore::dialogParent(), tr("Cannot Rename File"), renameFileError);
         });
     }
 }
@@ -3921,11 +3981,43 @@ void ProjectExplorerPlugin::showQtSettings()
     dd->m_buildPropertiesSettings.showQtSettings = true;
 }
 
+void ProjectExplorerPlugin::setCustomParsers(const QList<CustomParserSettings> &settings)
+{
+    if (dd->m_customParsers != settings) {
+        dd->m_customParsers = settings;
+        emit m_instance->customParsersChanged();
+    }
+}
+
+void ProjectExplorerPlugin::addCustomParser(const CustomParserSettings &settings)
+{
+    QTC_ASSERT(settings.id.isValid(), return);
+    QTC_ASSERT(!contains(dd->m_customParsers, [&settings](const CustomParserSettings &s) {
+        return s.id == settings.id;
+    }), return);
+
+    dd->m_customParsers << settings;
+    emit m_instance->customParsersChanged();
+}
+
+void ProjectExplorerPlugin::removeCustomParser(Id id)
+{
+    Utils::erase(dd->m_customParsers, [id](const CustomParserSettings &s) {
+        return s.id == id;
+    });
+    emit m_instance->customParsersChanged();
+}
+
+const QList<CustomParserSettings> ProjectExplorerPlugin::customParsers()
+{
+    return dd->m_customParsers;
+}
+
 QStringList ProjectExplorerPlugin::projectFilePatterns()
 {
     QStringList patterns;
-    for (const QString &mime : dd->m_projectCreators.keys()) {
-        Utils::MimeType mt = Utils::mimeTypeForName(mime);
+    for (auto it = dd->m_projectCreators.cbegin(); it != dd->m_projectCreators.cend(); ++it) {
+        Utils::MimeType mt = Utils::mimeTypeForName(it.key());
         if (mt.isValid())
             patterns.append(mt.globPatterns());
     }
@@ -3935,8 +4027,8 @@ QStringList ProjectExplorerPlugin::projectFilePatterns()
 bool ProjectExplorerPlugin::isProjectFile(const Utils::FilePath &filePath)
 {
     Utils::MimeType mt = Utils::mimeTypeForFile(filePath.toString());
-    for (const QString &mime : dd->m_projectCreators.keys()) {
-        if (mt.inherits(mime))
+    for (auto it = dd->m_projectCreators.cbegin(); it != dd->m_projectCreators.cend(); ++it) {
+        if (mt.inherits(it.key()))
             return true;
     }
     return false;
@@ -3972,7 +4064,7 @@ void ProjectExplorerPlugin::updateActions()
     dd->updateActions();
 }
 
-void ProjectExplorerPlugin::activateProjectPanel(Core::Id panelId)
+void ProjectExplorerPlugin::activateProjectPanel(Utils::Id panelId)
 {
     Core::ModeManager::activateMode(Constants::MODE_SESSION);
     dd->m_proWindow->activateProjectPanel(panelId);
@@ -3989,6 +4081,11 @@ void ProjectExplorerPlugin::removeFromRecentProjects(const QString &fileName,
     dd->removeFromRecentProjects(fileName, displayName);
 }
 
+void ProjectExplorerPlugin::updateRunActions()
+{
+    dd->doUpdateRunActions();
+}
+
 QList<QPair<QString, QString> > ProjectExplorerPlugin::recentProjects()
 {
     return dd->recentProjects();
@@ -4003,9 +4100,9 @@ void ProjectManager::registerProjectCreator(const QString &mimeType,
 Project *ProjectManager::openProject(const Utils::MimeType &mt, const Utils::FilePath &fileName)
 {
     if (mt.isValid()) {
-        for (const QString &mimeType : dd->m_projectCreators.keys()) {
-            if (mt.matchesName(mimeType))
-                return dd->m_projectCreators[mimeType](fileName);
+        for (auto it = dd->m_projectCreators.cbegin(); it != dd->m_projectCreators.cend(); ++it) {
+            if (mt.matchesName(it.key()))
+                return it.value()(fileName);
         }
     }
     return nullptr;
@@ -4014,8 +4111,8 @@ Project *ProjectManager::openProject(const Utils::MimeType &mt, const Utils::Fil
 bool ProjectManager::canOpenProjectForMimeType(const Utils::MimeType &mt)
 {
     if (mt.isValid()) {
-        for (const QString &mimeType : dd->m_projectCreators.keys()) {
-            if (mt.matchesName(mimeType))
+        for (auto it = dd->m_projectCreators.cbegin(); it != dd->m_projectCreators.cend(); ++it) {
+            if (mt.matchesName(it.key()))
                 return true;
         }
     }

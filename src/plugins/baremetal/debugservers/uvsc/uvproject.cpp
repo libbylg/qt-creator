@@ -49,43 +49,14 @@ namespace Uv {
 
 const char kProjectSchema[] = "2.1";
 
-// Helpers
-
-QString toolsFilePath(const QString &uVisionFilePath)
-{
-    const QFileInfo fi(uVisionFilePath);
-    QDir dir = fi.dir();
-    if (!dir.cdUp())
-        return {};
-    return dir.absoluteFilePath("tools.ini");
-}
-
-QString targetUVisionPath()
-{
-    if (const Target *target = SessionManager::startupTarget()) {
-        if (const Kit *kit = target->kit()) {
-            const Runnable runnable = DebuggerKitAspect::runnable(kit);
-            return runnable.executable.toString();
-        }
-    }
-    return {};
-}
-
 static QString buildToolsetNumber(int number)
 {
     return QStringLiteral("0x%1").arg(QString::number(number, 16));
 }
 
-static QString buildVendor(const QString &vendor)
-{
-    // Remove the colon symbol.
-    const int colonIndex = vendor.lastIndexOf(':');
-    return vendor.mid(0, colonIndex);
-}
-
 static QString buildPackageId(const DeviceSelection::Package &package)
 {
-    return QStringLiteral("%1.%2.%3").arg(package.vendor, package.name, package.version);
+    return QStringLiteral("%1.%2.%3").arg(package.vendorName, package.name, package.version);
 }
 
 static QString buildCpu(const DeviceSelection &device)
@@ -140,6 +111,11 @@ static void extractAllFiles(const DebuggerRunTool *runTool, QStringList &include
     }
 }
 
+QString buildPackageId(const DeviceSelection &selection)
+{
+    return buildPackageId(selection.package);
+}
+
 // Project
 
 Project::Project(const UvscServerProvider *provider, DebuggerRunTool *runTool)
@@ -161,8 +137,7 @@ Project::Project(const UvscServerProvider *provider, DebuggerRunTool *runTool)
     const auto targetCommonOption = targetOption->appendPropertyGroup("TargetCommonOption");
     const DeviceSelection device = provider->deviceSelection();
     targetCommonOption->appendProperty("Device", device.name);
-    const QString vendor = buildVendor(device.vendor);
-    targetCommonOption->appendProperty("Vendor", vendor);
+    targetCommonOption->appendProperty("Vendor", device.vendorName);
     const QString packageId = buildPackageId(device.package);
     targetCommonOption->appendProperty("PackID", packageId);
     targetCommonOption->appendProperty("PackURL", device.package.url);

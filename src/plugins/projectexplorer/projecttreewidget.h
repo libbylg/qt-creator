@@ -67,6 +67,7 @@ public:
 
     void toggleAutoSynchronization();
     void editCurrentItem();
+    void expandCurrentNodeRecursively();
     void collapseAll();
     void expandAll();
 
@@ -86,6 +87,8 @@ private:
     void renamed(const Utils::FilePath &oldPath, const Utils::FilePath &newPath);
 
     void syncFromDocumentManager();
+
+    void expandNodeRecursively(const QModelIndex &index);
 
     QTreeView *m_view = nullptr;
     FlatModel *m_model = nullptr;
@@ -111,7 +114,7 @@ public:
 
     Core::NavigationView createWidget() override;
     void restoreSettings(QSettings *settings, int position, QWidget *widget) override;
-    void saveSettings(QSettings *settings, int position, QWidget *widget) override;
+    void saveSettings(Utils::QtcSettings *settings, int position, QWidget *widget) override;
 };
 
 } // namespace Internal

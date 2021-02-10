@@ -31,6 +31,11 @@
 #include <utils/utilsicons.h>
 
 #include <QIcon>
+#include <QLoggingCategory>
+
+namespace {
+static Q_LOGGING_CATEGORY(androidSdkModelLog, "qtc.android.sdkmodel", QtWarningMsg)
+}
 
 namespace Android {
 namespace Internal {
@@ -285,21 +290,18 @@ void AndroidSdkModel::selectMissingEssentials()
         if (!pendingPkgs.contains((*tool)->sdkStylePath()))
             continue;
 
-        if ((*tool)->type() == AndroidSdkPackage::PlatformToolsPackage)
-            addTool(tool); // Select Platform tools
-        else if ((*tool)->type() == AndroidSdkPackage::BuildToolsPackage)
-            addTool(tool); // Select build tools
-        else if ((*tool)->type() == AndroidSdkPackage::NDKPackage)
-            addTool(tool); // Select NDK Bundle
-
+        addTool(tool);
         pendingPkgs.removeOne((*tool)->sdkStylePath());
+
         if (pendingPkgs.isEmpty())
             break;
     }
 
     // Select SDK platform
     for (const SdkPlatform *platform : m_sdkPlatforms) {
-        if (pendingPkgs.contains(platform->sdkStylePath()) &&
+        if (!platform->installedLocation().isEmpty()) {
+            pendingPkgs.removeOne(platform->sdkStylePath());
+        } else if (pendingPkgs.contains(platform->sdkStylePath()) &&
             platform->installedLocation().isEmpty()) {
             auto i = index(0, 0, index(1, 0));
             m_changeState << platform;
@@ -309,6 +311,10 @@ void AndroidSdkModel::selectMissingEssentials()
         if (pendingPkgs.isEmpty())
             break;
     }
+
+    m_missingEssentials = pendingPkgs;
+    if (!m_missingEssentials.isEmpty())
+        qCDebug(androidSdkModelLog) << "Couldn't find some essential packages:" << m_missingEssentials;
 }
 
 QList<const AndroidSdkPackage *> AndroidSdkModel::userSelection() const

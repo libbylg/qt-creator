@@ -33,7 +33,7 @@
 QT_FORWARD_DECLARE_CLASS(QEasingCurve);
 QT_FORWARD_DECLARE_CLASS(QPainterPath);
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class CurveSegment;
 
@@ -50,6 +50,8 @@ public:
 
     bool isFromData() const;
 
+    bool hasUnified() const;
+
     double minimumTime() const;
 
     double maximumTime() const;
@@ -59,6 +61,8 @@ public:
     double maximumValue() const;
 
     std::string string() const;
+
+    QString unifyString() const;
 
     CurveSegment segment(double time) const;
 
@@ -96,4 +100,4 @@ private:
     std::vector<Keyframe> m_frames;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

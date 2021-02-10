@@ -27,6 +27,7 @@
 
 #include "algorithm.h"
 #include "qtcassert.h"
+#include "stringutils.h"
 
 #include <QDebug>
 #include <QDir>
@@ -157,7 +158,7 @@ void Environment::setupEnglishOutput(QStringList *environment)
 }
 
 FilePath Environment::searchInDirectory(const QStringList &execs, const FilePath &directory,
-                                        QSet<FilePath> &alreadyChecked) const
+                                        QSet<FilePath> &alreadyChecked)
 {
     const int checkedCount = alreadyChecked.count();
     alreadyChecked.insert(directory);
@@ -302,14 +303,19 @@ FilePaths Environment::path() const
 
 FilePaths Environment::pathListValue(const QString &varName) const
 {
-    const QStringList pathComponents = expandedValueForKey(varName)
-            .split(OsSpecificAspects::pathListSeparator(m_osType), QString::SkipEmptyParts);
+    const QStringList pathComponents = expandedValueForKey(varName).split(
+        OsSpecificAspects::pathListSeparator(m_osType), SkipEmptyParts);
     return transform(pathComponents, &FilePath::fromUserInput);
 }
 
 void Environment::modifySystemEnvironment(const EnvironmentItems &list)
 {
     staticSystemEnvironment->modify(list);
+}
+
+void Environment::setSystemEnvironment(const Environment &environment)
+{
+    *staticSystemEnvironment = environment;
 }
 
 /** Expand environment variables in a string.

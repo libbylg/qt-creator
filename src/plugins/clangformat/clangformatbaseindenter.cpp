@@ -332,7 +332,7 @@ Utils::Text::Replacements utf16Replacements(const QTextDocument *doc,
         if (isInsideDummyTextInLine(lineText, bufferLineText, lineColUtf16.column))
             continue;
 
-        lineColUtf16.column = std::min(lineColUtf16.column, lineText.length() + 1);
+        lineColUtf16.column = std::min(lineColUtf16.column, int(lineText.length()) + 1);
 
         const int utf16Offset = Utils::Text::positionInText(doc,
                                                             lineColUtf16.line,
@@ -343,7 +343,7 @@ Utils::Text::Replacements utf16Replacements(const QTextDocument *doc,
                                     .size();
         convertedReplacements.emplace_back(utf16Offset,
                                            utf16Length,
-                                           QString::fromStdString(replacement.getReplacementText()));
+                                           QString::fromStdString(replacement.getReplacementText().str()));
     }
 
     return convertedReplacements;
@@ -677,6 +677,11 @@ bool ClangFormatBaseIndenter::isElectricCharacter(const QChar &ch) const
         return true;
     }
     return false;
+}
+
+Utils::optional<int> ClangFormat::ClangFormatBaseIndenter::margin() const
+{
+    return styleForFile().ColumnLimit;
 }
 
 void ClangFormatBaseIndenter::autoIndent(const QTextCursor &cursor,

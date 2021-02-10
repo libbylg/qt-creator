@@ -27,13 +27,12 @@
 
 #include <utils/algorithm.h>
 #include <utils/fileutils.h>
-
 #include <utils/qtcassert.h>
 
 #include <QDebug>
 #include <QtEndian>
 #include <QFile>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QString>
 #include <QStringList>
 #include <QSysInfo>
@@ -159,6 +158,8 @@ static Abi::Architecture architectureFromQt()
         return Abi::PowerPCArchitecture;
     if (arch.startsWith("sh")) // Not in Qt documentation!
         return Abi::ShArchitecture;
+    if (arch.startsWith("avr32")) // Not in Qt documentation!
+        return Abi::Avr32Architecture;
     if (arch.startsWith("avr")) // Not in Qt documentation!
         return Abi::AvrArchitecture;
     if (arch.startsWith("asmjs"))
@@ -412,9 +413,13 @@ static Abis abiOf(const QByteArray &data)
             result.append(macAbiForCpu(type));
             pos += 20;
         }
-    } else if (getUint8(data, 0) == 'B' && getUint8(data, 1) == 'C'
-                && getUint8(data, 2) == 0xc0 && getUint8(data, 3) == 0xde) {
-        // https://llvm.org/docs/BitCodeFormat.html#llvm-ir-magic-number
+    } else if (// Qt 5.15+ https://webassembly.github.io/spec/core/binary/modules.html#binary-module
+               (getUint8(data, 0) == 0 && getUint8(data, 1) == 'a'
+                && getUint8(data, 2) == 's' && getUint8(data, 3) == 'm')
+
+               // Qt < 5.15 https://llvm.org/docs/BitCodeFormat.html#llvm-ir-magic-number
+               || (getUint8(data, 0) == 'B' && getUint8(data, 1) == 'C'
+                   && getUint8(data, 2) == 0xc0 && getUint8(data, 3) == 0xde)) {
         result.append(Abi(Abi::AsmJsArchitecture, Abi::UnknownOS, Abi::UnknownFlavor,
                           Abi::EmscriptenFormat, 32));
     } else if (data.size() >= 64){
@@ -454,7 +459,7 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
     if (machine.isEmpty())
         return Abi();
 
-    const QVector<QStringRef> parts = machine.splitRef(QRegExp("[ /-]"));
+    const QStringList parts = machine.split(QRegularExpression("[ /-]"));
 
     Architecture arch = UnknownArchitecture;
     OS os = UnknownOS;
@@ -463,7 +468,7 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
     unsigned char width = 0;
     int unknownCount = 0;
 
-    for (const QStringRef &p : parts) {
+    for (const QString &p : parts) {
         if (p == "unknown" || p == "pc"
                 || p == "gnu" || p == "uclibc"
                 || p == "86_64" || p == "redhat"
@@ -491,6 +496,19 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
             flavor = GenericFlavor;
             format = ElfFormat;
             width = 16;
+        } else if (p == "avr32") {
+            arch = Avr32Architecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 32;
+        } else if (p == "cr16") {
+            arch = CR16Architecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            // Note that GCC macro returns 32-bit value for this architecture.
+            width = 32;
         } else if (p == "msp430") {
             arch = Msp430Architecture;
             os = BareMetalOS;
@@ -503,6 +521,48 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
             flavor = GenericFlavor;
             format = ElfFormat;
             width = 16;
+        } else if (p == "rx") {
+            arch = RxArchitecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 32;
+        } else if (p == "sh") {
+            arch = ShArchitecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 32;
+        } else if (p == "v850") {
+            arch = V850Architecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 32;
+        } else if (p == "m68k") {
+            arch = M68KArchitecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 16;
+        } else if (p == "m32c") {
+            arch = M32CArchitecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 16;
+        } else if (p == "m32r") {
+            arch = M32RArchitecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 32;
+        } else if (p.startsWith("riscv")) {
+            arch = RiscVArchitecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = p.contains("64") ? 64 : 32;
         } else if (p.startsWith("mips")) {
             arch = MipsArchitecture;
             width = p.contains("64") ? 64 : 32;
@@ -666,6 +726,14 @@ bool Abi::isCompatibleWith(const Abi &other) const
     return isCompat;
 }
 
+bool Abi::isFullyCompatibleWith(const Abi &other) const
+{
+    return *this == other
+            || (wordWidth() == other.wordWidth()
+                && architecture() == other.architecture()
+                && compatibleMSVCFlavors(osFlavor(), other.osFlavor()));
+}
+
 bool Abi::isValid() const
 {
     return m_architecture != UnknownArchitecture
@@ -691,12 +759,16 @@ QString Abi::toString(const Architecture &a)
         return QLatin1String("arm");
     case AvrArchitecture:
         return QLatin1String("avr");
+    case Avr32Architecture:
+        return QLatin1String("avr32");
     case XtensaArchitecture:
         return QLatin1String("xtensa");
     case X86Architecture:
         return QLatin1String("x86");
     case Mcs51Architecture:
         return QLatin1String("mcs51");
+    case Mcs251Architecture:
+        return QLatin1String("mcs251");
     case MipsArchitecture:
         return QLatin1String("mips");
     case PowerPCArchitecture:
@@ -713,6 +785,30 @@ QString Abi::toString(const Architecture &a)
         return QLatin1String("msp430");
     case Rl78Architecture:
         return QLatin1String("rl78");
+    case C166Architecture:
+        return QLatin1String("c166");
+    case V850Architecture:
+        return QLatin1String("v850");
+    case Rh850Architecture:
+        return QLatin1String("rh850");
+    case RxArchitecture:
+        return QLatin1String("rx");
+    case K78Architecture:
+        return QLatin1String("78k");
+    case M68KArchitecture:
+        return QLatin1String("m68k");
+    case M32CArchitecture:
+        return QLatin1String("m32c");
+    case M16CArchitecture:
+        return QLatin1String("m16c");
+    case M32RArchitecture:
+        return QLatin1String("m32r");
+    case R32CArchitecture:
+        return QLatin1String("r32c");
+    case CR16Architecture:
+        return QLatin1String("cr16");
+    case RiscVArchitecture:
+        return QLatin1String("riscv");
     case UnknownArchitecture:
         Q_FALLTHROUGH();
     default:
@@ -789,7 +885,7 @@ QString Abi::toString(int w)
 Abi Abi::fromString(const QString &abiString)
 {
     Abi::Architecture architecture = UnknownArchitecture;
-    const QVector<QStringRef> abiParts = abiString.splitRef('-');
+    const QStringList abiParts = abiString.split('-');
     if (!abiParts.isEmpty()) {
         architecture = architectureFromString(abiParts.at(0));
         if (abiParts.at(0) != toString(architecture))
@@ -827,7 +923,7 @@ Abi Abi::fromString(const QString &abiString)
     return Abi(architecture, os, flavor, format, wordWidth);
 }
 
-Abi::Architecture Abi::architectureFromString(const QStringRef &a)
+Abi::Architecture Abi::architectureFromString(const QString &a)
 {
     if (a == "unknown")
         return UnknownArchitecture;
@@ -837,10 +933,14 @@ Abi::Architecture Abi::architectureFromString(const QStringRef &a)
         return ArmArchitecture;
     if (a == "avr")
         return AvrArchitecture;
+    if (a == "avr32")
+        return Avr32Architecture;
     if (a == "x86")
         return X86Architecture;
     if (a == "mcs51")
         return Mcs51Architecture;
+    if (a == "mcs251")
+        return Mcs251Architecture;
     if (a == "mips")
         return MipsArchitecture;
     if (a == "ppc")
@@ -855,6 +955,30 @@ Abi::Architecture Abi::architectureFromString(const QStringRef &a)
         return Msp430Architecture;
     if (a == "rl78")
         return Rl78Architecture;
+    if (a == "c166")
+        return C166Architecture;
+    if (a == "v850")
+        return V850Architecture;
+    if (a == "rh850")
+        return Rh850Architecture;
+    if (a == "rx")
+        return RxArchitecture;
+    if (a == "78k")
+        return K78Architecture;
+    if (a == "m68k")
+        return M68KArchitecture;
+    if (a == "m32c")
+        return M32CArchitecture;
+    if (a == "m16c")
+        return M16CArchitecture;
+    if (a == "m32r")
+        return M32RArchitecture;
+    if (a == "r32c")
+        return R32CArchitecture;
+    if (a == "cr16")
+        return CR16Architecture;
+    if (a == "riscv")
+        return RiscVArchitecture;
     else if (a == "xtensa")
         return XtensaArchitecture;
     if (a == "asmjs")
@@ -863,7 +987,7 @@ Abi::Architecture Abi::architectureFromString(const QStringRef &a)
     return UnknownArchitecture;
 }
 
-Abi::OS Abi::osFromString(const QStringRef &o)
+Abi::OS Abi::osFromString(const QString &o)
 {
     if (o == "unknown")
         return UnknownOS;
@@ -886,7 +1010,7 @@ Abi::OS Abi::osFromString(const QStringRef &o)
     return UnknownOS;
 }
 
-Abi::OSFlavor Abi::osFlavorFromString(const QStringRef &of, const OS os)
+Abi::OSFlavor Abi::osFlavorFromString(const QString &of, const OS os)
 {
     const int index = indexOfFlavor(of.toUtf8());
     const auto flavor = OSFlavor(index);
@@ -895,7 +1019,7 @@ Abi::OSFlavor Abi::osFlavorFromString(const QStringRef &of, const OS os)
     return UnknownFlavor;
 }
 
-Abi::BinaryFormat Abi::binaryFormatFromString(const QStringRef &bf)
+Abi::BinaryFormat Abi::binaryFormatFromString(const QString &bf)
 {
     if (bf == "unknown")
         return UnknownFormat;
@@ -916,13 +1040,13 @@ Abi::BinaryFormat Abi::binaryFormatFromString(const QStringRef &bf)
     return UnknownFormat;
 }
 
-unsigned char Abi::wordWidthFromString(const QStringRef &w)
+unsigned char Abi::wordWidthFromString(const QString &w)
 {
     if (!w.endsWith("bit"))
         return 0;
 
     bool ok = false;
-    const QStringRef number = w.string()->midRef(w.position(), w.count() - 3);
+    const QString number = w.left(w.size() - 3);
     const int bitCount = number.toInt(&ok);
     if (!ok)
         return 0;
@@ -1067,7 +1191,7 @@ Abis Abi::abisOfBinary(const Utils::FilePath &path)
             const QString fileName = QString::fromLocal8Bit(data.mid(0, 16));
             quint64 fileNameOffset = 0;
             if (fileName.startsWith("#1/"))
-                fileNameOffset = fileName.midRef(3).toInt();
+                fileNameOffset = fileName.mid(3).toInt();
             const QString fileLength = QString::fromLatin1(data.mid(48, 10));
 
             int toSkip = 60 + fileNameOffset;
@@ -1117,19 +1241,19 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiRoundTrips()
 {
     for (int i = 0; i <= Abi::UnknownArchitecture; ++i) {
         const QString string = Abi::toString(static_cast<Abi::Architecture>(i));
-        const Abi::Architecture arch = Abi::architectureFromString(QStringRef(&string));
+        const Abi::Architecture arch = Abi::architectureFromString(string);
         QCOMPARE(static_cast<Abi::Architecture>(i), arch);
     }
     for (int i = 0; i <= Abi::UnknownOS; ++i) {
         const QString string = Abi::toString(static_cast<Abi::OS>(i));
-        const Abi::OS os = Abi::osFromString(QStringRef(&string));
+        const Abi::OS os = Abi::osFromString(string);
         QCOMPARE(static_cast<Abi::OS>(i), os);
     }
     for (const Abi::OSFlavor flavorIt : Abi::allOsFlavors()) {
         const QString string = Abi::toString(flavorIt);
         for (int os = 0; os <= Abi::UnknownOS; ++os) {
             const auto osEnum = static_cast<Abi::OS>(os);
-            const Abi::OSFlavor flavor = Abi::osFlavorFromString(QStringRef(&string), osEnum);
+            const Abi::OSFlavor flavor = Abi::osFlavorFromString(string, osEnum);
             if (isGenericFlavor(flavorIt) && flavor != Abi::UnknownFlavor)
                 QVERIFY(isGenericFlavor(flavor));
             else if (flavor == Abi::UnknownFlavor && flavorIt != Abi::UnknownFlavor)
@@ -1140,12 +1264,12 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiRoundTrips()
     }
     for (int i = 0; i <= Abi::UnknownFormat; ++i) {
         QString string = Abi::toString(static_cast<Abi::BinaryFormat>(i));
-        Abi::BinaryFormat format = Abi::binaryFormatFromString(QStringRef(&string));
+        Abi::BinaryFormat format = Abi::binaryFormatFromString(string);
         QCOMPARE(static_cast<Abi::BinaryFormat>(i), format);
     }
     for (unsigned char i : {0, 8, 16, 32, 64}) {
         QString string = Abi::toString(i);
-        unsigned char wordwidth = Abi::wordWidthFromString(QStringRef(&string));
+        unsigned char wordwidth = Abi::wordWidthFromString(string);
         QCOMPARE(i, wordwidth);
     }
 }
@@ -1162,6 +1286,7 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiOfBinary_data()
             << QString::fromLatin1("/does/not/exist")
             << (QStringList());
 
+    // Clone test data from: https://git.qt.io/chstenge/creator-test-data
     // Set up prefix for test data now that we can be sure to have some tests to run:
     QString prefix = QString::fromLocal8Bit(qgetenv("QTC_TEST_EXTRADATALOCATION"));
     if (prefix.isEmpty())
@@ -1198,8 +1323,11 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiOfBinary_data()
     QTest::newRow("static QtCore: linux 64bit")
             << QString::fromLatin1("%1/static/linux-64bit-release.a").arg(prefix)
             << (QStringList() << QString::fromLatin1("x86-linux-generic-elf-64bit"));
-    QTest::newRow("static QtCore: asmjs emscripten 32bit")
+    QTest::newRow("static QtCore: asmjs emscripten 32bit (Qt < 5.15)")
             << QString::fromLatin1("%1/static/asmjs-emscripten.a").arg(prefix)
+            << (QStringList() << QString::fromLatin1("asmjs-unknown-unknown-emscripten-32bit"));
+    QTest::newRow("static QtCore: asmjs emscripten 32bit (Qt >= 5.15)")
+            << QString::fromLatin1("%1/static/asmjs-emscripten-5.15.a").arg(prefix)
             << (QStringList() << QString::fromLatin1("asmjs-unknown-unknown-emscripten-32bit"));
 
     QTest::newRow("static stdc++: mac fat")
@@ -1288,7 +1416,10 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiOfBinary()
     QFETCH(QString, file);
     QFETCH(QStringList, abis);
 
-    const Abis result = Abi::abisOfBinary(Utils::FilePath::fromString(file));
+    const Utils::FilePath fp = Utils::FilePath::fromString(file);
+    if (!fp.exists())
+        QSKIP("binary file not present");
+    const Abis result = Abi::abisOfBinary(fp);
     QCOMPARE(result.count(), abis.count());
     for (int i = 0; i < abis.count(); ++i)
         QCOMPARE(result.at(i).toString(), abis.at(i));
@@ -1401,6 +1532,10 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiFromTargetTriplet_data()
     QTest::newRow("avr") << int(Abi::AvrArchitecture)
                          << int(Abi::BareMetalOS) << int(Abi::GenericFlavor)
                          << int(Abi::ElfFormat) << 16;
+
+    QTest::newRow("avr32") << int(Abi::Avr32Architecture)
+                         << int(Abi::BareMetalOS) << int(Abi::GenericFlavor)
+                         << int(Abi::ElfFormat) << 32;
 
     QTest::newRow("asmjs-unknown-emscripten") << int(Abi::AsmJsArchitecture)
                                               << int(Abi::UnknownOS) << int(Abi::UnknownFlavor)

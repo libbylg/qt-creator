@@ -39,6 +39,7 @@
 
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 
 #include <QDir>
 #include <QMessageBox>
@@ -49,6 +50,7 @@ static char KEY_SELECTED_PROJECT[] = "SelectedProject";
 static char KEY_SELECTED_NODE[] = "SelectedFolderNode";
 static char KEY_IS_SUBPROJECT[] = "IsSubproject";
 static char KEY_VERSIONCONTROL[] = "VersionControl";
+static char KEY_QT_KEYWORDS_ENABLED[] = "QtKeywordsEnabled";
 
 namespace ProjectExplorer {
 
@@ -105,6 +107,7 @@ void JsonSummaryPage::initializePage()
     m_wizard->setValue(QLatin1String(KEY_SELECTED_NODE), QVariant());
     m_wizard->setValue(QLatin1String(KEY_IS_SUBPROJECT), false);
     m_wizard->setValue(QLatin1String(KEY_VERSIONCONTROL), QString());
+    m_wizard->setValue(QLatin1String(KEY_QT_KEYWORDS_ENABLED), false);
 
     connect(m_wizard, &JsonWizard::filesReady, this, &JsonSummaryPage::triggerCommit);
     connect(m_wizard, &JsonWizard::filesReady, this, &JsonSummaryPage::addToProject);
@@ -207,7 +210,7 @@ void JsonSummaryPage::addToProject(const JsonWizard::GeneratorFiles &files)
             return;
         }
         const QStringList dependencies = m_wizard->stringValue("Dependencies")
-                .split(':', QString::SkipEmptyParts);
+                .split(':', Qt::SkipEmptyParts);
         if (!dependencies.isEmpty())
             folder->addDependencies(dependencies);
     }
@@ -270,7 +273,7 @@ void JsonSummaryPage::updateProjectData(FolderNode *node)
             projectNode = projectNode->parentProjectNode();
         }
     }
-    m_wizard->setValue("QtKeywordsEnabled", qtKeyWordsEnabled);
+    m_wizard->setValue(QLatin1String(KEY_QT_KEYWORDS_ENABLED), qtKeyWordsEnabled);
 
     updateFileList();
 }

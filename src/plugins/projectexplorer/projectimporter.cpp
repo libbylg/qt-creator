@@ -42,26 +42,27 @@
 
 #include <QLoggingCategory>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QString>
 
 namespace ProjectExplorer {
 
-static const Core::Id KIT_IS_TEMPORARY("PE.tmp.isTemporary");
-static const Core::Id KIT_TEMPORARY_NAME("PE.tmp.Name");
-static const Core::Id KIT_FINAL_NAME("PE.tmp.FinalName");
-static const Core::Id TEMPORARY_OF_PROJECTS("PE.tmp.ForProjects");
+static const Utils::Id KIT_IS_TEMPORARY("PE.tmp.isTemporary");
+static const Utils::Id KIT_TEMPORARY_NAME("PE.tmp.Name");
+static const Utils::Id KIT_FINAL_NAME("PE.tmp.FinalName");
+static const Utils::Id TEMPORARY_OF_PROJECTS("PE.tmp.ForProjects");
 
-static Core::Id fullId(Core::Id id)
+static Utils::Id fullId(Utils::Id id)
 {
     const QString prefix = "PE.tmp.";
 
     const QString idStr = id.toString();
-    QTC_ASSERT(!idStr.startsWith(prefix), return Core::Id::fromString(idStr));
+    QTC_ASSERT(!idStr.startsWith(prefix), return Utils::Id::fromString(idStr));
 
-    return Core::Id::fromString(prefix + idStr);
+    return Utils::Id::fromString(prefix + idStr);
 }
 
-static bool hasOtherUsers(Core::Id id, const QVariant &v, Kit *k)
+static bool hasOtherUsers(Utils::Id id, const QVariant &v, Kit *k)
 {
     return Utils::contains(KitManager::kits(), [id, v, k](Kit *in) -> bool {
         if (in == k)
@@ -102,16 +103,33 @@ const QList<BuildInfo> ProjectImporter::import(const Utils::FilePath &importPath
     const auto handleFailure = [this, importPath, silent] {
         if (silent)
             return;
-        QMessageBox::critical(Core::ICore::mainWindow(), tr("No Build Found"),
+        QMessageBox::critical(Core::ICore::dialogParent(),
+                              tr("No Build Found"),
                               tr("No build found in %1 matching project %2.")
-                              .arg(importPath.toUserOutput(), projectFilePath().toUserOutput()));
+                                  .arg(importPath.toUserOutput(), projectFilePath().toUserOutput()));
     };
     qCDebug(log) << "Examining directory" << absoluteImportPath.toString();
-    QList<void *> dataList = examineDirectory(absoluteImportPath);
+    QString warningMessage;
+    QList<void *> dataList = examineDirectory(absoluteImportPath, &warningMessage);
     if (dataList.isEmpty()) {
         qCDebug(log) << "Nothing to import found in" << absoluteImportPath.toString();
         handleFailure();
         return result;
+    }
+    if (!warningMessage.isEmpty()) {
+        qCDebug(log) << "Warning when examining" << absoluteImportPath.toString();
+        // we should ask user before importing
+        if (silent)
+            return result;
+        QMessageBox dialog(Core::ICore::dialogParent());
+        dialog.setWindowTitle(tr("Import Warning"));
+        dialog.setText(warningMessage);
+        dialog.setIcon(QMessageBox::Warning);
+        QPushButton *acceptButton = dialog.addButton(tr("Import Build"), QMessageBox::AcceptRole);
+        dialog.addButton(QMessageBox::Cancel);
+        dialog.exec();
+        if (dialog.clickedButton() != acceptButton)
+            return result;
     }
 
     qCDebug(log) << "Looking for kits";
@@ -216,7 +234,7 @@ void ProjectImporter::makePersistent(Kit *k) const
     k->removeKey(KIT_FINAL_NAME);
 
     foreach (const TemporaryInformationHandler &tih, m_temporaryHandlers) {
-        const Core::Id fid = fullId(tih.id);
+        const Utils::Id fid = fullId(tih.id);
         const QVariantList temporaryValues = k->value(fid).toList();
 
         // Mark permanent in all other kits:
@@ -240,7 +258,7 @@ void ProjectImporter::cleanupKit(Kit *k) const
 {
     QTC_ASSERT(k, return);
     foreach (const TemporaryInformationHandler &tih, m_temporaryHandlers) {
-        const Core::Id fid = fullId(tih.id);
+        const Utils::Id fid = fullId(tih.id);
         const QVariantList temporaryValues
                 = Utils::filtered(k->value(fid).toList(), [fid, k](const QVariant &v) {
            return !hasOtherUsers(fid, v, k);
@@ -308,7 +326,7 @@ Kit *ProjectImporter::createTemporaryKit(const KitSetupFunction &setup) const
     return KitManager::registerKit(init); // potentially adds kits to other targetsetuppages
 }
 
-bool ProjectImporter::findTemporaryHandler(Core::Id id) const
+bool ProjectImporter::findTemporaryHandler(Utils::Id id) const
 {
     return Utils::contains(m_temporaryHandlers, [id](const TemporaryInformationHandler &ch) { return ch.id == id; });
 }
@@ -340,7 +358,7 @@ void ProjectImporter::persistTemporaryToolChains(Kit *k, const QVariantList &vl)
     }
 }
 
-void ProjectImporter::useTemporaryKitAspect(Core::Id id,
+void ProjectImporter::useTemporaryKitAspect(Utils::Id id,
                                                  ProjectImporter::CleanupFunction cleanup,
                                                  ProjectImporter::PersistFunction persist)
 {
@@ -348,11 +366,11 @@ void ProjectImporter::useTemporaryKitAspect(Core::Id id,
     m_temporaryHandlers.append({id, cleanup, persist});
 }
 
-void ProjectImporter::addTemporaryData(Core::Id id, const QVariant &cleanupData, Kit *k) const
+void ProjectImporter::addTemporaryData(Utils::Id id, const QVariant &cleanupData, Kit *k) const
 {
     QTC_ASSERT(k, return);
     QTC_ASSERT(findTemporaryHandler(id), return);
-    const Core::Id fid = fullId(id);
+    const Utils::Id fid = fullId(id);
 
     KitGuard guard(k);
     QVariantList tmp = k->value(fid).toList();
@@ -361,9 +379,9 @@ void ProjectImporter::addTemporaryData(Core::Id id, const QVariant &cleanupData,
     k->setValue(fid, tmp);
 }
 
-bool ProjectImporter::hasKitWithTemporaryData(Core::Id id, const QVariant &data) const
+bool ProjectImporter::hasKitWithTemporaryData(Utils::Id id, const QVariant &data) const
 {
-    Core::Id fid = fullId(id);
+    Utils::Id fid = fullId(id);
     return Utils::contains(KitManager::kits(), [data, fid](Kit *k) {
         return k->value(fid).toList().contains(data);
     });

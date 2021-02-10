@@ -24,14 +24,14 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import MouseArea3D 1.0
 
 Model {
     id: rotateRing
 
     property View3D view3D
-    property alias color: material.emissiveColor
+    property alias color: material.diffuseColor
     property Node targetNode: null
     property bool dragging: mouseAreaMain.dragging
     property bool active: false
@@ -60,7 +60,7 @@ Model {
 
     materials: DefaultMaterial {
         id: material
-        emissiveColor: "white"
+        diffuseColor: "white"
         lighting: DefaultMaterial.NoLighting
     }
 
@@ -80,18 +80,16 @@ Model {
         // Need to recreate vector as we need to adjust it and we can't do that on reference of
         // scenePosition, which is read-only property
         var scenePos = mouseAreaMain.pivotScenePosition(targetNode);
-        if (targetNode && targetNode.orientation === Node.RightHanded)
-            scenePos.z = -scenePos.z
 
         _targetPosOnScreen = view3D.mapFrom3DScene(scenePos);
         _targetPosOnScreen.z = 0;
         _pointerPosPressed = Qt.vector3d(screenPos.x, screenPos.y, 0);
         _trackBall = angle < 0.1;
 
-        // Recreate vector so we don't follow the changes in targetNode.rotation
-        _startRotation = Qt.vector3d(targetNode.rotation.x,
-                                     targetNode.rotation.y,
-                                     targetNode.rotation.z);
+        // Recreate vector so we don't follow the changes in targetNode.eulerRotation
+        _startRotation = Qt.vector3d(targetNode.eulerRotation.x,
+                                     targetNode.eulerRotation.y,
+                                     targetNode.eulerRotation.z);
         currentAngle = 0;
         currentMousePos = screenPos;
     }

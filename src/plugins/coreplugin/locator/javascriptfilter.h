@@ -29,10 +29,11 @@
 
 #include <QTimer>
 
+#include <atomic>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
-class QScriptEngine;
+class QJSEngine;
 QT_END_NAMESPACE
 
 namespace Core {
@@ -55,9 +56,9 @@ public:
 private:
     void setupEngine();
 
-    mutable std::unique_ptr<QScriptEngine> m_engine;
+    mutable std::unique_ptr<QJSEngine> m_engine;
     QTimer m_abortTimer;
-    bool m_aborted = false;
+    std::atomic_bool m_aborted = false;
 };
 
 } // namespace Internal

@@ -30,6 +30,8 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qhash.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/qvariant.h>
 #include <QtGui/qvector3d.h>
 #include <QtGui/qmatrix4x4.h>
 
@@ -37,7 +39,6 @@ QT_BEGIN_NAMESPACE
 class QQuick3DCamera;
 class QQuick3DNode;
 class QQuick3DViewport;
-class QQuickWindow;
 class QQuickItem;
 QT_END_NAMESPACE
 
@@ -66,27 +67,40 @@ public:
                                  float defaultLookAtDistance, const QVector3D &lookAt,
                                  float zoomFactor, bool relative);
     Q_INVOKABLE QVector4D focusObjectToCamera(QQuick3DCamera *camera, float defaultLookAtDistance,
-                                            QQuick3DNode *targetObject, QQuick3DViewport *viewPort,
-                                            float oldZoom, bool updateZoom = true);
+                                              QQuick3DNode *targetObject, QQuick3DViewport *viewPort,
+                                              float oldZoom, bool updateZoom = true,
+                                              bool closeUp = false);
+    Q_INVOKABLE bool fuzzyCompare(double a, double b);
     Q_INVOKABLE void delayedPropertySet(QObject *obj, int delay, const QString &property,
                                         const QVariant& value);
     Q_INVOKABLE QQuick3DNode *resolvePick(QQuick3DNode *pickNode);
+
+    Q_INVOKABLE void registerGizmoTarget(QQuick3DNode *node);
+    Q_INVOKABLE void unregisterGizmoTarget(QQuick3DNode *node);
+    Q_INVOKABLE bool isLocked(QQuick3DNode *node);
+    Q_INVOKABLE bool isHidden(QQuick3DNode *node);
+
     Q_INVOKABLE void storeToolState(const QString &sceneId, const QString &tool,
                                     const QVariant &state, int delayEmit = 0);
     void initToolStates(const QString &sceneId, const QVariantMap &toolStates);
-    Q_INVOKABLE void storeWindowState(QQuickWindow *w);
-    void restoreWindowState(QQuickWindow *w);
     Q_INVOKABLE void enableItemUpdate(QQuickItem *item, bool enable);
     Q_INVOKABLE QVariantMap getToolStates(const QString &sceneId);
+    QString globalStateId() const;
+    QString lastSceneIdKey() const;
+    QString rootSizeKey() const;
+
+    Q_INVOKABLE double brightnessScaler() const;
 
     bool isMacOS() const;
 
 signals:
     void overlayUpdateNeeded();
     void toolStateChanged(const QString &sceneId, const QString &tool, const QVariant &toolState);
+    void hiddenStateChanged(QQuick3DNode *node);
+    void lockedStateChanged(QQuick3DNode *node);
 
-private slots:
-    void doRestoreWindowState(QQuickWindow *w, const QVariantMap &windowState);
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) final;
 
 private:
     void handlePendingToolStateUpdate();
@@ -95,6 +109,7 @@ private:
     QTimer m_toolStateUpdateTimer;
     QHash<QString, QVariantMap> m_toolStates;
     QHash<QString, QVariantMap> m_toolStatesPending;
+    QSet<QQuick3DNode *> m_gizmoTargets;
 };
 
 }

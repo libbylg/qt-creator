@@ -33,6 +33,7 @@ namespace QmlDesigner {
 
 class StatesEditorModel;
 class StatesEditorWidget;
+class AnnotationEditor;
 
 class StatesEditorView : public AbstractView {
     Q_OBJECT
@@ -44,6 +45,12 @@ public:
     void renameState(int internalNodeId,const QString &newName);
     void setWhenCondition(int internalNodeId, const QString &condition);
     void resetWhenCondition(int internalNodeId);
+    void setStateAsDefault(int internalNodeId);
+    void resetDefaultState();
+    bool hasDefaultState() const;
+    void setAnnotation(int internalNodeId);
+    void removeAnnotation(int internalNodeId);
+    bool hasAnnotation(int internalNodeId) const;
     bool validStateName(const QString &name) const;
     QString currentStateName() const;
     void setCurrentState(const QmlModelState &state);
@@ -99,6 +106,7 @@ private:
     QPointer<StatesEditorWidget> m_statesEditorWidget;
     int m_lastIndex;
     bool m_block = false;
+    QPointer<AnnotationEditor> m_editor;
 };
 
 } // namespace QmlDesigner

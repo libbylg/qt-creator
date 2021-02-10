@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2021 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -30,11 +30,10 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \page creator-editor-external.html
     \if defined(qtdesignstudio)
     \previouspage creator-qml-performance-monitor.html
-    \nextpage studio-help.html
+    \nextpage creator-telemetry.html
     \else
     \previouspage creator-keyboard-shortcuts.html
     \nextpage creator-task-lists.html
@@ -70,8 +69,8 @@
     \uicontrol Linguist > \uicontrol {Release Translations (lrelease)}.
 
     By default, the project .pro file is passed to the tools as an argument. To
-    specify other command line arguments for the tools, select \uicontrol {Tools >
-    External > Configure}.
+    specify other command line arguments for the tools, select \uicontrol Tools >
+    \uicontrol External > \uicontrol Configure.
 
     To open TS files in Qt Linguist, right-click a TS file in the
     \uicontrol Projects or \uicontrol {File System} view and select
@@ -107,13 +106,19 @@
 
     \image qtcreator-external-tools.png
 
+    Select the \inlineimage replace.png
+    (\uicontrol {Variables}) button in a field to select from a list of
+    \l{Using Qt Creator Variables}{variables} that are available in a
+    particular context.
+
     To configure external tools:
 
     \list 1
 
-        \li Select \uicontrol {Tools > External > Configure}.
+        \li Select \uicontrol Tools > \uicontrol External >
+            \uicontrol Configure.
 
-        \li Select \uicontrol {Add > Add Tool}
+        \li Select \uicontrol Add > \uicontrol {Add Tool}
             to add a new tool. You can also select \uicontrol {Add Category} to add a
             new category.
 
@@ -163,7 +168,8 @@
 
     \endlist
 
-    The category and tool are added to the \uicontrol {Tools > External} menu.
+    The category and tool are added to the \uicontrol Tools >
+    \uicontrol External menu.
 
     If you change the configuration of preconfigured tools, you can later
     revert the changes by selecting the \uicontrol Reset button.

@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import MouseArea3D 1.0
 
 DirectionalDraggable {
@@ -44,7 +44,7 @@ DirectionalDraggable {
         scale: Qt.vector3d(0.020, 0.020, 0.020)
         materials: DefaultMaterial {
             id: material
-            emissiveColor: scaleRod.color
+            diffuseColor: scaleRod.color
             lighting: DefaultMaterial.NoLighting
         }
     }

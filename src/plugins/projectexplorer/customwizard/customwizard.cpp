@@ -148,7 +148,7 @@ void CustomWizard::setParameters(const CustomWizardParametersPtr &p)
 
     setId(p->id);
     setSupportedProjectTypes((p->kind == Core::IWizardFactory::FileWizard)
-                             ?  QSet<Core::Id>() : QSet<Core::Id>() << "UNKNOWN_PROJECT");
+                             ?  QSet<Utils::Id>() : QSet<Utils::Id>() << "UNKNOWN_PROJECT");
     setIcon(p->icon);
     setDescription(p->description);
     setDisplayName(p->displayName);
@@ -470,7 +470,7 @@ QList<Core::IWizardFactory *> CustomWizard::createWizards()
 
     if (CustomWizardPrivate::verbose) { // Print to output pane for Windows.
         qWarning("%s", qPrintable(verboseLog));
-        Core::MessageManager::write(verboseLog, Core::MessageManager::ModeSwitch);
+        Core::MessageManager::writeDisrupting(verboseLog);
     }
     return rc;
 }

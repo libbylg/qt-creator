@@ -30,6 +30,8 @@
 #include "runcontrol.h"
 #include "target.h"
 
+#include <projectexplorer/buildaspects.h>
+
 #include <utils/qtcassert.h>
 
 #include <QTimer>
@@ -95,12 +97,16 @@ Kit *BuildSystem::kit() const
     return d->m_target->kit();
 }
 
+BuildConfiguration *BuildSystem::buildConfiguration() const
+{
+    return d->m_buildConfiguration;
+}
+
 void BuildSystem::emitParsingStarted()
 {
     QTC_ASSERT(!d->m_isParsing, return);
 
     d->m_isParsing = true;
-    d->m_hasParsingData = false;
     emit parsingStarted();
     emit d->m_target->parsingStarted();
 }
@@ -140,6 +146,26 @@ void BuildSystem::requestParse()
 void BuildSystem::requestDelayedParse()
 {
     requestParseHelper(1000);
+}
+
+void BuildSystem::requestParseWithCustomDelay(int delayInMs)
+{
+    requestParseHelper(delayInMs);
+}
+
+void BuildSystem::cancelDelayedParseRequest()
+{
+    d->m_delayedParsingTimer.stop();
+}
+
+void BuildSystem::setParseDelay(int delayInMs)
+{
+    d->m_delayedParsingTimer.setInterval(delayInMs);
+}
+
+int BuildSystem::parseDelay() const
+{
+    return d->m_delayedParsingTimer.interval();
 }
 
 bool BuildSystem::isParsing() const
@@ -226,7 +252,7 @@ QStringList BuildSystem::filesGeneratedFrom(const QString &sourceFile) const
     return {};
 }
 
-QVariant BuildSystem::additionalData(Core::Id id) const
+QVariant BuildSystem::additionalData(Utils::Id id) const
 {
     Q_UNUSED(id)
     return {};
@@ -314,9 +340,23 @@ void BuildSystem::emitBuildSystemUpdated()
     target()->buildSystemUpdated(this);
 }
 
+void BuildSystem::setExtraData(const QString &buildKey, Utils::Id dataKey, const QVariant &data)
+{
+    const ProjectNode *node = d->m_target->project()->findNodeForBuildKey(buildKey);
+    QTC_ASSERT(node, return);
+    node->setData(dataKey, data);
+}
+
+QVariant BuildSystem::extraData(const QString &buildKey, Utils::Id dataKey) const
+{
+    const ProjectNode *node = d->m_target->project()->findNodeForBuildKey(buildKey);
+    QTC_ASSERT(node, return {});
+    return node->data(dataKey);
+}
+
 QString BuildSystem::disabledReason(const QString &buildKey) const
 {
-    if (hasParsingData()) {
+    if (!hasParsingData()) {
         QString msg = isParsing() ? tr("The project is currently being parsed.")
                                   : tr("The project could not be fully parsed.");
         const FilePath projectFilePath = buildTarget(buildKey).projectFilePath;
@@ -324,6 +364,12 @@ QString BuildSystem::disabledReason(const QString &buildKey) const
             msg += '\n' + tr("The project file \"%1\" does not exist.").arg(projectFilePath.toString());
         return msg;
     }
+    return {};
+}
+
+CommandLine BuildSystem::commandLineForTests(const QList<QString> & /*tests*/,
+                                             const QStringList & /*options*/) const
+{
     return {};
 }
 

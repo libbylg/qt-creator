@@ -30,7 +30,12 @@
 
 #include <utils/filesystemwatcher.h>
 
+namespace ProjectExplorer { class Kit; }
+
 namespace Nim {
+
+Utils::FilePath nimPathFromKit(ProjectExplorer::Kit *kit);
+Utils::FilePath nimblePathFromKit(ProjectExplorer::Kit *kit);
 
 class NimProjectScanner : public QObject
 {
@@ -39,7 +44,6 @@ class NimProjectScanner : public QObject
 public:
     explicit NimProjectScanner(ProjectExplorer::Project *project);
 
-    void setFilter(const ProjectExplorer::TreeScanner::FileFilter &filter);
     void startScan();
     void watchProjectFilePath();
 
@@ -53,7 +57,7 @@ public:
 signals:
     void finished();
     void requestReparse();
-    void directoryChanged();
+    void directoryChanged(const QString &path);
     void fileChanged(const QString &path);
 
 private:
@@ -87,11 +91,6 @@ public:
     void triggerParsing() override;
 
 protected:
-    void loadSettings();
-    void saveSettings();
-
-    void collectProjectFiles();
-
     ParseGuard m_guard;
     NimProjectScanner m_projectScanner;
 };

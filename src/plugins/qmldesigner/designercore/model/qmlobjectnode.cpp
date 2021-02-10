@@ -44,7 +44,7 @@
 #include <qmldesignerplugin.h>
 #endif
 
-#include <QRegExp>
+#include <QRegularExpression>
 
 namespace QmlDesigner {
 
@@ -246,8 +246,9 @@ bool QmlObjectNode::isTranslatableText(const PropertyName &name) const
     if (modelNode().metaInfo().isValid() && modelNode().metaInfo().hasProperty(name))
         if (modelNode().metaInfo().propertyTypeName(name) == "QString" || modelNode().metaInfo().propertyTypeName(name) == "string") {
             if (modelNode().hasBindingProperty(name)) {
-                static QRegExp regularExpressionPatter(QLatin1String("qsTr(|Id|anslate)\\(\".*\"\\)"));
-                return regularExpressionPatter.exactMatch(modelNode().bindingProperty(name).expression());
+                static QRegularExpression regularExpressionPattern(
+                            QLatin1String("^qsTr(|Id|anslate)\\(\".*\"\\)$"));
+                return modelNode().bindingProperty(name).expression().contains(regularExpressionPattern);
             }
 
             return false;
@@ -259,9 +260,12 @@ bool QmlObjectNode::isTranslatableText(const PropertyName &name) const
 QString QmlObjectNode::stripedTranslatableText(const PropertyName &name) const
 {
     if (modelNode().hasBindingProperty(name)) {
-        static QRegExp regularExpressionPatter(QLatin1String("qsTr(|Id|anslate)\\(\"(.*)\"\\)"));
-        if (regularExpressionPatter.exactMatch(modelNode().bindingProperty(name).expression()))
-            return regularExpressionPatter.cap(2);
+        static QRegularExpression regularExpressionPattern(
+                    QLatin1String("^qsTr(|Id|anslate)\\(\"(.*)\"\\)$"));
+        const QRegularExpressionMatch match = regularExpressionPattern.match(
+                    modelNode().bindingProperty(name).expression());
+        if (match.hasMatch())
+            return match.captured(2);
         return instanceValue(name).toString();
     }
     return instanceValue(name).toString();
@@ -367,18 +371,35 @@ void QmlObjectNode::destroy()
         stateOperation.modelNode().destroy(); //remove of belonging StatesOperations
     }
 
-    for (const ModelNode &timelineNode : view()->allModelNodes()) {
-        if (QmlTimeline::isValidQmlTimeline(timelineNode)) {
-            QmlTimeline timeline(timelineNode);
-            timeline.destroyKeyframesForTarget(modelNode());
-        }
+    QVector<ModelNode> timelineNodes;
+    const auto allNodes = view()->allModelNodes();
+    for (const auto &timelineNode : allNodes) {
+        if (QmlTimeline::isValidQmlTimeline(timelineNode))
+            timelineNodes.append(timelineNode);
     }
 
-    if (QmlFlowActionAreaNode::isValidQmlFlowActionAreaNode(modelNode()))
-        QmlFlowActionAreaNode(modelNode()).destroyTarget();
+    const auto subNodes = modelNode().allSubModelNodesAndThisNode();
+    for (auto &timelineNode : qAsConst(timelineNodes)) {
+        QmlTimeline timeline(timelineNode);
+        for (const auto &subNode : subNodes)
+            timeline.destroyKeyframesForTarget(subNode);
+    }
+
+    bool wasFlowEditorTarget = false;
+    if (QmlFlowTargetNode::isFlowEditorTarget(modelNode())) {
+        QmlFlowTargetNode(modelNode()).destroyTargets();
+        wasFlowEditorTarget = true;
+    }
 
     removeStateOperationsForChildren(modelNode());
+    BindingProperty::deleteAllReferencesTo(modelNode());
+
+    QmlFlowViewNode root(view()->rootModelNode());
+
     modelNode().destroy();
+
+    if (wasFlowEditorTarget && root.isValid())
+        root.removeDanglingTransitions();
 }
 
 void QmlObjectNode::ensureAliasExport()
@@ -710,6 +731,11 @@ uint qHash(const QmlObjectNode &node)
 QString QmlObjectNode::simplifiedTypeName() const
 {
     return modelNode().simplifiedTypeName();
+}
+
+QStringList QmlObjectNode::allStateNames() const
+{
+    return nodeInstance().allStateNames();
 }
 
 } //QmlDesigner

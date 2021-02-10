@@ -82,7 +82,7 @@ public:
         return this == globalMacroExpander()->d ? false : globalMacroExpander()->d->resolveMacro(name, ret, seen);
     }
 
-    QString value(const QByteArray &variable, bool *found)
+    QString value(const QByteArray &variable, bool *found) const
     {
         MacroExpander::StringFunction sf = m_map.value(variable);
         if (sf) {
@@ -195,7 +195,7 @@ using namespace Internal;
 
     If the string that you want to parametrize is settable by the user, through a QLineEdit or
     QTextEdit derived class, you should add a variable chooser to your UI, which allows adding
-    variables to the string by browsing through a list. See Core::VariableChooser for more
+    variables to the string by browsing through a list. See Utils::VariableChooser for more
     details.
 
     \section2 Expanding Strings
@@ -343,10 +343,11 @@ static QByteArray fullPrefix(const QByteArray &prefix)
  * \sa registerVariables(), registerIntVariable(), registerFileVariables()
  */
 void MacroExpander::registerPrefix(const QByteArray &prefix, const QString &description,
-                                   const MacroExpander::PrefixFunction &value)
+                                   const MacroExpander::PrefixFunction &value, bool visible)
 {
     QByteArray tmp = fullPrefix(prefix);
-    d->m_descriptions.insert(tmp + "<value>", description);
+    if (visible)
+        d->m_descriptions.insert(tmp + "<value>", description);
     d->m_prefixMap.insert(tmp, value);
 }
 

@@ -320,7 +320,6 @@ Wizard::Wizard(QWidget *parent, Qt::WindowFlags flags) :
     setOption(QWizard::NoBackButtonOnStartPage, true);
     if (!Utils::creatorTheme()->preferredStyles().isEmpty())
         setWizardStyle(QWizard::ModernStyle);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     if (HostOsInfo::isMacHost()) {
         setButtonLayout(QList<QWizard::WizardButton>()
@@ -386,9 +385,9 @@ QSet<QString> Wizard::fieldNames() const
 QHash<QString, QVariant> Wizard::variables() const
 {
     QHash<QString, QVariant> result;
-    foreach (const QString &f, fieldNames()) {
+    const QSet<QString> fields = fieldNames();
+    for (const QString &f : fields)
         result.insert(f, field(f));
-    }
     return result;
 }
 
@@ -411,7 +410,7 @@ void Wizard::showVariables()
     QHash<QString, QVariant> vars = variables();
     QList<QString> keys = vars.keys();
     sort(keys);
-    foreach (const QString &key, keys) {
+    for (const QString &key : qAsConst(keys)) {
         const QVariant &v = vars.value(key);
         result += QLatin1String("  <tr><td>")
                 + key + QLatin1String("</td><td>")
@@ -567,7 +566,7 @@ class WizardProgressPrivate
 public:
     WizardProgressPrivate() = default;
 
-    bool isNextItem(WizardProgressItem *item, WizardProgressItem *nextItem) const;
+    static bool isNextItem(WizardProgressItem *item, WizardProgressItem *nextItem);
     // if multiple paths are possible the empty list is returned
     QList<WizardProgressItem *> singlePathBetween(WizardProgressItem *fromItem, WizardProgressItem *toItem) const;
     void updateReachableItems();
@@ -598,7 +597,7 @@ public:
     WizardProgressItem *m_nextShownItem;
 };
 
-bool WizardProgressPrivate::isNextItem(WizardProgressItem *item, WizardProgressItem *nextItem) const
+bool WizardProgressPrivate::isNextItem(WizardProgressItem *item, WizardProgressItem *nextItem)
 {
     QHash<WizardProgressItem *, bool> visitedItems;
     QList<WizardProgressItem *> workingItems = item->nextItems();
@@ -768,7 +767,7 @@ void WizardProgress::removePage(int pageId)
     item->d_ptr->m_pages.removeOne(pageId);
 }
 
-QList<int> WizardProgress::pages(WizardProgressItem *item) const
+QList<int> WizardProgress::pages(WizardProgressItem *item)
 {
     return item->pages();
 }
@@ -932,7 +931,7 @@ void WizardProgressItem::setNextItems(const QList<WizardProgressItem *> &items)
     // check if we create cycle
     for (int i = 0; i < items.count(); i++) {
         WizardProgressItem *nextItem = items.at(i);
-        if (nextItem == this || d->m_wizardProgress->d_ptr->isNextItem(nextItem, this)) {
+        if (nextItem == this || WizardProgressPrivate::isNextItem(nextItem, this)) {
             qWarning("WizardProgress::setNextItems: Setting one of the next items would create a cycle");
             return;
         }

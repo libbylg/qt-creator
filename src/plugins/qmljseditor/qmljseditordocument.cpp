@@ -36,12 +36,15 @@
 #include "qmloutlinemodel.h"
 
 #include <coreplugin/coreconstants.h>
-#include <coreplugin/infobar.h>
 #include <coreplugin/modemanager.h>
 
 #include <qmljstools/qmljsindenter.h>
 #include <qmljstools/qmljsmodelmanager.h>
 #include <qmljstools/qmljsqtstylecodeformatter.h>
+
+#include <utils/infobar.h>
+
+#include <QDebug>
 
 const char QML_UI_FILE_WARNING[] = "QmlJSEditor.QmlUiFileWarning";
 
@@ -69,7 +72,7 @@ struct Declaration
 class FindIdDeclarations: protected Visitor
 {
 public:
-    using Result = QHash<QString, QList<AST::SourceLocation> >;
+    using Result = QHash<QString, QList<SourceLocation> >;
 
     Result operator()(Document::Ptr doc)
     {
@@ -86,7 +89,7 @@ protected:
         QString text;
         for (; id; id = id->next) {
             if (!id->name.isEmpty())
-                text += id->name;
+                text += id->name.toString();
             else
                 text += QLatin1Char('?');
 
@@ -110,7 +113,7 @@ protected:
                 if (auto idExpr = AST::cast<const AST::IdentifierExpression *>(stmt->expression)) {
                     if (!idExpr->name.isEmpty()) {
                         const QString &id = idExpr->name.toString();
-                        QList<AST::SourceLocation> *locs = &_ids[id];
+                        QList<SourceLocation> *locs = &_ids[id];
                         locs->append(idExpr->firstSourceLocation());
                         locs->append(_maybeIds.value(id));
                         _maybeIds.remove(id);
@@ -136,6 +139,11 @@ protected:
                 _maybeIds[name].append(node->identifierToken);
         }
         return false;
+    }
+
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth while visiting AST in FindIdDeclarations");
     }
 
 private:
@@ -166,7 +174,7 @@ protected:
         QString text;
         for (; id; id = id->next) {
             if (!id->name.isEmpty())
-                text += id->name;
+                text += id->name.toString();
             else
                 text += QLatin1Char('?');
 
@@ -286,12 +294,12 @@ protected:
         init(&decl, ast);
 
         decl.text.fill(QLatin1Char(' '), _depth);
-        decl.text += ast->name;
+        decl.text += ast->name.toString();
 
         decl.text += QLatin1Char('(');
         for (FormalParameterList *it = ast->formals; it; it = it->next) {
             if (!it->element->bindingIdentifier.isEmpty())
-                decl.text += it->element->bindingIdentifier;
+                decl.text += it->element->bindingIdentifier.toString();
 
             if (it->next)
                 decl.text += QLatin1String(", ");
@@ -311,7 +319,7 @@ protected:
 
         Declaration decl;
         decl.text.fill(QLatin1Char(' '), _depth);
-        decl.text += ast->bindingIdentifier;
+        decl.text += ast->bindingIdentifier.toString();
 
         const SourceLocation first = ast->identifierToken;
         decl.startLine = first.startLine;
@@ -334,12 +342,12 @@ protected:
             init(&decl, ast);
 
             decl.text.fill(QLatin1Char(' '), _depth);
-            decl.text += field->name;
+            decl.text += field->name.toString();
 
             decl.text += QLatin1Char('(');
             for (FormalParameterList *it = funcExpr->formals; it; it = it->next) {
                 if (!it->element->bindingIdentifier.isEmpty())
-                    decl.text += it->element->bindingIdentifier;
+                    decl.text += it->element->bindingIdentifier.toString();
 
                 if (it->next)
                     decl.text += QLatin1String(", ");
@@ -414,6 +422,11 @@ protected:
         return true;
     }
 
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth while visiting AST in CreateRanges");
+    }
+
     Range createRange(AST::UiObjectMember *member, AST::UiObjectInitializer *ast)
     {
         return createRange(member, member->firstSourceLocation(), ast->rbraceToken);
@@ -429,7 +442,7 @@ protected:
         return createRange(ast, block->lbraceToken, block->rbraceToken);
     }
 
-    Range createRange(AST::Node *ast, AST::SourceLocation start, AST::SourceLocation end)
+    Range createRange(AST::Node *ast, SourceLocation start, SourceLocation end)
     {
         Range range;
 
@@ -635,7 +648,7 @@ void QmlJSEditorDocumentPrivate::cleanSemanticMarks()
 
 } // Internal
 
-QmlJSEditorDocument::QmlJSEditorDocument(Core::Id id)
+QmlJSEditorDocument::QmlJSEditorDocument(Utils::Id id)
     : d(new Internal::QmlJSEditorDocumentPrivate(this))
 {
     setId(id);
@@ -680,8 +693,8 @@ void QmlJSEditorDocument::setIsDesignModePreferred(bool value)
     d->m_isDesignModePreferred = value;
     if (value) {
         if (infoBar()->canInfoBeAdded(QML_UI_FILE_WARNING)) {
-            Core::InfoBarEntry info(QML_UI_FILE_WARNING,
-                                    tr("This file should only be edited in <b>Design</b> mode."));
+            Utils::InfoBarEntry info(QML_UI_FILE_WARNING,
+                                     tr("This file should only be edited in <b>Design</b> mode."));
             info.setCustomButtonInfo(tr("Switch Mode"), []() {
                 Core::ModeManager::activateMode(Core::Constants::MODE_DESIGN);
             });

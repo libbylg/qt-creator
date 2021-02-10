@@ -39,6 +39,10 @@
 #include <QFileInfo>
 #include <QAtomicInt>
 
+QT_BEGIN_NAMESPACE
+class QFutureInterfaceBase;
+QT_END_NAMESPACE
+
 namespace CPlusPlus {
 
 class Macro;
@@ -293,9 +297,6 @@ public:
         { return _beginLine; }
 
     private:
-        void setArguments(const QVector<Block> &arguments)
-        { _arguments = arguments; }
-
         void addArgument(const Block &block)
         { _arguments.append(block); }
 
@@ -446,6 +447,7 @@ public:
     Utils::FilePaths filesDependingOn(const QString &fileName) const
     { return filesDependingOn(Utils::FilePath::fromString(fileName)); }
     void updateDependencyTable() const;
+    void updateDependencyTable(QFutureInterfaceBase &futureInterface) const;
 
     bool operator==(const Snapshot &other) const;
 

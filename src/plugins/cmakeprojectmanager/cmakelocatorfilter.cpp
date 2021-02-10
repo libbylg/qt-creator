@@ -24,15 +24,14 @@
 ****************************************************************************/
 
 #include "cmakelocatorfilter.h"
-#include "cmakebuildconfiguration.h"
+
 #include "cmakebuildstep.h"
+#include "cmakebuildsystem.h"
 #include "cmakeproject.h"
 
 #include <coreplugin/editormanager/editormanager.h>
-#include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/buildsteplist.h>
-#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 
@@ -72,11 +71,13 @@ void CMakeTargetLocatorFilter::prepareSearch(const QString &entry)
 
         const QList<CMakeBuildTarget> buildTargets = bs->buildTargets();
         for (const CMakeBuildTarget &target : buildTargets) {
+            if (target.targetType == UtilityType && !CMakeBuildStep::specialTargets(bs->usesAllCapsTargets()).contains(target.title))
+                continue;
             const int index = target.title.indexOf(entry);
             if (index >= 0) {
                 const FilePath path = target.backtrace.isEmpty() ? cmakeProject->projectFilePath()
-                                                                 : target.backtrace.first().path;
-                const int line = target.backtrace.isEmpty() ? -1 : target.backtrace.first().line;
+                                                                 : target.backtrace.last().path;
+                const int line = target.backtrace.isEmpty() ? -1 : target.backtrace.last().line;
 
                 QVariantMap extraData;
                 extraData.insert("project", cmakeProject->projectFilePath().toString());
@@ -85,7 +86,7 @@ void CMakeTargetLocatorFilter::prepareSearch(const QString &entry)
 
                 Core::LocatorFilterEntry filterEntry(this, target.title, extraData);
                 filterEntry.extraInfo = path.shortNativePath();
-                filterEntry.highlightInfo = {index, entry.length()};
+                filterEntry.highlightInfo = {index, int(entry.length())};
                 filterEntry.fileName = path.toString();
 
                 m_result.append(filterEntry);
@@ -120,7 +121,7 @@ BuildCMakeTargetLocatorFilter::BuildCMakeTargetLocatorFilter()
 {
     setId("Build CMake target");
     setDisplayName(tr("Build CMake target"));
-    setShortcutString("cm");
+    setDefaultShortcutString("cm");
     setPriority(High);
 }
 
@@ -153,12 +154,12 @@ void BuildCMakeTargetLocatorFilter::accept(Core::LocatorFilterEntry selection,
         return;
 
     // Change the make step to build only the given target
-    QString oldTarget = buildStep->buildTarget();
-    buildStep->setBuildTarget(selection.displayName);
+    QStringList oldTargets = buildStep->buildTargets();
+    buildStep->setBuildTargets({selection.displayName});
 
     // Build
     BuildManager::buildProjectWithDependencies(cmakeProject);
-    buildStep->setBuildTarget(oldTarget);
+    buildStep->setBuildTargets(oldTargets);
 }
 
 // --------------------------------------------------------------------
@@ -169,7 +170,7 @@ OpenCMakeTargetLocatorFilter::OpenCMakeTargetLocatorFilter()
 {
     setId("Open CMake target definition");
     setDisplayName(tr("Open CMake target"));
-    setShortcutString("cmo");
+    setDefaultShortcutString("cmo");
     setPriority(Medium);
 }
 

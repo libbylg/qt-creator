@@ -86,16 +86,40 @@ public:
     };
     static QString accessSpecToString(InsertionPointLocator::AccessSpec xsSpec);
 
+    enum Position {
+        AccessSpecBegin,
+        AccessSpecEnd,
+    };
+
+    enum class ForceAccessSpec { Yes, No };
+
 public:
     explicit InsertionPointLocator(const CppRefactoringChanges &refactoringChanges);
 
-    InsertionLocation methodDeclarationInClass(const QString &fileName,
-                                               const CPlusPlus::Class *clazz,
-                                               AccessSpec xsSpec) const;
+    InsertionLocation methodDeclarationInClass(
+            const QString &fileName,
+            const CPlusPlus::Class *clazz,
+            AccessSpec xsSpec,
+            ForceAccessSpec forceAccessSpec = ForceAccessSpec::No
+            ) const;
 
-    QList<InsertionLocation> methodDefinition(CPlusPlus::Symbol *declaration,
-                                              bool useSymbolFinder = true,
-                                              const QString &destinationFile = QString()) const;
+    InsertionLocation methodDeclarationInClass(
+            const CPlusPlus::TranslationUnit *tu,
+            const CPlusPlus::ClassSpecifierAST *clazz,
+            AccessSpec xsSpec,
+            Position positionInAccessSpec = AccessSpecEnd,
+            ForceAccessSpec forceAccessSpec = ForceAccessSpec::No
+            ) const;
+
+    InsertionLocation constructorDeclarationInClass(const CPlusPlus::TranslationUnit *tu,
+                                                    const CPlusPlus::ClassSpecifierAST *clazz,
+                                                    AccessSpec xsSpec,
+                                                    int constructorArgumentCount) const;
+
+    const QList<InsertionLocation> methodDefinition(
+            CPlusPlus::Symbol *declaration,
+            bool useSymbolFinder = true,
+            const QString &destinationFile = QString()) const;
 
 private:
     CppRefactoringChanges m_refactoringChanges;

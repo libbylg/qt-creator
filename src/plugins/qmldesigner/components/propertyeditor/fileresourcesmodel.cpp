@@ -29,27 +29,37 @@
 
 #include <model.h>
 
+#include <utils/algorithm.h>
+#include <documentmanager.h>
+
 #include <QFileDialog>
 #include <QDirIterator>
 #include <qmlmodelnodeproxy.h>
 
 static QString s_lastBrowserPath;
 
-FileResourcesModel::FileResourcesModel(QObject *parent) :
-    QObject(parent), m_filter(QLatin1String("(*.*)")), m_lock(false)
+FileResourcesModel::FileResourcesModel(QObject *parent)
+    : QObject(parent)
+    , m_filter(QLatin1String("(*.*)"))
+    , m_fileSystemWatcher(new Utils::FileSystemWatcher(this))
 {
+    connect(m_fileSystemWatcher, &Utils::FileSystemWatcher::directoryChanged,
+            this, &FileResourcesModel::refreshModel);
 }
 
 void FileResourcesModel::setModelNodeBackend(const QVariant &modelNodeBackend)
 {
-
-    auto modelNodeBackendObject = modelNodeBackend.value<QObject*>();
+    auto modelNodeBackendObject = modelNodeBackend.value<QObject *>();
 
     const auto backendObjectCasted =
             qobject_cast<const QmlDesigner::QmlModelNodeProxy *>(modelNodeBackendObject);
 
-    if (backendObjectCasted)
-        m_path = backendObjectCasted->qmlObjectNode().modelNode().model()->fileUrl();
+    if (backendObjectCasted) {
+        QmlDesigner::Model *model = backendObjectCasted->qmlObjectNode().modelNode().model();
+        m_docPath = QDir{QFileInfo{model->fileUrl().toLocalFile()}.absolutePath()};
+        m_path = QUrl::fromLocalFile(QmlDesigner::DocumentManager::currentResourcePath()
+                                     .toFileInfo().absoluteFilePath());
+    }
 
     setupModel();
     emit modelNodeBackendChanged();
@@ -64,6 +74,7 @@ void FileResourcesModel::setFileNameStr(const QString &fileName)
 {
     setFileName(QUrl(fileName));
 }
+
 void FileResourcesModel::setFileName(const QUrl &fileName)
 {
     if (fileName == m_fileName)
@@ -85,9 +96,9 @@ QUrl FileResourcesModel::path() const
     return m_path;
 }
 
-QUrl FileResourcesModel::dirPath() const
+QUrl FileResourcesModel::docPath() const
 {
-    return QUrl::fromLocalFile(m_dirPath.path());
+    return QUrl::fromLocalFile(m_docPath.path());
 }
 
 void FileResourcesModel::setFilter(const QString &filter)
@@ -103,41 +114,36 @@ QString FileResourcesModel::filter() const
     return m_filter;
 }
 
-QStringList FileResourcesModel::fileModel() const
+QStringList FileResourcesModel::fullPathModel() const
 {
-    if (m_model.isEmpty())
-        return QStringList(QString());
+    return m_fullPathModel;
+}
 
-    return m_model;
+QStringList FileResourcesModel::fileNameModel() const
+{
+    return m_fileNameModel;
 }
 
 void FileResourcesModel::openFileDialog()
 {
-    QString modelPath;
+    QString resourcePath = m_path.toLocalFile();
+    bool resourcePathChanged = m_lastResourcePath != resourcePath;
+    m_lastResourcePath = resourcePath;
 
-    modelPath = m_path.toLocalFile();
+    // First we try the last path this browser widget was opened with within current project
+    QString path = resourcePathChanged ? QString() : m_currentPath;
 
-    m_lastModelPath = modelPath;
-
-    bool documentChanged = m_lastModelPath == modelPath;
-
-    //First we try the last path this browser widget was opened with
-    //if the document was not changed
-    QString path = documentChanged ? QString() : m_currentPath;
-
-
-    //If that one is not valid we try the path for the current file
+    // If that one is not valid we try the path for the current file
     if (path.isEmpty() && !m_fileName.isEmpty())
-        path = QFileInfo(modelPath + '/' + m_fileName.toString()).absolutePath();
+        path = QFileInfo(m_fileName.toString()).absolutePath();
 
-
-    //Next we try to fall back to the path any file browser was opened with
+    // Next we try to fall back to the path any file browser was opened with
     if (!QFileInfo::exists(path))
         path = s_lastBrowserPath;
 
-    //The last fallback is to try the path of the document
+    // The last fallback is to try the resource path
     if (!QFileInfo::exists(path))
-        path = modelPath;
+        path = resourcePath;
 
     QString newFile = QFileDialog::getOpenFileName(Core::ICore::dialogParent(),
                                                    tr("Open File"),
@@ -146,7 +152,6 @@ void FileResourcesModel::openFileDialog()
 
     if (!newFile.isEmpty()) {
         setFileNameStr(newFile);
-
         m_currentPath = QFileInfo(newFile).absolutePath();
         s_lastBrowserPath = m_currentPath;
     }
@@ -154,7 +159,7 @@ void FileResourcesModel::openFileDialog()
 
 void FileResourcesModel::registerDeclarativeType()
 {
-    qmlRegisterType<FileResourcesModel>("HelperWidgets",2,0,"FileResourcesModel");
+    qmlRegisterType<FileResourcesModel>("HelperWidgets", 2, 0, "FileResourcesModel");
 }
 
 QVariant FileResourcesModel::modelNodeBackend() const
@@ -164,11 +169,9 @@ QVariant FileResourcesModel::modelNodeBackend() const
 
 bool filterMetaIcons(const QString &fileName)
 {
-
     QFileInfo info(fileName);
 
-    if (info.dir().path().split("/").contains("designer")) {
-
+    if (info.dir().path().split('/').contains("designer")) {
         QDir currentDir = info.dir();
 
         int i = 0;
@@ -191,21 +194,38 @@ bool filterMetaIcons(const QString &fileName)
 
 void FileResourcesModel::setupModel()
 {
-    m_lock = true;
-    m_model.clear();
+    m_dirPath = QDir(m_path.toLocalFile());
 
-    m_dirPath = QFileInfo(m_path.toLocalFile()).dir();
+    refreshModel();
+
+    m_fileSystemWatcher->removeDirectories(m_fileSystemWatcher->directories());
+    m_fileSystemWatcher->addDirectory(m_dirPath.absolutePath(),
+                                      Utils::FileSystemWatcher::WatchAllChanges);
+}
+
+void FileResourcesModel::refreshModel()
+{
+    m_fullPathModel.clear();
+    m_fileNameModel.clear();
 
     QStringList filterList = m_filter.split(QLatin1Char(' '));
 
     QDirIterator it(m_dirPath.absolutePath(), filterList, QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         QString absolutePath = it.next();
-        if (filterMetaIcons(absolutePath))
-            m_model.append(m_dirPath.relativeFilePath(absolutePath));
+        if (filterMetaIcons(absolutePath)) {
+            QString filePath = m_docPath.relativeFilePath(absolutePath);
+            m_fullPathModel.append(filePath);
+        }
     }
 
-    m_lock = false;
+    Utils::sort(m_fullPathModel, [](const QString &s1, const QString &s2) {
+        return s1.mid(s1.lastIndexOf('/') + 1).toLower() < s2.mid(s2.lastIndexOf('/') + 1).toLower();
+    });
 
-    emit fileModelChanged();
+    for (const QString &fullPath : qAsConst(m_fullPathModel))
+        m_fileNameModel.append(fullPath.mid(fullPath.lastIndexOf('/') + 1));
+
+    emit fullPathModelChanged();
+    emit fileNameModelChanged();
 }

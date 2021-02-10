@@ -37,7 +37,7 @@ ExternalToolsFilter::ExternalToolsFilter()
 {
     setId("Run external tool");
     setDisplayName(tr("Run External Tool"));
-    setShortcutString("x");
+    setDefaultShortcutString("x");
     setPriority(Medium);
 }
 
@@ -58,7 +58,7 @@ void ExternalToolsFilter::accept(LocatorFilterEntry selection,
 
     auto runner = new ExternalToolRunner(tool);
     if (runner->hasError())
-        MessageManager::write(runner->errorString());
+        MessageManager::writeFlashing(runner->errorString());
 }
 
 void ExternalToolsFilter::refresh(QFutureInterface<void> &)

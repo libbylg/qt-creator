@@ -32,9 +32,7 @@
 
 namespace Nim {
 
-NimToolsSettingsWidget::NimToolsSettingsWidget(NimSettings *settings)
-    : ui(new Ui::NimToolsSettingsWidget)
-    , m_settings(settings)
+NimToolsSettingsWidget::NimToolsSettingsWidget() : ui(new Ui::NimToolsSettingsWidget)
 {
     ui->setupUi(this);
     ui->pathWidget->setExpectedKind(Utils::PathChooser::ExistingCommand);
@@ -47,7 +45,7 @@ NimToolsSettingsWidget::~NimToolsSettingsWidget()
 
 QString NimToolsSettingsWidget::command() const
 {
-    return ui->pathWidget->path();
+    return ui->pathWidget->filePath().toString();
 }
 
 void NimToolsSettingsWidget::setCommand(const QString &filename)
@@ -61,7 +59,7 @@ NimToolsSettingsPage::NimToolsSettingsPage(NimSettings *settings)
     setId(Nim::Constants::C_NIMTOOLSSETTINGSPAGE_ID);
     setDisplayName(NimToolsSettingsWidget::tr(Nim::Constants::C_NIMTOOLSSETTINGSPAGE_DISPLAY));
     setCategory(Nim::Constants::C_NIMTOOLSSETTINGSPAGE_CATEGORY);
-    setDisplayCategory(tr("Nim"));
+    setDisplayCategory(NimToolsSettingsWidget::tr("Nim"));
     setCategoryIconPath(":/nim/images/settingscategory_nim.png");
 }
 
@@ -70,7 +68,7 @@ NimToolsSettingsPage::~NimToolsSettingsPage() = default;
 QWidget *NimToolsSettingsPage::widget()
 {
     if (!m_widget)
-        m_widget.reset(new NimToolsSettingsWidget(m_settings));
+        m_widget.reset(new NimToolsSettingsWidget);
     m_widget->setCommand(m_settings->nimSuggestPath());
     return m_widget.get();
 }

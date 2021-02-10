@@ -27,9 +27,10 @@
 
 #include "keyframeitem.h"
 
+#include <QElapsedTimer>
 #include <QGraphicsScene>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class AnimationCurve;
 class CurveItem;
@@ -45,6 +46,8 @@ signals:
 public:
     GraphicsScene(QObject *parent = nullptr);
 
+    ~GraphicsScene() override;
+
     bool empty() const;
 
     bool hasActiveKeyframe() const;
@@ -52,6 +55,10 @@ public:
     bool hasActiveHandle() const;
 
     bool hasActiveItem() const;
+
+    bool hasSelectedKeyframe() const;
+
+    bool hasEditableSegment(double time) const;
 
     double minimumTime() const;
 
@@ -61,15 +68,51 @@ public:
 
     double maximumValue() const;
 
+    double animationRangeMin() const;
+
+    double animationRangeMax() const;
+
+    QRectF rect() const;
+
+    QVector<CurveItem *> curves() const;
+
+    QVector<CurveItem *> selectedCurves() const;
+
+    QVector<KeyframeItem *> keyframes() const;
+
+    QVector<KeyframeItem *> selectedKeyframes() const;
+
+    QVector<HandleItem *> handles() const;
+
+    CurveItem *findCurve(unsigned int id) const;
+
+    SelectableItem *intersect(const QPointF &pos) const;
+
+    void reset();
+
+    void deleteSelectedKeyframes();
+
+    void insertKeyframe(double time, bool all = false);
+
+    void doNotMoveItems(bool tmp);
+
+    void removeCurveItem(unsigned int id);
+
     void addCurveItem(CurveItem *item);
+
+    void moveToBottom(CurveItem *item);
+
+    void moveToTop(CurveItem *item);
 
     void setComponentTransform(const QTransform &transform);
 
     void keyframeMoved(KeyframeItem *item, const QPointF &direction);
 
-    void handleMoved(KeyframeItem *frame, HandleSlot handle, double angle, double deltaLength);
+    void handleUnderMouse(HandleItem *handle);
 
-    void setPinned(int id, bool pinned);
+    void handleMoved(KeyframeItem *frame, HandleItem::Slot slot, double angle, double deltaLength);
+
+    void setPinned(uint id, bool pinned);
 
     std::vector<CurveItem *> takePinnedItems();
 
@@ -78,16 +121,32 @@ protected:
 
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent) override;
 
+    void focusOutEvent(QFocusEvent *focusEvent) override;
+
+    void focusInEvent(QFocusEvent *focusEvent) override;
+
 private:
     using QGraphicsScene::addItem;
+
+    using QGraphicsScene::clear;
+
+    using QGraphicsScene::removeItem;
 
     GraphicsView *graphicsView() const;
 
     QRectF limits() const;
 
+    void resetZValues();
+
+    QVector<CurveItem *> m_curves;
+
     mutable bool m_dirty;
 
     mutable QRectF m_limits;
+
+    bool m_doNotMoveItems;
+
+    QElapsedTimer m_usageTimer;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

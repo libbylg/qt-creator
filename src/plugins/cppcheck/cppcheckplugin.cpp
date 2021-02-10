@@ -60,8 +60,7 @@ public:
     CppcheckOptionsPage options;
     DiagnosticsModel manualRunModel;
     CppcheckTool manualRunTool;
-    Utils::Perspective perspective{Constants::PERSPECTIVE_ID,
-                                     tr("Cppcheck", "CppcheckPlugin")};
+    Utils::Perspective perspective{Constants::PERSPECTIVE_ID, CppcheckPlugin::tr("Cppcheck")};
     QAction *manualRunAction;
 
     void startManualRun();
@@ -85,7 +84,7 @@ CppcheckPluginPrivate::CppcheckPluginPrivate() :
         auto action = new QAction(this);
         action->setEnabled(false);
         action->setIcon(Utils::Icons::PREV_TOOLBAR.icon());
-        action->setToolTip(tr("Go to previous diagnostic."));
+        action->setToolTip(CppcheckPlugin::tr("Go to previous diagnostic."));
         connect(action, &QAction::triggered,
                 manualRunView, &Debugger::DetailedErrorView::goBack);
         connect (&manualRunModel, &DiagnosticsModel::hasDataChanged,
@@ -98,7 +97,7 @@ CppcheckPluginPrivate::CppcheckPluginPrivate() :
         auto action = new QAction(this);
         action->setEnabled(false);
         action->setIcon(Utils::Icons::NEXT_TOOLBAR.icon());
-        action->setToolTip(tr("Go to next diagnostic."));
+        action->setToolTip(CppcheckPlugin::tr("Go to next diagnostic."));
         connect(action, &QAction::triggered,
                 manualRunView, &Debugger::DetailedErrorView::goNext);
         connect (&manualRunModel, &DiagnosticsModel::hasDataChanged,
@@ -111,7 +110,7 @@ CppcheckPluginPrivate::CppcheckPluginPrivate() :
         auto action = new QAction(this);
         action->setEnabled(false);
         action->setIcon(Utils::Icons::CLEAN_TOOLBAR.icon());
-        action->setToolTip(tr("Clear"));
+        action->setToolTip(CppcheckPlugin::tr("Clear"));
         connect(action, &QAction::triggered,
                 &manualRunModel, &DiagnosticsModel::clear);
         connect (&manualRunModel, &DiagnosticsModel::hasDataChanged,
@@ -146,9 +145,9 @@ void CppcheckPluginPrivate::updateManualRunAction()
     using namespace ProjectExplorer;
     const Project *project = SessionManager::startupProject();
     const Target *target = SessionManager::startupTarget();
-    const Core::Id cxx = ProjectExplorer::Constants::CXX_LANGUAGE_ID;
+    const Utils::Id cxx = ProjectExplorer::Constants::CXX_LANGUAGE_ID;
     const bool canRun = target && project->projectLanguages().contains(cxx)
-                  && ToolChainKitAspect::toolChain(target->kit(), cxx);
+                  && ToolChainKitAspect::cxxToolChain(target->kit());
     manualRunAction->setEnabled(canRun);
 }
 
@@ -176,7 +175,7 @@ bool CppcheckPlugin::initialize(const QStringList &arguments, QString *errorStri
     }
 
     using ProjectExplorer::ProjectExplorerPlugin;
-    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::updateRunActions,
+    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::runActionsUpdated,
             d.get(), &CppcheckPluginPrivate::updateManualRunAction);
     d->updateManualRunAction();
 

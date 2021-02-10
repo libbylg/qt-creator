@@ -39,7 +39,7 @@ ColorSettings::ColorSettings(QWidget *parent)
     m_ui.setupUi(this);
 
     m_ui.m_colorThemeView->setEnabled(false);
-    connect(m_ui.m_comboColorThemes, QOverload<const QString &>::of(&QComboBox::currentIndexChanged),
+    connect(m_ui.m_comboColorThemes, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ColorSettings::selectTheme);
     connect(m_ui.m_colorThemeView, &ColorThemeView::colorChanged, this, &ColorSettings::updateCurrentColors);
     connect(m_ui.m_addColorTheme, &QToolButton::clicked, this, &ColorSettings::createTheme);
@@ -50,9 +50,8 @@ ColorSettings::ColorSettings(QWidget *parent)
     m_colorThemes = s->value(Constants::C_SETTINGS_COLORSETTINGS_COLORTHEMES).toMap();
 
     m_ui.m_comboColorThemes->clear();
-    for (const auto &key : m_colorThemes.keys())
-        m_ui.m_comboColorThemes->addItem(key);
-
+    for (auto it = m_colorThemes.cbegin(); it != m_colorThemes.cend(); ++it)
+        m_ui.m_comboColorThemes->addItem(it.key());
     m_ui.m_comboColorThemes->setCurrentText(s->value(Constants::C_SETTINGS_COLORSETTINGS_CURRENTCOLORTHEME).toString());
 }
 
@@ -68,14 +67,15 @@ void ColorSettings::updateCurrentColors()
     m_colorThemes[m_ui.m_comboColorThemes->currentText()] = m_ui.m_colorThemeView->colorData();
 }
 
-void ColorSettings::selectTheme(const QString &name)
+void ColorSettings::selectTheme(int index)
 {
+    const QString name = m_ui.m_comboColorThemes->itemText(index);
     m_ui.m_colorThemeView->reset();
     if (!name.isEmpty() && m_colorThemes.contains(name)) {
         m_ui.m_colorThemeView->setEnabled(true);
-        QVariantMap colordata = m_colorThemes[name].toMap();
-        for (const auto &index : colordata.keys())
-            m_ui.m_colorThemeView->setColor(index.toInt(), QColor(colordata[index].toString()));
+        const QVariantMap colordata = m_colorThemes[name].toMap();
+        for (auto it = colordata.cbegin(); it != colordata.cend(); ++it)
+            m_ui.m_colorThemeView->setColor(it.key().toInt(), QColor(it.value().toString()));
     } else {
         m_ui.m_colorThemeView->setEnabled(false);
     }
@@ -85,7 +85,7 @@ void ColorSettings::createTheme()
 {
     QString name = QInputDialog::getText(this, tr("Create New Color Theme"), tr("Theme ID"));
     if (!name.isEmpty()) {
-        if (m_colorThemes.keys().contains(name)) {
+        if (m_colorThemes.contains(name)) {
             QMessageBox::warning(this, tr("Cannot Create Theme"), tr("Theme %1 is already available.").arg(name));
         } else {
             m_ui.m_colorThemeView->reset();

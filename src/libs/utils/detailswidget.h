@@ -27,6 +27,8 @@
 
 #include "utils_global.h"
 
+#include "porting.h"
+
 #include <QWidget>
 
 namespace Utils {
@@ -42,7 +44,6 @@ class QTCREATOR_UTILS_EXPORT DetailsWidget : public QWidget
     Q_PROPERTY(bool useCheckBox READ useCheckBox WRITE setUseCheckBox DESIGNABLE true)
     Q_PROPERTY(bool checked READ isChecked WRITE setChecked DESIGNABLE true)
     Q_PROPERTY(State state READ state WRITE setState)
-    Q_ENUMS(State)
 
 public:
     enum State {
@@ -51,6 +52,7 @@ public:
         NoSummary,
         OnlySummary
     };
+    Q_ENUM(State)
 
     explicit DetailsWidget(QWidget *parent = nullptr);
     ~DetailsWidget() override;
@@ -94,7 +96,7 @@ private:
 
 protected:
     void paintEvent(QPaintEvent *paintEvent) override;
-    void enterEvent(QEvent *event) override;
+    void enterEvent(EnterEvent *event) override;
     void leaveEvent(QEvent *event) override;
 
 private:

@@ -53,7 +53,7 @@ public:
         m_remoteNames(remoteNames)
     {
         m_ui.setupUi(this);
-        setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+        m_ui.nameEdit->setHistoryCompleter("Git.RemoteNames");
         m_ui.nameEdit->setValidationFunction([this](Utils::FancyLineEdit *edit, QString *errorMessage) {
             if (!edit)
                 return false;
@@ -85,6 +85,7 @@ public:
             m_ui.buttonBox->button(QDialogButtonBox::Ok)->setEnabled(m_ui.nameEdit->isValid());
         });
 
+        m_ui.urlEdit->setHistoryCompleter("Git.RemoteUrls");
         m_ui.urlEdit->setValidationFunction([](Utils::FancyLineEdit *edit, QString *errorMessage) {
             if (!edit || edit->text().isEmpty())
                 return false;
@@ -127,7 +128,6 @@ RemoteDialog::RemoteDialog(QWidget *parent) :
     m_remoteModel(new RemoteModel(this))
 {
     setModal(false);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setAttribute(Qt::WA_DeleteOnClose, true); // Do not update unnecessarily
 
     m_ui->setupUi(this);
@@ -205,7 +205,7 @@ void RemoteDialog::pushToRemote()
 
     const int row = indexList.at(0).row();
     const QString remoteName = m_remoteModel->remoteName(row);
-    GitPlugin::client()->push(m_remoteModel->workingDirectory(), {remoteName});
+    GitClient::instance()->push(m_remoteModel->workingDirectory(), {remoteName});
 }
 
 void RemoteDialog::fetchFromRemote()
@@ -216,7 +216,7 @@ void RemoteDialog::fetchFromRemote()
 
     int row = indexList.at(0).row();
     const QString remoteName = m_remoteModel->remoteName(row);
-    GitPlugin::client()->fetch(m_remoteModel->workingDirectory(), remoteName);
+    GitClient::instance()->fetch(m_remoteModel->workingDirectory(), remoteName);
 }
 
 void RemoteDialog::updateButtonState()

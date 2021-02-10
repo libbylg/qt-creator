@@ -1,5 +1,10 @@
 %{Cpp:LicenseTemplate}\
 %{JS: QtSupport.qtIncludes([], ["QtGui/QGuiApplication", "QtQml/QQmlApplicationEngine"])}
+@if %{HasTranslation}
+#include <QLocale>
+#include <QTranslator>
+@endif
+
 int main(int argc, char *argv[])
 {
 @if %{UseVirtualKeyboard}
@@ -11,13 +16,29 @@ int main(int argc, char *argv[])
         qputenv("QT_QPA_EGLFS_PHYSICAL_WIDTH", QByteArray("213"));
         qputenv("QT_QPA_EGLFS_PHYSICAL_HEIGHT", QByteArray("120"));
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
     }
 @else
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
 @endif
 
     QGuiApplication app(argc, argv);
+@if %{HasTranslation}
+
+    QTranslator translator;
+    const QStringList uiLanguages = QLocale::system().uiLanguages();
+    for (const QString &locale : uiLanguages) {
+        const QString baseName = "%{JS: value('ProjectName') + '_'}" + QLocale(locale).name();
+        if (translator.load(":/i18n/" + baseName)) {
+            app.installTranslator(&translator);
+            break;
+        }
+    }
+@endif
 
     QQmlApplicationEngine engine;
     const QUrl url(QStringLiteral("qrc:/main.qml"));

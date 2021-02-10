@@ -25,7 +25,9 @@
 
 #pragma once
 
-#include "id.h"
+#include "core_global.h"
+
+#include <utils/id.h>
 
 #include <QWidget>
 #include <QPointer>
@@ -33,6 +35,10 @@
 QT_BEGIN_NAMESPACE
 class QSettings;
 QT_END_NAMESPACE
+
+namespace Utils {
+class QtcSettings;
+}
 
 namespace Core {
 
@@ -44,14 +50,14 @@ class CORE_EXPORT RightPanePlaceHolder : public QWidget
     Q_OBJECT
 
 public:
-    explicit RightPanePlaceHolder(Id mode, QWidget *parent = nullptr);
+    explicit RightPanePlaceHolder(Utils::Id mode, QWidget *parent = nullptr);
     ~RightPanePlaceHolder() override;
     static RightPanePlaceHolder *current();
 
 private:
-    void currentModeChanged(Id mode);
+    void currentModeChanged(Utils::Id mode);
     void applyStoredSize(int width);
-    Id m_mode;
+    Utils::Id m_mode;
     static RightPanePlaceHolder* m_current;
 };
 
@@ -63,10 +69,10 @@ public:
     RightPaneWidget();
     ~RightPaneWidget() override;
 
-    void saveSettings(QSettings *settings);
+    void saveSettings(Utils::QtcSettings *settings);
     void readSettings(QSettings *settings);
 
-    bool isShown();
+    bool isShown() const;
     void setShown(bool b);
 
     static RightPaneWidget *instance();
@@ -74,7 +80,7 @@ public:
     void setWidget(QWidget *widget);
     QWidget *widget() const;
 
-    int storedWidth();
+    int storedWidth() const;
 
 protected:
     void resizeEvent(QResizeEvent *) override;

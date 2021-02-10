@@ -25,14 +25,12 @@
 
 #pragma once
 
-#include <coreplugin/id.h>
+#include <coreplugin/core_global.h>
+
+#include <utils/id.h>
 
 #include <QObject>
 #include <QPair>
-
-QT_BEGIN_NAMESPACE
-class QStringList;
-QT_END_NAMESPACE
 
 namespace Utils { class FilePath; }
 
@@ -54,7 +52,7 @@ public:
         KeepLinks
     };
 
-    using RecentFile = QPair<QString, Id>;
+    using RecentFile = QPair<QString, Utils::Id>;
 
     static DocumentManager *instance();
 
@@ -70,7 +68,7 @@ public:
     static void unexpectFileChange(const QString &fileName);
 
     // recent files
-    static void addToRecentFiles(const QString &fileName, Id editorId = Id());
+    static void addToRecentFiles(const QString &fileName, Utils::Id editorId = {});
     Q_SLOT void clearRecentFiles();
     static QList<RecentFile> recentFiles();
 
@@ -162,17 +160,13 @@ private:
     void checkForReload();
     void changedFile(const QString &file);
     void filePathChanged(const Utils::FilePath &oldName, const Utils::FilePath &newName);
+    void updateSaveAll();
+    static void registerSaveAllAction();
 
     friend class Core::Internal::MainWindow;
     friend class Core::Internal::DocumentManagerPrivate;
 };
 
-/*! The FileChangeBlocker blocks all change notifications to all IDocument * that
-    match the given filename. And unblocks in the destructor.
-
-    To also reload the IDocument in the destructor class set modifiedReload to true
-
-  */
 class CORE_EXPORT FileChangeBlocker
 {
 public:

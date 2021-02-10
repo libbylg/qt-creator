@@ -27,18 +27,22 @@
 
 #include <QRegularExpression>
 
+QT_FORWARD_DECLARE_CLASS(QMenu)
+
 namespace VcsBase {
 
-class VcsOutputFormatter : public Utils::OutputFormatter
+class VcsOutputLineParser : public Utils::OutputLineParser
 {
+    Q_OBJECT
 public:
-    VcsOutputFormatter();
-    ~VcsOutputFormatter() override = default;
-    void appendMessage(const QString &text, Utils::OutputFormat format) override;
-    void handleLink(const QString &href) override;
+    VcsOutputLineParser();
+    void fillLinkContextMenu(QMenu *menu, const QString &workingDirectory, const QString &href);
+    bool handleVcsLink(const QString &workingDirectory, const QString &href);
 
 private:
-    const QRegularExpression m_urlRegexp;
+    Result handleLine(const QString &text, Utils::OutputFormat format) override;
+
+    const QRegularExpression m_regexp;
 };
 
 }

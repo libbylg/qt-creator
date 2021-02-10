@@ -144,7 +144,7 @@ ProjectWelcomePage::ProjectWelcomePage()
     }
 }
 
-Core::Id ProjectWelcomePage::id() const
+Utils::Id ProjectWelcomePage::id() const
 {
     return "Develop";
 }
@@ -397,9 +397,9 @@ public:
                 if (m_activeSwitchToRect.contains(pos))
                     sessionModel->switchToSession(sessionName);
                 else if (m_activeActionRects[0].contains(pos))
-                    sessionModel->cloneSession(ICore::mainWindow(), sessionName);
+                    sessionModel->cloneSession(ICore::dialogParent(), sessionName);
                 else if (m_activeActionRects[1].contains(pos))
-                    sessionModel->renameSession(ICore::mainWindow(), sessionName);
+                    sessionModel->renameSession(ICore::dialogParent(), sessionName);
                 else if (m_activeActionRects[2].contains(pos))
                     sessionModel->deleteSessions(QStringList(sessionName));
                 return true;
@@ -495,7 +495,8 @@ public:
             }
             if (button == Qt::RightButton) {
                 QMenu contextMenu;
-                QAction *action = new QAction(tr("Remove Project from Recent Projects"));
+                QAction *action = new QAction(
+                    ProjectWelcomePage::tr("Remove Project from Recent Projects"));
                 const auto projectModel = qobject_cast<ProjectModel *>(model);
                 contextMenu.addAction(action);
                 connect(action, &QAction::triggered, [idx, projectModel](){
@@ -505,7 +506,7 @@ public:
                     projectModel->resetProjects();
                 });
                 contextMenu.addSeparator();
-                action = new QAction(tr("Clear Recent Project List"));
+                action = new QAction(ProjectWelcomePage::tr("Clear Recent Project List"));
                 connect(action, &QAction::triggered, [projectModel]() {
                     ProjectExplorerPlugin::clearRecentProjects();
                     projectModel->resetProjects();

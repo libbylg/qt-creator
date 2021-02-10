@@ -31,7 +31,6 @@
 
 #include <coreplugin/core_global.h>
 
-#include <QIcon>
 #include <QMutex>
 
 namespace Core {
@@ -40,8 +39,8 @@ class CORE_EXPORT UrlLocatorFilter final : public Core::ILocatorFilter
 {
     Q_OBJECT
 public:
-    UrlLocatorFilter(Id id);
-    UrlLocatorFilter(const QString &displayName, Id id);
+    UrlLocatorFilter(Utils::Id id);
+    UrlLocatorFilter(const QString &displayName, Utils::Id id);
     ~UrlLocatorFilter() final;
 
     // ILocatorFilter
@@ -50,7 +49,6 @@ public:
     void accept(Core::LocatorFilterEntry selection,
                 QString *newText, int *selectionStart, int *selectionLength) const override;
     void refresh(QFutureInterface<void> &future) override;
-    QByteArray saveState() const override;
     void restoreState(const QByteArray &state) override;
     bool openConfigDialog(QWidget *parent, bool &needsRefresh) override;
 
@@ -60,10 +58,13 @@ public:
     void setIsCustomFilter(bool value);
     bool isCustomFilter() const;
 
-    using ILocatorFilter::setDisplayName;
+protected:
+    void saveState(QJsonObject &object) const final;
+    void restoreState(const QJsonObject &object) final;
 
 private:
-    QIcon m_icon;
+    QString m_defaultDisplayName;
+    QStringList m_defaultUrls;
     QStringList m_remoteUrls;
     bool m_isCustomFilter = false;
     mutable QMutex m_mutex;

@@ -214,7 +214,7 @@ bool ScxmlDocument::load(QIODevice *io)
             continue;
 
         if (token == QXmlStreamReader::StartElement) {
-            if (xml.name() == "scxml") {
+            if (xml.name() == QLatin1String("scxml")) {
                 // Get and add namespaces
                 QXmlStreamNamespaceDeclarations ns = xml.namespaceDeclarations();
                 for (int i = 0; i < ns.count(); ++i)
@@ -647,6 +647,14 @@ ScxmlTag *ScxmlDocument::scxmlRootTag() const
     }
 
     return tag;
+}
+
+ScxmlTag *ScxmlDocument::tagForId(const QString &id) const
+{
+    if (id.isEmpty())
+        return nullptr;
+    ScxmlTag *root = scxmlRootTag();
+    return root ? root->tagForId(id) : nullptr;
 }
 
 ScxmlTag *ScxmlDocument::rootTag() const

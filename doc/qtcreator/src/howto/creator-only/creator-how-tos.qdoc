@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-faq.html
     \page creator-how-tos.html
     \nextpage creator-known-issues.html
@@ -136,8 +135,9 @@
     \endlist
 
     To open the other output panes, such as \uicontrol{General Messages} and
-    \uicontrol{Version Control}, select \uicontrol Window > \uicontrol {Output Panes}. The menu
-    items also display the keyboard shortcuts that you can use.
+    \uicontrol{Version Control}, select \uicontrol View >
+    \uicontrol {Output Panes}. The menu items also display
+    the keyboard shortcuts that you can use.
 
     For more information about output panes, see \l{Viewing Output}.
 
@@ -255,7 +255,8 @@
     create your own locator filters. That way you can locate files in a
     directory structure you have defined.
 
-    To create locator filters, select \uicontrol {Tools > Options > Locator > Add}.
+    To create locator filters, select \uicontrol Tools > \uicontrol Options >
+    \uicontrol Locator > \uicontrol Add.
 
     For more information, see \l{Creating Locator Filters}.
 
@@ -275,9 +276,9 @@
     \section1 Add a license header template for C++ code
 
     A file containing a license header for C++ can be specified under
-    \uicontrol{Tools > Options > C++ > License Template}. It may contain special
-    placeholders enclosed in \c{%%} that are replaced when generating a
-    new file:
+    \uicontrol Tools > \uicontrol Options > \uicontrol C++ >
+    \uicontrol {License Template}. It may contain special placeholders enclosed
+    in \c{%%} that are replaced when generating a new file:
 
     \list 1
 

@@ -32,7 +32,7 @@
 #include <QString>
 #include <QList>
 
-QT_FORWARD_DECLARE_CLASS(QRegExp)
+QT_FORWARD_DECLARE_CLASS(QRegularExpression)
 
 namespace QmlJS {
 class DiagnosticMessage;
@@ -89,6 +89,7 @@ enum Type
     MaybeWarnEqualityTypeCoercion = 126,
     WarnConfusingExpressionStatement = 127,
     StateCannotHaveChildItem = 128,
+    ErrTypeIsInstantiatedRecursively = 129,
     HintDeclarationsShouldBeAtStartOfFunction = 201,
     HintOneStatementPerLine = 202,
     WarnImperativeCodeNotEditableInVisualDesigner = 203,
@@ -129,6 +130,8 @@ enum Type
     ErrLongerStringValueExpected = 321,
     ErrShorterStringValueExpected = 322,
     ErrInvalidArrayValueLength = 323,
+    ErrHitMaximumRecursion = 324,
+    WarnLogicalValueDoesNotDependOnValues = 325,
     WarnDuplicateImport = 400
 };
 
@@ -144,7 +147,7 @@ class QMLJS_EXPORT Message
 {
 public:
     Message();
-    Message(Type type, AST::SourceLocation location,
+    Message(Type type, SourceLocation location,
             const QString &arg1 = QString(),
             const QString &arg2 = QString(),
             bool appendTypeId = true);
@@ -155,9 +158,9 @@ public:
     DiagnosticMessage toDiagnosticMessage() const;
 
     QString suppressionString() const;
-    static QRegExp suppressionPattern();
+    static QRegularExpression suppressionPattern();
 
-    AST::SourceLocation location;
+    SourceLocation location;
     QString message;
     Type type;
     Severity::Enum severity = Severity::Enum::Hint;

@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include <qtsupport/baseqtversion.h>
+
 #include <projectexplorer/gcctoolchain.h>
 
 namespace Android {
@@ -34,6 +36,8 @@ using ToolChainList = QList<ProjectExplorer::ToolChain *>;
 
 class AndroidToolChain : public ProjectExplorer::ClangToolChain
 {
+    Q_DECLARE_TR_FUNCTIONS(Android::Internal::AndroidToolChain)
+
 public:
     ~AndroidToolChain() override;
 
@@ -44,6 +48,9 @@ public:
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
     bool fromMap(const QVariantMap &data) override;
 
+    void setNdkLocation(const Utils::FilePath &ndkLocation);
+    Utils::FilePath ndkLocation() const;
+
 protected:
     DetectedAbisResult detectSupportedAbis() const override;
 
@@ -51,27 +58,28 @@ private:
     explicit AndroidToolChain();
 
     friend class AndroidToolChainFactory;
+
+    mutable Utils::FilePath m_ndkLocation;
 };
 
 class AndroidToolChainFactory : public ProjectExplorer::ToolChainFactory
 {
-    Q_OBJECT
-
 public:
     AndroidToolChainFactory();
-
-    ToolChainList autoDetect(const ToolChainList &alreadyKnown) override;
 
     class AndroidToolChainInformation
     {
     public:
-        Core::Id language;
+        Utils::Id language;
         Utils::FilePath compilerCommand;
         ProjectExplorer::Abi abi;
         QString version;
     };
 
-    static ToolChainList autodetectToolChainsForNdk(const ToolChainList &alreadyKnown);
+    static ToolChainList autodetectToolChains(const ToolChainList &alreadyKnown);
+    static ToolChainList autodetectToolChainsFromNdks(const ToolChainList &alreadyKnown,
+                                                      const QList<Utils::FilePath> &ndkLocations,
+                                                      const bool isCustom = false);
 };
 
 } // namespace Internal

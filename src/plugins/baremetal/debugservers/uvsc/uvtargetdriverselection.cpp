@@ -36,11 +36,11 @@ namespace Internal {
 namespace Uv {
 
 // Driver data keys.
-constexpr char driverIndexKeyC[] = "BareMetal.UvscServerProvider.DriverIndex";
-constexpr char driverCpuDllIndexKeyC[] = "BareMetal.UvscServerProvider.DriverCpuDllIndex";
-constexpr char driverDllKeyC[] = "BareMetal.UvscServerProvider.DriverDll";
-constexpr char driverCpuDllsKeyC[] = "BareMetal.UvscServerProvider.DriverCpuDlls";
-constexpr char driverNameKeyC[] = "BareMetal.UvscServerProvider.DriverName";
+constexpr char driverIndexKeyC[] = "DriverIndex";
+constexpr char driverCpuDllIndexKeyC[] = "DriverCpuDllIndex";
+constexpr char driverDllKeyC[] = "DriverDll";
+constexpr char driverCpuDllsKeyC[] = "DriverCpuDlls";
+constexpr char driverNameKeyC[] = "DriverName";
 
 // DriverSelection
 
@@ -126,7 +126,7 @@ DriverSelectionCpuDllView::DriverSelectionCpuDllView(DriverSelection &selection,
     const auto layout = new QHBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
     m_comboBox = new QComboBox;
-    m_comboBox->setToolTip(tr("Debugger CPU library (depends on a CPU core."));
+    m_comboBox->setToolTip(tr("Debugger CPU library (depends on a CPU core)."));
     m_comboBox->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_comboBox->setModel(model);
     layout->addWidget(m_comboBox);

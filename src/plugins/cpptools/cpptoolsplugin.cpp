@@ -33,7 +33,6 @@
 #include "cpptoolsbridge.h"
 #include "cpptoolsbridgeqtcreatorimplementation.h"
 #include "cpptoolsconstants.h"
-#include "cpptoolsjsextension.h"
 #include "cpptoolsreuse.h"
 #include "cpptoolssettings.h"
 #include "projectinfo.h"
@@ -46,7 +45,6 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/idocument.h>
-#include <coreplugin/jsexpander.h>
 #include <coreplugin/vcsmanager.h>
 #include <cppeditor/cppeditorconstants.h>
 #include <extensionsystem/pluginmanager.h>
@@ -68,6 +66,7 @@
 
 using namespace Core;
 using namespace CPlusPlus;
+using namespace Utils;
 
 namespace CppTools {
 namespace Internal {
@@ -80,10 +79,9 @@ static QHash<QString, QString> m_headerSourceMapping;
 class CppToolsPluginPrivate
 {
 public:
-    CppToolsPluginPrivate()
-    {
-        m_codeModelSettings.fromSettings(ICore::settings());
-    }
+    CppToolsPluginPrivate() {}
+
+    void initialize() { m_codeModelSettings.fromSettings(ICore::settings()); }
 
     ~CppToolsPluginPrivate()
     {
@@ -131,7 +129,7 @@ Utils::FilePath CppToolsPlugin::licenseTemplatePath()
 
 QString CppToolsPlugin::licenseTemplate()
 {
-    return m_instance->d->m_fileSettings.licenseTemplate();
+    return CppFileSettings::licenseTemplate();
 }
 
 bool CppToolsPlugin::usePragmaOnce()
@@ -165,8 +163,9 @@ bool CppToolsPlugin::initialize(const QStringList &arguments, QString *error)
     Q_UNUSED(error)
 
     d = new CppToolsPluginPrivate;
+    d->initialize();
 
-    JsExpander::registerGlobalObject<CppToolsJsExtension>("Cpp");
+    CppModelManager::instance()->registerJsExtension();
     ExtensionSystem::PluginManager::addObject(&d->m_cppProjectUpdaterFactory);
 
     // Menus
@@ -276,18 +275,19 @@ static QStringList matchingCandidateSuffixes(ProjectFile::Kind kind)
     case ProjectFile::CXXHeader:
     case ProjectFile::ObjCHeader:
     case ProjectFile::ObjCXXHeader:
-        return Utils::mimeTypeForName(QLatin1String(Constants::C_SOURCE_MIMETYPE)).suffixes()
-                + Utils::mimeTypeForName(QLatin1String(Constants::CPP_SOURCE_MIMETYPE)).suffixes()
-                + Utils::mimeTypeForName(QLatin1String(Constants::OBJECTIVE_C_SOURCE_MIMETYPE)).suffixes()
-                + Utils::mimeTypeForName(QLatin1String(Constants::OBJECTIVE_CPP_SOURCE_MIMETYPE)).suffixes();
+        return mimeTypeForName(Constants::C_SOURCE_MIMETYPE).suffixes()
+                + mimeTypeForName(Constants::CPP_SOURCE_MIMETYPE).suffixes()
+                + mimeTypeForName(Constants::OBJECTIVE_C_SOURCE_MIMETYPE).suffixes()
+                + mimeTypeForName(Constants::OBJECTIVE_CPP_SOURCE_MIMETYPE).suffixes()
+                + mimeTypeForName(Constants::CUDA_SOURCE_MIMETYPE).suffixes();
     case ProjectFile::CSource:
     case ProjectFile::ObjCSource:
-        return Utils::mimeTypeForName(QLatin1String(Constants::C_HEADER_MIMETYPE)).suffixes();
+        return mimeTypeForName(Constants::C_HEADER_MIMETYPE).suffixes();
     case ProjectFile::CXXSource:
     case ProjectFile::ObjCXXSource:
     case ProjectFile::CudaSource:
     case ProjectFile::OpenCLSource:
-        return Utils::mimeTypeForName(QLatin1String(Constants::CPP_HEADER_MIMETYPE)).suffixes();
+        return mimeTypeForName(Constants::CPP_HEADER_MIMETYPE).suffixes();
     default:
         return QStringList();
     }

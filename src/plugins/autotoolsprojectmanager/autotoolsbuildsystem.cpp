@@ -110,7 +110,7 @@ void AutotoolsBuildSystem::makefileParsingFinished()
 
     m_files.clear();
 
-    QVector<Utils::FilePath> filesToWatch;
+    QSet<Utils::FilePath> filesToWatch;
 
     // Apply sources to m_files, which are returned at AutotoolsBuildSystem::files()
     const QFileInfo fileInfo = projectFilePath().toFileInfo();
@@ -127,7 +127,7 @@ void AutotoolsBuildSystem::makefileParsingFinished()
 
         m_files.append(absMakefile);
 
-        filesToWatch.append(Utils::FilePath::fromString(absMakefile));
+        filesToWatch.insert(Utils::FilePath::fromString(absMakefile));
     }
 
     // Add configure.ac file to project and watch for changes.
@@ -137,7 +137,7 @@ void AutotoolsBuildSystem::makefileParsingFinished()
         const QString absConfigureAc = dir.absoluteFilePath(configureAc);
         m_files.append(absConfigureAc);
 
-        filesToWatch.append(Utils::FilePath::fromString(absConfigureAc));
+        filesToWatch.insert(Utils::FilePath::fromString(absConfigureAc));
     }
 
     auto newRoot = std::make_unique<ProjectNode>(project()->projectDirectory());
@@ -188,8 +188,10 @@ void AutotoolsBuildSystem::updateCppCodeModel()
     QStringList cxxflags = m_makefileParserThread->cxxflags();
     if (cxxflags.isEmpty())
         cxxflags = cflags;
-    rpp.setFlagsForC({kitInfo.cToolChain, cflags});
-    rpp.setFlagsForCxx({kitInfo.cxxToolChain, cxxflags});
+
+    const QString includeFileBaseDir = projectDirectory().toString();
+    rpp.setFlagsForC({kitInfo.cToolChain, cflags, includeFileBaseDir});
+    rpp.setFlagsForCxx({kitInfo.cxxToolChain, cxxflags, includeFileBaseDir});
 
     const QString absSrc = project()->projectDirectory().toString();
     BuildConfiguration *bc = target()->activeBuildConfiguration();

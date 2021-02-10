@@ -37,6 +37,7 @@
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/optional.h>
+#include <utils/qtcsettings.h>
 #include <utils/temporarydirectory.h>
 
 #include <QDebug>
@@ -44,7 +45,6 @@
 #include <QFontDatabase>
 #include <QFileInfo>
 #include <QLibraryInfo>
-#include <QSettings>
 #include <QStyle>
 #include <QTextStream>
 #include <QThreadPool>
@@ -67,6 +67,17 @@
 
 #ifdef ENABLE_QT_BREAKPAD
 #include <qtsystemexceptionhandler.h>
+#endif
+
+#ifdef ENABLE_CRASHPAD
+#define NOMINMAX
+#include "client/crashpad_client.h"
+#include "client/crash_report_database.h"
+#include "client/settings.h"
+#endif
+
+#ifdef Q_OS_LINUX
+#include <malloc.h>
 #endif
 
 using namespace ExtensionSystem;
@@ -237,7 +248,10 @@ static inline QStringList getPluginPaths()
     // patch versions
     const QString minorVersion = QString::number(IDE_VERSION_MAJOR) + '.'
                                  + QString::number(IDE_VERSION_MINOR) + '.';
-    for (int patchVersion = IDE_VERSION_RELEASE; patchVersion >= 0; --patchVersion)
+    const int minPatchVersion
+        = qMin(IDE_VERSION_RELEASE,
+               QVersionNumber::fromString(Core::Constants::IDE_VERSION_COMPAT).microVersion());
+    for (int patchVersion = IDE_VERSION_RELEASE; patchVersion >= minPatchVersion; --patchVersion)
         rc.push_back(pluginPath + minorVersion + QString::number(patchVersion));
     return rc;
 }
@@ -267,16 +281,17 @@ static void setupInstallSettings(QString &installSettingspath)
     }
 }
 
-static QSettings *createUserSettings()
+static Utils::QtcSettings *createUserSettings()
 {
-    return new QSettings(QSettings::IniFormat, QSettings::UserScope,
-                         QLatin1String(Core::Constants::IDE_SETTINGSVARIANT_STR),
-                         QLatin1String(Core::Constants::IDE_CASED_ID));
+    return new Utils::QtcSettings(QSettings::IniFormat,
+                                  QSettings::UserScope,
+                                  QLatin1String(Core::Constants::IDE_SETTINGSVARIANT_STR),
+                                  QLatin1String(Core::Constants::IDE_CASED_ID));
 }
 
-static inline QSettings *userSettings()
+static inline Utils::QtcSettings *userSettings()
 {
-    QSettings *settings = createUserSettings();
+    Utils::QtcSettings *settings = createUserSettings();
     const QString fromVariant = QLatin1String(Core::Constants::IDE_COPY_SETTINGS_FROM_VARIANT_STR);
     if (fromVariant.isEmpty())
         return settings;
@@ -320,12 +335,12 @@ static inline QSettings *userSettings()
 static void setHighDpiEnvironmentVariable()
 {
 
-    if (Utils::HostOsInfo().isMacHost())
+    if (Utils::HostOsInfo::isMacHost())
         return;
 
     std::unique_ptr<QSettings> settings(createUserSettings());
 
-    const bool defaultValue = Utils::HostOsInfo().isWindowsHost();
+    const bool defaultValue = Utils::HostOsInfo::isWindowsHost();
     const bool enableHighDpiScaling = settings->value("Core/EnableHighDpiScaling", defaultValue).toBool();
 
     static const char ENV_VAR_QT_DEVICE_PIXEL_RATIO[] = "QT_DEVICE_PIXEL_RATIO";
@@ -334,11 +349,13 @@ static void setHighDpiEnvironmentVariable()
             && !qEnvironmentVariableIsSet("QT_AUTO_SCREEN_SCALE_FACTOR")
             && !qEnvironmentVariableIsSet("QT_SCALE_FACTOR")
             && !qEnvironmentVariableIsSet("QT_SCREEN_SCALE_FACTORS")) {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+#if QT_VERSION == QT_VERSION_CHECK(5, 14, 0)
         // work around QTBUG-80934
         QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
             Qt::HighDpiScaleFactorRoundingPolicy::Round);
+#endif
 #endif
     }
 }
@@ -445,6 +462,54 @@ QStringList lastSessionArgument()
     return hasProjectExplorer ? QStringList({"-lastsession"}) : QStringList();
 }
 
+#ifdef ENABLE_CRASHPAD
+bool startCrashpad(const QString &libexecPath, bool crashReportingEnabled)
+{
+    using namespace crashpad;
+
+    // Cache directory that will store crashpad information and minidumps
+    QString databasePath = QDir::cleanPath(libexecPath + "/crashpad_reports");
+    QString handlerPath = QDir::cleanPath(libexecPath + "/crashpad_handler");
+#ifdef Q_OS_WIN
+    handlerPath += ".exe";
+    base::FilePath database(databasePath.toStdWString());
+    base::FilePath handler(handlerPath.toStdWString());
+#elif defined(Q_OS_MACOS) || defined(Q_OS_LINUX)
+    base::FilePath database(databasePath.toStdString());
+    base::FilePath handler(handlerPath.toStdString());
+#endif
+
+    std::unique_ptr<CrashReportDatabase> db = CrashReportDatabase::Initialize(database);
+    if (db && db->GetSettings())
+        db->GetSettings()->SetUploadsEnabled(crashReportingEnabled);
+
+    // URL used to submit minidumps to
+    std::string url(CRASHPAD_BACKEND_URL);
+
+    // Optional annotations passed via --annotations to the handler
+    std::map<std::string, std::string> annotations;
+    annotations["app-version"] = Core::Constants::IDE_VERSION_DISPLAY;
+    annotations["qt-version"] = QT_VERSION_STR;
+
+    // Optional arguments to pass to the handler
+    std::vector<std::string> arguments;
+
+    CrashpadClient *client = new CrashpadClient();
+    bool success = client->StartHandler(
+        handler,
+        database,
+        database,
+        url,
+        annotations,
+        arguments,
+        /* restartable */ true,
+        /* asynchronous_start */ true
+    );
+
+    return success;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     Restarter restarter(argc, argv);
@@ -455,6 +520,11 @@ int main(int argc, char **argv)
     // because settings can change the way plugin manager behaves
     Options options = parseCommandLine(argc, argv);
     applicationDirPath(argv[0]);
+
+    if (qEnvironmentVariableIsSet("QTC_DO_NOT_PROPAGATE_LD_PRELOAD")) {
+        Utils::Environment::modifySystemEnvironment(
+            {{"LD_PRELOAD", "", Utils::EnvironmentItem::Unset}});
+    }
 
     if (options.userLibraryPath) {
         if ((*options.userLibraryPath).isEmpty()) {
@@ -478,7 +548,7 @@ int main(int argc, char **argv)
 
     Utils::TemporaryDirectory::setMasterTemporaryDirectory(QDir::tempPath() + "/" + Core::Constants::IDE_CASED_ID + "-XXXXXX");
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     // increase the number of file that can be opened in Qt Creator.
     struct rlimit rl;
     getrlimit(RLIMIT_NOFILE, &rl);
@@ -520,13 +590,15 @@ int main(int argc, char **argv)
 
     /*Initialize global settings and resetup install settings with QApplication::applicationDirPath */
     setupInstallSettings(options.installSettingsPath);
-    QSettings *settings = userSettings();
-    QSettings *globalSettings = new QSettings(QSettings::IniFormat, QSettings::SystemScope,
-                                              QLatin1String(Core::Constants::IDE_SETTINGSVARIANT_STR),
-                                              QLatin1String(Core::Constants::IDE_CASED_ID));
+    Utils::QtcSettings *settings = userSettings();
+    Utils::QtcSettings *globalSettings
+        = new Utils::QtcSettings(QSettings::IniFormat,
+                                 QSettings::SystemScope,
+                                 QLatin1String(Core::Constants::IDE_SETTINGSVARIANT_STR),
+                                 QLatin1String(Core::Constants::IDE_CASED_ID));
     loadFonts();
 
-    if (Utils::HostOsInfo().isWindowsHost()
+    if (Utils::HostOsInfo::isWindowsHost()
             && !qFuzzyCompare(qApp->devicePixelRatio(), 1.0)
             && QApplication::style()->objectName().startsWith(
                 QLatin1String("windows"), Qt::CaseInsensitive)) {
@@ -545,7 +617,15 @@ int main(int argc, char **argv)
                                         CrashHandlerSetup::EnableRestart, libexecPath);
 #endif
 
+#ifdef ENABLE_CRASHPAD
+    bool crashReportingEnabled = settings->value("CrashReportingEnabled", false).toBool();
+    startCrashpad(libexecPath, crashReportingEnabled);
+#endif
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     app.setAttribute(Qt::AA_UseHighDpiPixmaps);
+    app.setAttribute(Qt::AA_DisableWindowContextHelpButton);
+#endif
 
     PluginManager pluginManager;
     PluginManager::setPluginIID(QLatin1String("org.qt-project.Qt.QtCreatorPlugin"));
@@ -571,7 +651,7 @@ int main(int argc, char **argv)
                 app.setProperty("qtc_locale", locale);
                 break;
             }
-            translator.load(QString()); // unload()
+            Q_UNUSED(translator.load(QString())); // unload()
         } else if (locale == QLatin1String("C") /* overrideLanguage == "English" */) {
             // use built-in
             break;
@@ -694,6 +774,33 @@ int main(int argc, char **argv)
 
     // shutdown plugin manager on the exit
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &pluginManager, &PluginManager::shutdown);
+
+#ifdef Q_OS_LINUX
+    class MemoryTrimmer : public QObject
+    {
+    public:
+        MemoryTrimmer()
+        {
+            m_trimTimer.setSingleShot(true);
+            m_trimTimer.setInterval(60000);
+            // glibc may not actually free memory in free().
+            connect(&m_trimTimer, &QTimer::timeout, this, [] { malloc_trim(0); });
+        }
+
+        bool eventFilter(QObject *, QEvent *e) override
+        {
+            if ((e->type() == QEvent::MouseButtonPress || e->type() == QEvent::KeyPress)
+                    && !m_trimTimer.isActive()) {
+                m_trimTimer.start();
+            }
+            return false;
+        }
+
+        QTimer m_trimTimer;
+    };
+    MemoryTrimmer trimmer;
+    app.installEventFilter(&trimmer);
+#endif
 
     return restarter.restartOrExit(app.exec());
 }

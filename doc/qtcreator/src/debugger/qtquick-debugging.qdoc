@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \page creator-debugging-qml.html
     \if defined(qtdesignstudio)
     \previouspage studio-debugging.html
@@ -67,7 +66,7 @@
 
         \li Debugging is enabled by default for Qt 5.0, or later.
 
-            \image qml-link-debugging-library.png "Build Steps"
+            \image qtcreator-projectpane.png "qmake general build settings pane"
 
             \note Debugging requires opening a socket at a TCP port,
             which presents a security risk. Anyone on the Internet could connect
@@ -79,8 +78,8 @@
             the \uicontrol {Enable QML} check box to enable
             QML debugging.
 
-        \li Select \uicontrol {Build > Rebuild Project} to clean and rebuild the
-            project.
+        \li Select \uicontrol Build > \uicontrol {Rebuild Project} to clean and
+            rebuild the project.
 
         \li To debug applications on \l{glossary-device}{devices}, check that
             Qt 5.0, or later, libraries are installed on the device and
@@ -144,7 +143,8 @@
             the application from running until the debug client connects to the
             server. This enables debugging from the start.
 
-        \li Select \uicontrol {Debug > Start Debugging > Attach to QML Port}.
+        \li Select \uicontrol Debug > \uicontrol {Start Debugging} >
+            \uicontrol {Attach to QML Port}.
 
             Choose the kit configured for the device where the application to
             be debugged is running. The port number to use is displayed in the
@@ -234,7 +234,7 @@
 
     When the application is interrupted by a breakpoint, you can use the
     \uicontrol {QML Debugger Console} to execute JavaScript expressions in the
-    current context. To open it, choose \uicontrol Window >
+    current context. To open it, choose \uicontrol View >
     \uicontrol {Output Panes} > \uicontrol {QML Debugger Console}.
 
     \image qml-script-console.png "QML Debugger Console"

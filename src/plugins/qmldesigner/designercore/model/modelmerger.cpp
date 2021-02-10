@@ -38,6 +38,7 @@
 #include <QUrl>
 
 #include <QDebug>
+#include <QtCore/qregularexpression.h>
 
 namespace QmlDesigner {
 
@@ -45,10 +46,13 @@ static ModelNode createNodeFromNode(const ModelNode &modelNode,const QHash<QStri
 
 static QString fixExpression(const QString &expression, const QHash<QString, QString> &idRenamingHash)
 {
+    const QString pattern("\\b%1\\b"); // Match only full ids
     QString newExpression = expression;
-    foreach (const QString &id, idRenamingHash.keys()) {
-        if (newExpression.contains(id))
-            newExpression = newExpression.replace(id, idRenamingHash.value(id));
+    const auto keys = idRenamingHash.keys();
+    for (const QString &id : keys) {
+        QRegularExpression re(pattern.arg(id));
+        if (newExpression.contains(re))
+            newExpression = newExpression.replace(re, idRenamingHash.value(id));
     }
     return newExpression;
 }
@@ -86,7 +90,7 @@ static void splitIdInBaseNameAndNumber(const QString &id, QString *baseId, int *
     int counter = 0;
     while (counter < id.count()) {
         bool canConvertToInteger = false;
-        int newNumber = id.rightRef(counter +1).toInt(&canConvertToInteger);
+        int newNumber = id.right(counter + 1).toInt(&canConvertToInteger);
         if (canConvertToInteger)
             *number = newNumber;
         else
@@ -107,7 +111,8 @@ static void setupIdRenamingHash(const ModelNode &modelNode, QHash<QString, QStri
             int number = 1;
             splitIdInBaseNameAndNumber(newId, &baseId, &number);
 
-            while (view->hasId(newId) || idRenamingHash.values().contains(newId)) {
+            while (view->hasId(newId) || std::find(idRenamingHash.cbegin(),
+                        idRenamingHash.cend(), newId) != idRenamingHash.cend()) {
                 newId = baseId + QString::number(number);
                 number++;
             }

@@ -84,15 +84,16 @@ class LanguageClientQuickFixAssistProcessor : public IAssistProcessor
 {
 public:
     explicit LanguageClientQuickFixAssistProcessor(Client *client) : m_client(client) {}
-    bool running() override { return m_running; }
+    bool running() override { return m_currentRequest.has_value(); }
     IAssistProposal *perform(const AssistInterface *interface) override;
+    void cancel() override;
 
 private:
     void handleCodeActionResponse(const CodeActionRequest::Response &response);
 
     QSharedPointer<const AssistInterface> m_assistInterface;
     Client *m_client = nullptr; // not owned
-    bool m_running = false;
+    Utils::optional<MessageId> m_currentRequest;
 };
 
 IAssistProposal *LanguageClientQuickFixAssistProcessor::perform(const AssistInterface *interface)
@@ -111,8 +112,8 @@ IAssistProposal *LanguageClientQuickFixAssistProcessor::perform(const AssistInte
         cursor.select(QTextCursor::LineUnderCursor);
     Range range(cursor);
     params.setRange(range);
-    auto uri = DocumentUri::fromFilePath(Utils::FilePath::fromString(interface->fileName()));
-    params.setTextDocument(uri);
+    auto uri = DocumentUri::fromFilePath(interface->filePath());
+    params.setTextDocument(TextDocumentIdentifier(uri));
     CodeActionParams::CodeActionContext context;
     context.setDiagnostics(m_client->diagnosticsAt(uri, range));
     params.setContext(context);
@@ -123,14 +124,23 @@ IAssistProposal *LanguageClientQuickFixAssistProcessor::perform(const AssistInte
     });
 
     m_client->requestCodeActions(request);
-    m_running = true;
+    m_currentRequest = request.id();
     return nullptr;
+}
+
+void LanguageClientQuickFixAssistProcessor::cancel()
+{
+    if (running()) {
+        m_client->cancelRequest(m_currentRequest.value());
+        m_client->removeAssistProcessor(this);
+        m_currentRequest.reset();
+    }
 }
 
 void LanguageClientQuickFixAssistProcessor::handleCodeActionResponse(
         const CodeActionRequest::Response &response)
 {
-    m_running = false;
+    m_currentRequest.reset();
     if (const Utils::optional<CodeActionRequest::Response::Error> &error = response.error())
         m_client->log(*error);
     QuickFixOperations ops;
@@ -145,6 +155,7 @@ void LanguageClientQuickFixAssistProcessor::handleCodeActionResponse(
             }
         }
     }
+    m_client->removeAssistProcessor(this);
     setAsyncProposalAvailable(GenericProposal::createProposal(m_assistInterface.data(), ops));
 }
 

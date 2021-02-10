@@ -40,11 +40,8 @@ public:
     DefaultAction(const QString &description);
 
     // virtual function instead of slot
-    virtual void actionTriggered(bool enable);
+    virtual void actionTriggered(bool enable) { Q_UNUSED(enable) }
     void setSelectionContext(const SelectionContext &selectionContext);
-
-signals:
-    void triggered(bool checked, const SelectionContext &selectionContext);
 
 protected:
     SelectionContext m_selectionContext;
@@ -56,7 +53,7 @@ public:
     AbstractAction(const QString &description = QString());
     AbstractAction(DefaultAction *action);
 
-    QAction *action() const override;
+    QAction *action() const override final;
     DefaultAction *defaultAction() const;
 
     void currentContextChanged(const SelectionContext &selectionContext) override;

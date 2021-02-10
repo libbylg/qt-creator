@@ -147,10 +147,11 @@ bool QnxConfiguration::activate()
         foreach (const QString &error, validationErrors())
             errorMessage += QLatin1String("\n") + error;
 
-        QMessageBox::warning(Core::ICore::mainWindow(),
+        QMessageBox::warning(Core::ICore::dialogParent(),
                              QCoreApplication::translate("Qnx::Internal::QnxConfiguration",
                                                          "Cannot Set Up QNX Configuration"),
-                             errorMessage, QMessageBox::Ok);
+                             errorMessage,
+                             QMessageBox::Ok);
         return false;
     }
 
@@ -178,7 +179,7 @@ void QnxConfiguration::deactivate()
     foreach (Kit *kit, KitManager::kits()) {
         if (kit->isAutoDetected()
                 && DeviceTypeKitAspect::deviceTypeId(kit) == Constants::QNX_QNX_OS_TYPE
-                && toolChainsToRemove.contains(ToolChainKitAspect::toolChain(kit, ProjectExplorer::Constants::CXX_LANGUAGE_ID)))
+                && toolChainsToRemove.contains(ToolChainKitAspect::cxxToolChain(kit)))
             KitManager::deregisterKit(kit);
     }
 
@@ -403,7 +404,7 @@ void QnxConfiguration::setDefaultConfiguration(const Utils::FilePath &envScript)
 const QnxConfiguration::Target *QnxConfiguration::findTargetByDebuggerPath(
         const FilePath &path) const
 {
-    auto it = std::find_if(m_targets.begin(), m_targets.end(),
+    const auto it = std::find_if(m_targets.begin(), m_targets.end(),
                            [path](const Target &target) { return target.m_debuggerPath == path; });
     return it == m_targets.end() ? nullptr : &(*it);
 }

@@ -43,7 +43,6 @@
 #include <QMessageBox>
 #include <QMetaProperty>
 #include <QPushButton>
-#include <QSettings>
 #include <QSysInfo>
 #include <QTextStream>
 #include <QTimer>
@@ -56,6 +55,7 @@
 #include <utils/hostosinfo.h>
 #include <utils/mimetypes/mimedatabase.h>
 #include <utils/qtcassert.h>
+#include <utils/qtcsettings.h>
 #include <utils/synchronousprocess.h>
 
 #ifdef WITH_TESTS
@@ -64,6 +64,7 @@
 #endif
 
 #include <functional>
+#include <memory>
 
 Q_LOGGING_CATEGORY(pluginLog, "qtc.extensionsystem", QtWarningMsg)
 
@@ -90,6 +91,7 @@ enum { debugLeaks = 0 };
 
 /*!
     \class ExtensionSystem::PluginManager
+    \inheaderfile extensionsystem/pluginmanager.h
     \inmodule QtCreator
     \ingroup mainclasses
 
@@ -213,7 +215,7 @@ enum { debugLeaks = 0 };
 */
 
 /*!
-    \fn T *PluginManager::getObject()
+    \fn template <typename T> *ExtensionSystem::PluginManager::getObject()
 
     Retrieves the object of a given type from the object pool.
 
@@ -225,7 +227,7 @@ enum { debugLeaks = 0 };
 */
 
 /*!
-    \fn T *PluginManager::getObject(Predicate predicate)
+    \fn template <typename T, typename Predicate> *ExtensionSystem::PluginManager::getObject(Predicate predicate)
 
     Retrieves the object of a given type from the object pool that matches
     the \a predicate.
@@ -411,7 +413,7 @@ static QString filled(const QString &s, int min)
     return s + QString(qMax(0, min - s.size()), ' ');
 }
 
-QString PluginManager::systemInformation() const
+QString PluginManager::systemInformation()
 {
     QString result;
     CommandLine qtDiag(HostOsInfo::withExecutableSuffix(
@@ -485,7 +487,7 @@ void PluginManager::setPluginIID(const QString &iid)
     disabled plugins.
     Needs to be set before the plugin search path is set with setPluginPaths().
 */
-void PluginManager::setSettings(QSettings *settings)
+void PluginManager::setSettings(QtcSettings *settings)
 {
     d->setSettings(settings);
 }
@@ -495,7 +497,7 @@ void PluginManager::setSettings(QSettings *settings)
     default disabled plugins.
     Needs to be set before the plugin search path is set with setPluginPaths().
 */
-void PluginManager::setGlobalSettings(QSettings *settings)
+void PluginManager::setGlobalSettings(QtcSettings *settings)
 {
     d->setGlobalSettings(settings);
 }
@@ -504,7 +506,7 @@ void PluginManager::setGlobalSettings(QSettings *settings)
     Returns the user specific settings used for information about enabled and
     disabled plugins.
 */
-QSettings *PluginManager::settings()
+QtcSettings *PluginManager::settings()
 {
     return d->settings;
 }
@@ -512,7 +514,7 @@ QSettings *PluginManager::settings()
 /*!
     Returns the global (user-independent) settings used for information about default disabled plugins.
 */
-QSettings *PluginManager::globalSettings()
+QtcSettings *PluginManager::globalSettings()
 {
     return d->globalSettings;
 }
@@ -618,7 +620,7 @@ static QStringList subList(const QStringList &in, const QString &key)
 }
 
 /*!
-    Parses the options encoded by serializedArguments() const
+    Parses the options encoded in \a serializedArgument
     and passes them on to the respective plugins along with the arguments.
 
     \a socket is passed for disconnecting the peer when the operation is done (for example,
@@ -704,7 +706,9 @@ static inline void formatOption(QTextStream &str,
 }
 
 /*!
-    Formats the startup options of the plugin manager for command line help.
+    Formats the startup options of the plugin manager for command line help with the specified
+    \a optionIndentation and \a descriptionIndentation.
+    Adds the result to \a str.
 */
 
 void PluginManager::formatOptions(QTextStream &str, int optionIndentation, int descriptionIndentation)
@@ -726,6 +730,12 @@ void PluginManager::formatOptions(QTextStream &str, int optionIndentation, int d
     formatOption(str, QLatin1String(OptionsParser::PROFILE_OPTION),
                  QString(), QLatin1String("Profile plugin loading"),
                  optionIndentation, descriptionIndentation);
+    formatOption(str,
+                 QLatin1String(OptionsParser::NO_CRASHCHECK_OPTION),
+                 QString(),
+                 QLatin1String("Disable startup check for previously crashed instance"),
+                 optionIndentation,
+                 descriptionIndentation);
 #ifdef WITH_TESTS
     formatOption(str, QString::fromLatin1(OptionsParser::TEST_OPTION)
                  + QLatin1String(" <plugin>[,testfunction[:testdata]]..."), QString(),
@@ -741,7 +751,9 @@ void PluginManager::formatOptions(QTextStream &str, int optionIndentation, int d
 }
 
 /*!
-    Formats the plugin options of the plugin specs for command line help.
+    Formats the plugin options of the plugin specs for command line help with the specified
+    \a optionIndentation and \a descriptionIndentation.
+    Adds the result to \a str.
 */
 
 void PluginManager::formatPluginOptions(QTextStream &str, int optionIndentation, int descriptionIndentation)
@@ -758,7 +770,7 @@ void PluginManager::formatPluginOptions(QTextStream &str, int optionIndentation,
 }
 
 /*!
-    Formats the version of the plugin specs for command line help.
+    Formats the version of the plugin specs for command line help and adds it to \a str.
 */
 void PluginManager::formatPluginVersions(QTextStream &str)
 {
@@ -767,7 +779,7 @@ void PluginManager::formatPluginVersions(QTextStream &str)
 }
 
 /*!
- * \internal
+    \internal
  */
 bool PluginManager::testRunRequested()
 {
@@ -775,8 +787,7 @@ bool PluginManager::testRunRequested()
 }
 
 /*!
-    Creates a profiling entry showing the elapsed time if profiling is
-    activated.
+    \internal
 */
 
 void PluginManager::profilingReport(const char *what, const PluginSpec *spec)
@@ -806,7 +817,7 @@ PluginSpec *PluginManagerPrivate::createSpec()
 /*!
     \internal
 */
-void PluginManagerPrivate::setSettings(QSettings *s)
+void PluginManagerPrivate::setSettings(QtcSettings *s)
 {
     if (settings)
         delete settings;
@@ -818,7 +829,7 @@ void PluginManagerPrivate::setSettings(QSettings *s)
 /*!
     \internal
 */
-void PluginManagerPrivate::setGlobalSettings(QSettings *s)
+void PluginManagerPrivate::setGlobalSettings(QtcSettings *s)
 {
     if (globalSettings)
         delete globalSettings;
@@ -853,7 +864,7 @@ void PluginManagerPrivate::nextDelayedInitialize()
         profilingSummary();
         emit q->initializationDone();
 #ifdef WITH_TESTS
-        if (q->testRunRequested())
+        if (PluginManager::testRunRequested())
             startTests();
 #endif
     } else {
@@ -894,8 +905,8 @@ void PluginManagerPrivate::writeSettings()
             tempForceEnabledPlugins.append(spec->name());
     }
 
-    settings->setValue(QLatin1String(C_IGNORED_PLUGINS), tempDisabledPlugins);
-    settings->setValue(QLatin1String(C_FORCEENABLED_PLUGINS), tempForceEnabledPlugins);
+    settings->setValueWithDefault(C_IGNORED_PLUGINS, tempDisabledPlugins);
+    settings->setValueWithDefault(C_FORCEENABLED_PLUGINS, tempForceEnabledPlugins);
 }
 
 /*!
@@ -999,10 +1010,11 @@ static QStringList matchingTestFunctions(const QStringList &testFunctions,
         testFunctionName = testFunctionName.left(index);
     }
 
-    const QRegExp regExp(testFunctionName, Qt::CaseSensitive, QRegExp::Wildcard);
+    const QRegularExpression regExp(
+                QRegularExpression::wildcardToRegularExpression(testFunctionName));
     QStringList matchingFunctions;
     for (const QString &testFunction : testFunctions) {
-        if (regExp.exactMatch(testFunction)) {
+        if (regExp.match(testFunction).hasMatch()) {
             // If the specified test data is invalid, the QTest framework will
             // print a reasonable error message for us.
             matchingFunctions.append(testFunction + testDataSuffix);
@@ -1121,7 +1133,7 @@ static TestPlan generateCustomTestPlan(IPlugin *plugin,
                 << "\".\nAvailable functions:\n";
             for (const QString &f : testFunctionsOfPluginObject)
                 out << "  " << f << '\n';
-            out << endl;
+            out << '\n';
         }
     }
 
@@ -1404,6 +1416,8 @@ private:
 
 void PluginManagerPrivate::checkForProblematicPlugins()
 {
+    if (!enableCrashCheck)
+        return;
     const Utils::optional<QString> pluginName = LockFile::lockedPluginName(this);
     if (pluginName) {
         PluginSpec *spec = pluginByName(*pluginName);
@@ -1459,7 +1473,9 @@ void PluginManagerPrivate::loadPlugin(PluginSpec *spec, PluginSpec::State destSt
     if (!spec->isEffectivelyEnabled() && destState == PluginSpec::Loaded)
         return;
 
-    LockFile f(this, spec);
+    std::unique_ptr<LockFile> lockFile;
+    if (enableCrashCheck)
+        lockFile.reset(new LockFile(this, spec));
 
     switch (destState) {
     case PluginSpec::Running:
@@ -1554,11 +1570,9 @@ void PluginManagerPrivate::readPluginPaths()
     pluginCategories.insert(QString(), QVector<PluginSpec *>());
 
     for (const QString &pluginFile : pluginFiles(pluginPaths)) {
-        auto *spec = new PluginSpec;
-        if (!spec->d->read(pluginFile)) { // not a Qt Creator plugin
-            delete spec;
+        PluginSpec *spec = PluginSpec::read(pluginFile);
+        if (!spec) // not a Qt Creator plugin
             continue;
-        }
 
         // defaultDisabledPlugins and defaultEnabledPlugins from install settings
         // is used to override the defaults read from the plugin spec

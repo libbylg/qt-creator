@@ -34,7 +34,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QRegExp>
 #include <QVariant>
 
 #include <QMenu>
@@ -42,17 +41,17 @@
 #include <QMessageBox>
 #include <QHBoxLayout>
 #include <QLineEdit>
-#include <QRegExpValidator>
+#include <QRegularExpressionValidator>
 #include <QToolBar>
 
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/coreconstants.h>
-#include <coreplugin/id.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/find/ifindsupport.h>
 #include <coreplugin/idocument.h>
 #include <extensionsystem/pluginmanager.h>
+
 #include <utils/reloadpromptutils.h>
 #include <utils/qtcassert.h>
 
@@ -261,7 +260,7 @@ public:
                 if (errorString)
                     *errorString = msg;
                 else
-                    QMessageBox::critical(ICore::mainWindow(), tr("File Error"), msg);
+                    QMessageBox::critical(ICore::dialogParent(), tr("File Error"), msg);
                 return OpenResult::CannotHandle;
             }
             if (size / 16 >= qint64(1) << 31) {
@@ -270,7 +269,7 @@ public:
                 if (errorString)
                     *errorString = msg;
                 else
-                    QMessageBox::critical(ICore::mainWindow(), tr("File Error"), msg);
+                    QMessageBox::critical(ICore::dialogParent(), tr("File Error"), msg);
                 return OpenResult::CannotHandle;
             }
             if (offset >= size)
@@ -284,7 +283,7 @@ public:
         if (errorString)
             *errorString = errStr;
         else
-            QMessageBox::critical(ICore::mainWindow(), tr("File Error"), errStr);
+            QMessageBox::critical(ICore::dialogParent(), tr("File Error"), errStr);
         return OpenResult::ReadError;
     }
 
@@ -304,7 +303,7 @@ public:
                 data += QByteArray(blockSize - dataSize, 0);
             m_widget->addData(address, data);
         } else {
-            QMessageBox::critical(ICore::mainWindow(), tr("File Error"),
+            QMessageBox::critical(ICore::dialogParent(), tr("File Error"),
                                   tr("Cannot open %1: %2").arg(
                                         fn.toUserOutput(), file.errorString()));
         }
@@ -323,31 +322,20 @@ public:
                                                  : m_widget->isModified();
     }
 
-    bool isFileReadOnly() const override {
-        const FilePath fn = filePath();
-        if (fn.isEmpty())
-            return false;
-        return !fn.toFileInfo().isWritable();
-    }
-
     bool isSaveAsAllowed() const override { return true; }
 
     bool reload(QString *errorString, ReloadFlag flag, ChangeType type) override
     {
+        Q_UNUSED(type)
         if (flag == FlagIgnore)
             return true;
-        if (type == TypePermissions) {
-            emit changed();
-        } else {
-            emit aboutToReload();
-            int cPos = m_widget->cursorPosition();
-            m_widget->clear();
-            const bool success = (openImpl(errorString, filePath().toString()) == OpenResult::Success);
-            m_widget->setCursorPosition(cPos);
-            emit reloadFinished(success);
-            return success;
-        }
-        return true;
+        emit aboutToReload();
+        int cPos = m_widget->cursorPosition();
+        m_widget->clear();
+        const bool success = (openImpl(errorString, filePath().toString()) == OpenResult::Success);
+        m_widget->setCursorPosition(cPos);
+        emit reloadFinished(success);
+        return success;
     }
 
 private:
@@ -363,7 +351,7 @@ public:
         setWidget(widget);
         m_file = new BinEditorDocument(widget);
         m_addressEdit = new QLineEdit;
-        auto addressValidator = new QRegExpValidator(QRegExp("[0-9a-fA-F]{1,16}"), m_addressEdit);
+        auto addressValidator = new QRegularExpressionValidator(QRegularExpression("[0-9a-fA-F]{1,16}"), m_addressEdit);
         m_addressEdit->setValidator(addressValidator);
 
         auto l = new QHBoxLayout;
@@ -472,7 +460,7 @@ BinEditorFactory::BinEditorFactory()
     setDisplayName(QCoreApplication::translate("OpenWith::Editors", Constants::C_BINEDITOR_DISPLAY_NAME));
     addMimeType(Constants::C_BINEDITOR_MIMETYPE);
 
-    setEditorCreator([] {
+    setEditorCreator([this] {
         auto widget = new BinEditorWidget();
         auto editor = new BinEditor(widget);
 

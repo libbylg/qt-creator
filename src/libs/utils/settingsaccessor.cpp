@@ -31,7 +31,6 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDir>
-#include <QRegExp>
 
 namespace {
 
@@ -50,8 +49,8 @@ namespace Utils {
 QMessageBox::StandardButtons SettingsAccessor::Issue::allButtons() const
 {
     QMessageBox::StandardButtons result = QMessageBox::NoButton;
-    for (const QMessageBox::StandardButton &b : buttons.keys())
-        result |= b;
+    for (auto it = buttons.cbegin(); it != buttons.cend(); ++it)
+        result |= it.key();
     return result;
 }
 
@@ -177,7 +176,7 @@ SettingsAccessor::writeFile(const FilePath &path, const QVariantMap &data) const
 
 SettingsAccessor::ProceedInfo
 SettingsAccessor::reportIssues(const SettingsAccessor::Issue &issue, const FilePath &path,
-                               QWidget *parent) const
+                               QWidget *parent)
 {
     if (!path.exists())
         return Continue;
@@ -406,7 +405,7 @@ QString VersionUpgrader::backupExtension() const
  */
 QVariantMap VersionUpgrader::renameKeys(const QList<Change> &changes, QVariantMap map) const
 {
-    foreach (const Change &change, changes) {
+    for (const Change &change : changes) {
         QVariantMap::iterator oldSetting = map.find(change.first);
         if (oldSetting != map.end()) {
             map.insert(change.second, oldSetting.value());
@@ -698,7 +697,7 @@ MergingSettingsAccessor::mergeSettings(const SettingsAccessor::RestoreData &main
 /*!
  * Returns true for housekeeping related keys.
  */
-bool MergingSettingsAccessor::isHouseKeepingKey(const QString &key) const
+bool MergingSettingsAccessor::isHouseKeepingKey(const QString &key)
 {
     return key == VERSION_KEY || key == ORIGINAL_VERSION_KEY || key == SETTINGS_ID_KEY;
 }

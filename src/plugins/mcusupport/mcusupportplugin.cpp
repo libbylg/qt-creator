@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
@@ -26,6 +26,7 @@
 #include "mcusupportplugin.h"
 #include "mcusupportconstants.h"
 #include "mcusupportdevice.h"
+#include "mcusupportoptions.h"
 #include "mcusupportoptionspage.h"
 #include "mcusupportrunconfiguration.h"
 
@@ -35,7 +36,13 @@
 
 #include <projectexplorer/devicesupport/devicemanager.h>
 #include <projectexplorer/jsonwizard/jsonwizardfactory.h>
+#include <projectexplorer/kitmanager.h>
 
+#include <utils/infobar.h>
+
+#include <QTimer>
+
+using namespace Core;
 using namespace ProjectExplorer;
 
 namespace McuSupport {
@@ -74,6 +81,8 @@ bool McuSupportPlugin::initialize(const QStringList& arguments, QString* errorSt
 
     dd = new McuSupportPluginPrivate;
 
+    McuSupportOptions::registerQchFiles();
+    McuSupportOptions::registerExamples();
     ProjectExplorer::JsonWizardFactory::addWizardPath(
                 Utils::FilePath::fromString(":/mcusupport/wizards/"));
 
@@ -83,6 +92,32 @@ bool McuSupportPlugin::initialize(const QStringList& arguments, QString* errorSt
 void McuSupportPlugin::extensionsInitialized()
 {
     ProjectExplorer::DeviceManager::instance()->addDevice(McuSupportDevice::create());
+
+    connect(KitManager::instance(), &KitManager::kitsLoaded, [](){
+        McuSupportOptions::removeOutdatedKits();
+        McuSupportOptions::createAutomaticKits();
+        McuSupportPlugin::askUserAboutMcuSupportKitsSetup();
+    });
+}
+
+void McuSupportPlugin::askUserAboutMcuSupportKitsSetup()
+{
+    const char setupMcuSupportKits[] = "SetupMcuSupportKits";
+
+    if (!ICore::infoBar()->canInfoBeAdded(setupMcuSupportKits)
+        || McuSupportOptions::qulDirFromSettings().isEmpty()
+        || !McuSupportOptions::existingKits(nullptr).isEmpty())
+        return;
+
+    Utils::InfoBarEntry info(setupMcuSupportKits,
+                             tr("Create Kits for Qt for MCUs? "
+                                "To do it later, select Options > Devices > MCU."),
+                             Utils::InfoBarEntry::GlobalSuppression::Enabled);
+    info.setCustomButtonInfo(tr("Create Kits for Qt for MCUs"), [setupMcuSupportKits] {
+        ICore::infoBar()->removeInfo(setupMcuSupportKits);
+        QTimer::singleShot(0, []() { ICore::showOptionsDialog(Constants::SETTINGS_ID); });
+    });
+    ICore::infoBar()->addInfo(info);
 }
 
 } // namespace Internal

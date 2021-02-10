@@ -46,8 +46,7 @@ class CORE_EXPORT DirectoryFilter : public BaseFileFilter
     Q_OBJECT
 
 public:
-    DirectoryFilter(Id id);
-    QByteArray saveState() const override;
+    DirectoryFilter(Utils::Id id);
     void restoreState(const QByteArray &state) override;
     bool openConfigDialog(QWidget *parent, bool &needsRefresh) override;
     void refresh(QFutureInterface<void> &future) override;
@@ -60,7 +59,9 @@ public:
     void setFilters(const QStringList &filters);
     void setExclusionFilters(const QStringList &exclusionFilters);
 
-    using ILocatorFilter::setDisplayName;
+protected:
+    void saveState(QJsonObject &object) const final;
+    void restoreState(const QJsonObject &object) final;
 
 private:
     void handleAddDirectory();

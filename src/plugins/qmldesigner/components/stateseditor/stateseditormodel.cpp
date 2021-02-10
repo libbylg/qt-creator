@@ -130,6 +130,17 @@ QVariant StatesEditorModel::data(const QModelIndex &index, int role) const
             return QString();
     }
 
+    case IsDefault: {
+        QmlModelState modelState(stateNode);
+        if (modelState.isValid())
+            return modelState.isDefault();
+        return false;
+    }
+
+    case ModelHasDefaultState: {
+        return hasDefaultState();
+    }
+
     }
 
     return QVariant();
@@ -142,7 +153,9 @@ QHash<int, QByteArray> StatesEditorModel::roleNames() const
         {StateImageSourceRole, "stateImageSource"},
         {InternalNodeId, "internalNodeId"},
         {HasWhenCondition, "hasWhenCondition"},
-        {WhenConditionString, "whenConditionString"}
+        {WhenConditionString, "whenConditionString"},
+        {IsDefault, "isDefault"},
+        {ModelHasDefaultState, "modelHasDefaultState"}
     };
     return roleNames;
 }
@@ -219,6 +232,36 @@ QStringList StatesEditorModel::autoComplete(const QString &text, int pos, bool e
 QVariant StatesEditorModel::stateModelNode()
 {
     return QVariant::fromValue(m_statesEditorView->currentStateNode());
+}
+
+void StatesEditorModel::setStateAsDefault(int internalNodeId)
+{
+    m_statesEditorView->setStateAsDefault(internalNodeId);
+}
+
+void StatesEditorModel::resetDefaultState()
+{
+    m_statesEditorView->resetDefaultState();
+}
+
+bool StatesEditorModel::hasDefaultState() const
+{
+    return m_statesEditorView->hasDefaultState();
+}
+
+void StatesEditorModel::setAnnotation(int internalNodeId)
+{
+    m_statesEditorView->setAnnotation(internalNodeId);
+}
+
+void StatesEditorModel::removeAnnotation(int internalNodeId)
+{
+    m_statesEditorView->removeAnnotation(internalNodeId);
+}
+
+bool StatesEditorModel::hasAnnotation(int internalNodeId) const
+{
+    return m_statesEditorView->hasAnnotation(internalNodeId);
 }
 
 } // namespace QmlDesigner

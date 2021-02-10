@@ -63,7 +63,7 @@ public:
     static ResultDataList fromSearchResultList(const QList<Core::SearchResultItem> &entries)
     {
         ResultDataList result;
-        foreach (const Core::SearchResultItem &entry, entries)
+        for (const Core::SearchResultItem &entry : entries)
             result << ResultData(entry.text, entry.path.join(QLatin1String("::")));
         return result;
     }
@@ -72,9 +72,9 @@ public:
     static void printFilterEntries(const ResultDataList &entries)
     {
         QTextStream out(stdout);
-        foreach (const ResultData entry, entries) {
+        for (const ResultData &entry : entries) {
             out << "<< ResultData(_(\"" << entry.m_symbolName << "\"), _(\""
-                << entry.m_scope <<  "\"))" << endl;
+                << entry.m_scope <<  "\"))" << '\n';
         }
     }
 
@@ -197,6 +197,7 @@ void CppToolsPlugin::test_builtinsymbolsearcher_data()
             << ResultData(_("functionDefinedOutSideClass(char)"), _("MyNamespace::MyClass"))
             << ResultData(_("functionDefinedOutSideClassAndNamespace(float)"),
                           _("MyNamespace::MyClass"))
+            << ResultData(_("MyNamespace::MyClass MY_CLASS"), _(""))
             << ResultData(_("int myVariable"), _("<anonymous namespace>"))
             << ResultData(_("myFunction(bool, int)"), _("<anonymous namespace>"))
             << ResultData(_("MyEnum"), _("<anonymous namespace>"))
@@ -211,6 +212,7 @@ void CppToolsPlugin::test_builtinsymbolsearcher_data()
                           _("<anonymous namespace>::MyClass"))
             << ResultData(_("functionDefinedOutSideClass(char)"),
                           _("<anonymous namespace>::MyClass"))
+            << ResultData(_("MyClass MY_OTHER_CLASS"), _(""))
             << ResultData(_("main()"), _(""))
 
         );

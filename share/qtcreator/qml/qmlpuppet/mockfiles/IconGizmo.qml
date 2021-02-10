@@ -24,10 +24,9 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
-import QtGraphicalEffects 1.12
+import QtQuick3D 1.15
 
-Node {
+Item {
     id: iconGizmo
 
     property Node activeScene: null
@@ -43,34 +42,37 @@ Node {
         }
         return false;
     }
+    property bool hasMouse: false
+    property bool hidden: false
+    property bool locked: false
 
     property alias iconSource: iconImage.source
-    property alias overlayColor: colorOverlay.color
 
-    signal positionCommit()
     signal clicked(Node node, bool multi)
 
-    position: targetNode ? targetNode.scenePosition : Qt.vector3d(0, 0, 0)
-    rotation: targetNode ? targetNode.sceneRotation : Qt.vector3d(0, 0, 0)
-    visible: activeScene === scene && (targetNode ? targetNode.visible : false)
+    onSelectedChanged: {
+        if (selected)
+            hasMouse = false;
+    }
+
+    visible: activeScene === scene && !hidden && (targetNode ? targetNode.visible : false)
 
     Overlay2D {
         id: iconOverlay
-        targetNode: iconGizmo
+        targetNode: iconGizmo.targetNode
         targetView: view3D
         visible: iconGizmo.visible && !isBehindCamera
-        parent: view3D
 
         Rectangle {
             id: iconRect
+
             width: iconImage.width
             height: iconImage.height
             x: -width / 2
             y: -height / 2
             color: "transparent"
             border.color: "#7777ff"
-            border.width: !iconGizmo.selected
-                          && iconGizmo.highlightOnHover && iconMouseArea.containsMouse ? 2 : 0
+            border.width: !iconGizmo.locked && iconGizmo.highlightOnHover && iconGizmo.hasMouse ? 2 : 0
             radius: 5
             opacity: iconGizmo.selected ? 0.2 : 1
             Image {
@@ -92,17 +94,26 @@ Node {
                                                  mouse.modifiers & Qt.ControlModifier)
                     hoverEnabled: iconGizmo.highlightOnHover && !iconGizmo.selected
                     acceptedButtons: Qt.LeftButton
+
+                    // onPositionChanged, onContainsMouseAreaChanged, and hasMouse are used instead
+                    // of just using containsMouse directly, because containsMouse
+                    // cannot be relied upon to update correctly in some situations.
+                    // This is likely because the overlapping 3D mouse areas of the gizmos get
+                    // the mouse events instead of this area, so mouse leaving the area
+                    // doesn't always update containsMouse property.
+                    onPositionChanged: {
+                        if (!iconGizmo.selected)
+                            iconGizmo.hasMouse = containsMouse;
+                    }
+
+                    onContainsMouseChanged: {
+                        if (!iconGizmo.selected)
+                            iconGizmo.hasMouse = containsMouse;
+                        else
+                            iconGizmo.hasMouse = false;
+                    }
                 }
             }
-            ColorOverlay {
-                id: colorOverlay
-                anchors.fill: parent
-                cached: true
-                source: iconImage
-                color: "transparent"
-                opacity: 0.6
-            }
-
         }
     }
 }

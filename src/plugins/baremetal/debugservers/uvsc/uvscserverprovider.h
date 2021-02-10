@@ -32,6 +32,8 @@
 
 #include <projectexplorer/runcontrol.h> // for RunWorker
 
+namespace Utils { class PathChooser; }
+
 namespace BareMetal {
 namespace Internal {
 
@@ -54,6 +56,9 @@ public:
         ArmAdsToolsetNumber = 4 // ARM-ADS toolset
     };
 
+    void setToolsIniFile(const Utils::FilePath &toolsIniFile);
+    Utils::FilePath toolsIniFile() const;
+
     void setDeviceSelection(const Uv::DeviceSelection &deviceSelection);
     Uv::DeviceSelection deviceSelection() const;
 
@@ -73,6 +78,9 @@ public:
     bool isValid() const override;
     QString channelString() const final;
 
+    static QString buildDllRegistryKey(const Uv::DriverSelection &driver);
+    static QString adjustFlashAlgorithmProperty(const QString &property);
+
 protected:
     explicit UvscServerProvider(const QString &id);
     explicit UvscServerProvider(const UvscServerProvider &other);
@@ -91,6 +99,7 @@ protected:
     virtual Utils::FilePath optionsFilePath(Debugger::DebuggerRunTool *runTool,
                                             QString &errorMessage) const = 0;
 
+    Utils::FilePath m_toolsIniFile;
     Uv::DeviceSelection m_deviceSelection;
     Uv::DriverSelection m_driverSelection;
 
@@ -113,6 +122,8 @@ public:
     void discard() override;
 
 protected:
+    void setToolsIniFile(const Utils::FilePath &toolsIniFile);
+    Utils::FilePath toolsIniFile() const;
     void setDeviceSelection(const Uv::DeviceSelection &deviceSelection);
     Uv::DeviceSelection deviceSelection() const;
     void setDriverSelection(const Uv::DriverSelection &driverSelection);
@@ -121,6 +132,7 @@ protected:
     void setFromProvider();
 
     HostWidget *m_hostWidget = nullptr;
+    Utils::PathChooser *m_toolsIniChooser = nullptr;
     Uv::DeviceSelector *m_deviceSelector = nullptr;
     Uv::DriverSelector *m_driverSelector = nullptr;
 };

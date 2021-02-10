@@ -60,7 +60,7 @@ class FindComponentFromFilePath :
 public:
     void setFilePath(const QString &filePath);
     qmt::MComponent *component() const { return m_bestComponent; }
-    void visitMComponent(qmt::MComponent *component);
+    void visitMComponent(qmt::MComponent *component) final;
 
 private:
     QString m_elementName;
@@ -122,7 +122,7 @@ public:
     void setModelController(qmt::ModelController *modelController);
     void setModelUtilities(ModelUtilities *modelUtilities);
     void updateFilePaths();
-    void visitMComponent(qmt::MComponent *component);
+    void visitMComponent(qmt::MComponent *component) final;
 
 private:
     QStringList findFilePathOfComponent(const qmt::MComponent *component);
@@ -190,7 +190,7 @@ void UpdateIncludeDependenciesVisitor::visitMComponent(qmt::MComponent *componen
                     if (!m_modelUtilities->haveDependency(component, includeComponent)) {
                         auto dependency = new qmt::MDependency;
                         dependency->setFlags(qmt::MElement::ReverseEngineered);
-                        dependency->setStereotypes(QStringList() << "include");
+                        dependency->setStereotypes({"include"});
                         dependency->setDirection(qmt::MDependency::AToB);
                         dependency->setSource(component->uid());
                         dependency->setTarget(includeComponent->uid());
@@ -240,7 +240,7 @@ void UpdateIncludeDependenciesVisitor::collectElementPaths(const ProjectExplorer
         QFileInfo fileInfo = fileNode->filePath().toFileInfo();
         QString nodePath = fileInfo.path();
         QStringList elementsPath = qmt::NameController::buildElementsPath(nodePath, false);
-        filePathsMap->insertMulti(elementName, Node(fileNode->filePath().toString(), elementsPath));
+        filePathsMap->insert(elementName, Node(fileNode->filePath().toString(), elementsPath));
     }
     foreach (const ProjectExplorer::FolderNode *subNode, folderNode->folderNodes())
         collectElementPaths(subNode, filePathsMap);

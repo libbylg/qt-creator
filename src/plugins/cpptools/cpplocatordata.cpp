@@ -32,11 +32,11 @@ using namespace CppTools::Internal;
 enum { MaxPendingDocuments = 10 };
 
 CppLocatorData::CppLocatorData()
-    : m_pendingDocumentsMutex(QMutex::Recursive)
 {
     m_search.setSymbolsToSearchFor(SymbolSearcher::Enums |
                                    SymbolSearcher::Classes |
-                                   SymbolSearcher::Functions);
+                                   SymbolSearcher::Functions |
+                                   SymbolSearcher::TypeAliases);
     m_pendingDocuments.reserve(MaxPendingDocuments);
 }
 

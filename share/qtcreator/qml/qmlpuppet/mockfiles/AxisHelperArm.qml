@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 
 Node {
     id: armRoot
@@ -45,7 +45,7 @@ Node {
         source: "meshes/axishelper.mesh"
         materials: DefaultMaterial {
             id: posMat
-            emissiveColor: posModel.hovering ? armRoot.hoverColor : armRoot.color
+            diffuseColor: posModel.hovering ? armRoot.hoverColor : armRoot.color
             lighting: DefaultMaterial.NoLighting
         }
         pickable: true
@@ -62,7 +62,7 @@ Node {
         scale: Qt.vector3d(0.025, 0.025, 0.025)
         materials: DefaultMaterial {
             id: negMat
-            emissiveColor: negModel.hovering ? armRoot.hoverColor : armRoot.color
+            diffuseColor: negModel.hovering ? armRoot.hoverColor : armRoot.color
             lighting: DefaultMaterial.NoLighting
         }
         pickable: true

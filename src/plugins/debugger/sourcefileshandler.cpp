@@ -137,8 +137,7 @@ bool SourceFilesHandler::setData(const QModelIndex &idx, const QVariant &data, i
                 addAction(tr("Open File \"%1\"").arg(name), true,
                           [this, name] { m_engine->gotoLocation(FilePath::fromString(name)); });
 
-            Internal::addHideColumnActions(menu, ev.view());
-            menu->addAction(action(SettingsDialog));
+            menu->addAction(action(SettingsDialog)->action());
             menu->popup(ev.globalPos());
             return true;
         }

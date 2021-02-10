@@ -41,9 +41,10 @@
 #include <QPushButton>
 #include <QSortFilterProxyModel>
 #include <QStandardItem>
-#include <QTimer>
 
 Q_DECLARE_METATYPE(Core::IWizardFactory*)
+
+using namespace Utils;
 
 namespace {
 
@@ -84,7 +85,7 @@ public:
                         Id::fromStringList(ICore::settings()->value(BLACKLISTED_CATEGORIES_KEY).toStringList());
     }
 
-    void setPlatform(Core::Id platform)
+    void setPlatform(Id platform)
     {
         m_platform = platform;
         invalidateFilter();
@@ -114,7 +115,7 @@ public:
                 factoryOfItem(qobject_cast<QStandardItemModel*>(sourceModel())->itemFromIndex(sourceIndex));
 
         if (wizard) {
-            if (m_blacklistedCategories.contains(Core::Id::fromString(wizard->category())))
+            if (m_blacklistedCategories.contains(Id::fromString(wizard->category())))
                 return false;
             return wizard->isAvailable(m_platform);
         }
@@ -122,7 +123,7 @@ public:
         return true;
     }
 private:
-    Core::Id m_platform;
+    Id m_platform;
     QSet<Id> m_blacklistedCategories;
 };
 
@@ -181,8 +182,6 @@ NewDialog::NewDialog(QWidget *parent) :
 
     m_currentDialog = this;
 
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-    setWindowFlags(windowFlags());
     setAttribute(Qt::WA_DeleteOnClose);
     ICore::registerWindow(this, Context("Core.NewDialog"));
     m_ui->setupUi(this);
@@ -200,7 +199,7 @@ NewDialog::NewDialog(QWidget *parent) :
 
     m_ui->templateCategoryView->setModel(m_filterProxyModel);
     m_ui->templateCategoryView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_ui->templateCategoryView->setItemDelegate(new FancyTopLevelDelegate);
+    m_ui->templateCategoryView->setItemDelegate(new FancyTopLevelDelegate(this));
 
     m_ui->templatesView->setModel(m_filterProxyModel);
     m_ui->templatesView->setIconSize(QSize(ICON_SIZE, ICON_SIZE));
@@ -230,8 +229,7 @@ NewDialog::NewDialog(QWidget *parent) :
     connect(m_ui->buttonBox, &QDialogButtonBox::accepted, this, &NewDialog::accept);
     connect(m_ui->buttonBox, &QDialogButtonBox::rejected, this, &NewDialog::reject);
 
-    connect(m_ui->comboBox,
-            QOverload<const QString &>::of(&QComboBox::currentIndexChanged),
+    connect(m_ui->comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &NewDialog::setSelectedPlatform);
 }
 
@@ -460,9 +458,9 @@ void NewDialog::currentItemChanged(const QModelIndex &index)
             desciption += tr("Platform independent") + QLatin1String("</b>");
         else
             desciption += tr("Supported Platforms")
-                    + QLatin1String("</b>: <tt>")
-                    + displayNamesForSupportedPlatforms.join(QLatin1Char(' '))
-                    + QLatin1String("</tt>");
+                    + QLatin1String("</b>: <ul>")
+                    + "<li>" + displayNamesForSupportedPlatforms.join("</li><li>") + "</li>"
+                    + QLatin1String("</ul>");
 
         m_ui->templateDescription->setHtml(desciption);
 
@@ -485,9 +483,9 @@ void NewDialog::saveState()
     const QModelIndex idx = m_filterProxyModel->mapToSource(filterIdx);
     QStandardItem *currentItem = m_model->itemFromIndex(idx);
     if (currentItem)
-        ICore::settings()->setValue(QLatin1String(LAST_CATEGORY_KEY),
-                                    currentItem->data(Qt::UserRole));
-    ICore::settings()->setValue(QLatin1String(LAST_PLATFORM_KEY), m_ui->comboBox->currentData());
+        ICore::settings()->setValue(LAST_CATEGORY_KEY, currentItem->data(Qt::UserRole));
+    ICore::settings()->setValueWithDefault(LAST_PLATFORM_KEY,
+                                           m_ui->comboBox->currentData().toString());
 }
 
 static void runWizard(IWizardFactory *wizard, const QString &defaultLocation, Id platform,
@@ -503,8 +501,8 @@ void NewDialog::accept()
     if (m_ui->templatesView->currentIndex().isValid()) {
         IWizardFactory *wizard = currentWizardFactory();
         if (QTC_GUARD(wizard)) {
-            QTimer::singleShot(0, std::bind(&runWizard, wizard, m_defaultLocation,
-                                            selectedPlatform(), m_extraVariables));
+            QMetaObject::invokeMethod(wizard, std::bind(&runWizard, wizard, m_defaultLocation,
+                                      selectedPlatform(), m_extraVariables), Qt::QueuedConnection);
         }
     }
     QDialog::accept();
@@ -521,7 +519,7 @@ void NewDialog::updateOkButton()
     m_okButton->setEnabled(currentWizardFactory() != nullptr);
 }
 
-void NewDialog::setSelectedPlatform(const QString & /*platform*/)
+void NewDialog::setSelectedPlatform(int /*platform*/)
 {
     //The static cast allows us to keep PlatformFilterProxyModel anonymous
     static_cast<PlatformFilterProxyModel*>(m_filterProxyModel)->setPlatform(selectedPlatform());

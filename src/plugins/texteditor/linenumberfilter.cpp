@@ -49,8 +49,8 @@ LineNumberFilter::LineNumberFilter(QObject *parent)
     setId("Line in current document");
     setDisplayName(tr("Line in Current Document"));
     setPriority(High);
-    setShortcutString("l");
-    setIncludedByDefault(true);
+    setDefaultShortcutString("l");
+    setDefaultIncludedByDefault(true);
 }
 
 void LineNumberFilter::prepareSearch(const QString &entry)
@@ -62,7 +62,7 @@ void LineNumberFilter::prepareSearch(const QString &entry)
 QList<LocatorFilterEntry> LineNumberFilter::matchesFor(QFutureInterface<LocatorFilterEntry> &, const QString &entry)
 {
     QList<LocatorFilterEntry> value;
-    const QVector<QStringRef> lineAndColumn = entry.splitRef(':');
+    const QStringList lineAndColumn = entry.split(':');
     int sectionCount = lineAndColumn.size();
     int line = 0;
     int column = 0;

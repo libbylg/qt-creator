@@ -76,7 +76,7 @@ private:
     void showPopupDelayed();
     void showPopupNow();
     void acceptEntry(int row);
-    void showConfigureDialog();
+    static void showConfigureDialog();
     void addSearchResults(int firstIndex, int endIndex);
     void handleSearchFinished();
     void updateFilterList();
@@ -86,7 +86,7 @@ private:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
     void updateCompletionList(const QString &text);
-    QList<ILocatorFilter*> filtersFor(const QString &text, QString &searchText);
+    static QList<ILocatorFilter*> filtersFor(const QString &text, QString &searchText);
     void setProgressIndicatorVisible(bool visible);
 
     LocatorModel *m_locatorModel = nullptr;
@@ -98,6 +98,7 @@ private:
     QTimer m_showPopupTimer;
     QFutureWatcher<LocatorFilterEntry> *m_entriesWatcher = nullptr;
     QString m_requestedCompletionText;
+    bool m_shuttingDown = false;
     bool m_needsClearResult = true;
     bool m_updateRequested = false;
     bool m_possibleToolTipRequest = false;
@@ -121,7 +122,7 @@ public:
 
 protected:
     QSize preferredSize();
-    virtual void updateGeometry();
+    virtual void doUpdateGeometry();
     virtual void inputLostFocus();
 
     QPointer<QWidget> m_window;

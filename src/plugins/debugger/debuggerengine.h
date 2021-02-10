@@ -62,7 +62,6 @@ enum DebuggerState
 
     EngineSetupRequested,      // Engine starts
     EngineSetupFailed,
-    EngineSetupOk,
 
     EngineRunRequested,
     EngineRunFailed,
@@ -342,7 +341,6 @@ public:
     virtual Core::Context languageContext() const { return {}; }
     QString displayName() const;
 
-    virtual bool stateAcceptsBreakpointChanges() const { return true; }
     virtual bool acceptsBreakpoint(const BreakpointParameters &bp) const = 0;
     virtual void insertBreakpoint(const Breakpoint &bp) = 0;
     virtual void removeBreakpoint(const Breakpoint &bp) = 0;
@@ -392,9 +390,8 @@ public:
     void handleReverseDirection(bool);
 
     // Convenience
-    Q_SLOT virtual void showMessage(const QString &msg, int channel = LogDebug,
-        int timeout = -1) const;
-    Q_SLOT void showStatusMessage(const QString &msg, int timeout = -1) const;
+    void showMessage(const QString &msg, int channel = LogDebug, int timeout = -1) const;
+    void showStatusMessage(const QString &msg, int timeout = -1) const;
 
     virtual void resetLocation();
     virtual void gotoLocation(const Internal::Location &location);
@@ -510,7 +507,6 @@ protected:
     void notifyEngineIll();
 
     virtual void setupEngine() = 0;
-    virtual void runEngine() = 0;
     virtual void shutdownInferior() = 0;
     virtual void shutdownEngine() = 0;
     virtual void resetInferior() {}

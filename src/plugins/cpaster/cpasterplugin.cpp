@@ -25,11 +25,11 @@
 
 #include "cpasterplugin.h"
 
-#include "pasteview.h"
-#include "pastebindotcomprotocol.h"
-#include "pastecodedotxyzprotocol.h"
+#include "dpastedotcomprotocol.h"
 #include "fileshareprotocol.h"
+#include "pastebindotcomprotocol.h"
 #include "pasteselectdialog.h"
+#include "pasteview.h"
 #include "settingspage.h"
 #include "settings.h"
 #include "urlopenprotocol.h"
@@ -37,7 +37,6 @@
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/command.h>
-#include <coreplugin/id.h>
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/icore.h>
@@ -91,12 +90,12 @@ public:
 
     PasteBinDotComProtocol pasteBinProto;
     FileShareProtocol fileShareProto;
-    PasteCodeDotXyzProtocol pasteCodeProto;
+    DPasteDotComProtocol dpasteProto;
 
     const QList<Protocol *> m_protocols {
         &pasteBinProto,
         &fileShareProto,
-        &pasteCodeProto
+        &dpasteProto
     };
 
     SettingsPage m_settingsPage {
@@ -275,8 +274,8 @@ void CodePasterPluginPrivate::post(QString data, const QString &mimeType)
 
     const FileDataList diffChunks = splitDiffToFiles(data);
     const int dialogResult = diffChunks.isEmpty() ?
-        view.show(username, QString(), QString(), m_settings.expiryDays, data) :
-        view.show(username, QString(), QString(), m_settings.expiryDays, diffChunks);
+        view.show(username, QString(), QString(), m_settings.expiryDays, m_settings.publicPaste, data) :
+        view.show(username, QString(), QString(), m_settings.expiryDays, m_settings.publicPaste, diffChunks);
 
     // Save new protocol in case user changed it.
     if (dialogResult == QDialog::Accepted && m_settings.protocol != view.protocol()) {
@@ -327,7 +326,10 @@ void CodePasterPluginPrivate::finishPost(const QString &link)
 {
     if (m_settings.copyToClipboard)
         QApplication::clipboard()->setText(link);
-    MessageManager::write(link, m_settings.displayOutput ? MessageManager::ModeSwitch : MessageManager::Silent);
+    if (m_settings.displayOutput)
+        MessageManager::writeDisrupting(link);
+    else
+        MessageManager::writeSilently(link);
 }
 
 // Extract the characters that can be used for a file name from a title
@@ -370,11 +372,12 @@ void CodePasterPluginPrivate::finishFetch(const QString &titleDescription,
 {
     // Failure?
     if (error) {
-        MessageManager::write(content);
+        MessageManager::writeDisrupting(content);
         return;
     }
     if (content.isEmpty()) {
-        MessageManager::write(tr("Empty snippet received for \"%1\".").arg(titleDescription));
+        MessageManager::writeDisrupting(
+            tr("Empty snippet received for \"%1\".").arg(titleDescription));
         return;
     }
     // If the mime type has a preferred suffix (cpp/h/patch...), use that for
@@ -394,7 +397,7 @@ void CodePasterPluginPrivate::finishFetch(const QString &titleDescription,
     saver.setAutoRemove(false);
     saver.write(byteContent);
     if (!saver.finalize()) {
-        MessageManager::write(saver.errorString());
+        MessageManager::writeDisrupting(saver.errorString());
         return;
     }
     const QString fileName = saver.fileName();

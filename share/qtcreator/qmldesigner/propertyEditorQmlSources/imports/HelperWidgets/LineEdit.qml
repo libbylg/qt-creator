@@ -40,6 +40,7 @@ StudioControls.TextField {
     translationIndicatorVisible: showTranslateCheckBox
 
     property bool writeValueManually: false
+    property bool writeAsExpression: false
 
     property bool __dirty: false
 
@@ -70,6 +71,7 @@ StudioControls.TextField {
     actionIndicator.icon.color: extFuncLogic.color
     actionIndicator.icon.text: extFuncLogic.glyph
     actionIndicator.onClicked: extFuncLogic.show()
+    actionIndicator.forceVisible: extFuncLogic.menuVisible
 
     ColorLogic {
         id: colorLogic
@@ -92,7 +94,10 @@ StudioControls.TextField {
         target: modelNodeBackend
         onSelectionToBeChanged: {
             if (__dirty && !writeValueManually) {
-                lineEdit.backendValue.value = text
+                if (writeAsExpression)
+                    lineEdit.backendValue.expression = text
+                else
+                    lineEdit.backendValue.value = text
             } else if (__dirty) {
                 commitData()
             }
@@ -111,8 +116,12 @@ StudioControls.TextField {
         if (backendValue.isTranslated) {
            setTranslateExpression()
         } else {
-            if (lineEdit.backendValue.value !== text)
-                lineEdit.backendValue.value = text;
+            if (writeAsExpression) {
+                if (lineEdit.backendValue.expression !== text)
+                    lineEdit.backendValue.expression = text
+            } else if (lineEdit.backendValue.value !== text) {
+                lineEdit.backendValue.value = text
+            }
         }
         __dirty = false
     }

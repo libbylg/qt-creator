@@ -38,6 +38,7 @@
 #include "memoryagent.h"
 #include "registerhandler.h"
 #include "simplifytype.h"
+#include "sourceutils.h"
 #include "watchdelegatewidgets.h"
 #include "watchutils.h"
 
@@ -67,6 +68,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
+#include <QMap>
 #include <QMenu>
 #include <QMimeData>
 #include <QPainter>
@@ -297,7 +299,7 @@ public:
 
     void saveGeometry()
     {
-        SessionManager::setValue("DebuggerSeparateWidgetGeometry", geometry());
+        SessionManager::setValue("DebuggerSeparateWidgetGeometry", QVariant(geometry()));
     }
 
     ~SeparatedView() override
@@ -473,6 +475,8 @@ public:
     QHash<QString, TypeInfo> m_reportedTypeInfo;
     QHash<QString, DisplayFormats> m_reportedTypeFormats; // Type name -> Dumper Formats
     QHash<QString, QString> m_valueCache;
+
+    Location m_location;
 };
 
 WatchModel::WatchModel(WatchHandler *handler, DebuggerEngine *engine)
@@ -517,6 +521,8 @@ WatchModel::WatchModel(WatchHandler *handler, DebuggerEngine *engine)
     connect(action(ShowQtNamespace), &SavedAction::valueChanged,
         m_engine, &DebuggerEngine::updateAll);
     connect(action(ShowQObjectNames), &SavedAction::valueChanged,
+        m_engine, &DebuggerEngine::updateAll);
+    connect(action(UseAnnotationsInMainEditor), &SavedAction::valueChanged,
         m_engine, &DebuggerEngine::updateAll);
 
     connect(SessionManager::instance(), &SessionManager::sessionLoaded,
@@ -1108,7 +1114,8 @@ bool WatchModel::setData(const QModelIndex &idx, const QVariant &value, int role
         }
 
         if (auto kev = ev.as<QKeyEvent>(QEvent::KeyPress)) {
-            if (item && kev->key() == Qt::Key_Delete && item->isWatcher()) {
+            if (item && (kev->key() == Qt::Key_Delete || kev->key() == Qt::Key_Backspace)
+                && item->isWatcher()) {
                 foreach (const QModelIndex &idx, ev.selectedRows())
                     removeWatchItem(itemForIndex(idx));
                 return true;
@@ -1595,7 +1602,8 @@ static QString removeWatchActionText(QString exp)
 static void copyToClipboard(const QString &clipboardText)
 {
     QClipboard *clipboard = QApplication::clipboard();
-    clipboard->setText(clipboardText, QClipboard::Selection);
+    if (clipboard->supportsSelection())
+        clipboard->setText(clipboardText, QClipboard::Selection);
     clipboard->setText(clipboardText, QClipboard::Clipboard);
 }
 
@@ -1670,7 +1678,7 @@ bool WatchModel::contextMenuEvent(const ItemViewEvent &ev)
               [this, item] { removeWatchItem(item); });
 
     addAction(menu, tr("Remove All Expression Evaluators"),
-              canRemoveWatches && !m_handler->watchedExpressions().isEmpty(),
+              canRemoveWatches && !WatchHandler::watchedExpressions().isEmpty(),
               [this] { clearWatches(); });
 
     addAction(menu, tr("Select Widget to Add into Expression Evaluator"),
@@ -1736,15 +1744,13 @@ bool WatchModel::contextMenuEvent(const ItemViewEvent &ev)
 
     menu->addSeparator();
 
-    menu->addAction(action(UseDebuggingHelpers));
-    menu->addAction(action(UseToolTipsInLocalsView));
-    menu->addAction(action(AutoDerefPointers));
-    menu->addAction(action(SortStructMembers));
-    menu->addAction(action(UseDynamicType));
-    menu->addAction(action(SettingsDialog));
+    menu->addAction(action(UseDebuggingHelpers)->action());
+    menu->addAction(action(UseToolTipsInLocalsView)->action());
+    menu->addAction(action(AutoDerefPointers)->action());
+    menu->addAction(action(SortStructMembers)->action());
+    menu->addAction(action(UseDynamicType)->action());
+    menu->addAction(action(SettingsDialog)->action());
 
-    Internal::addHideColumnActions(menu, ev.view());
-    menu->addAction(action(SettingsDialog));
     connect(menu, &QMenu::aboutToHide, menu, &QObject::deleteLater);
     menu->popup(ev.globalPos());
     return true;
@@ -1909,12 +1915,18 @@ QMenu *WatchModel::createFormatMenu(WatchItem *item, QWidget *parent)
                            });
     }
 
+    addAction(menu, tr("Reset All Individual Formats"), true, [this]() {
+        theIndividualFormats.clear();
+        saveFormats();
+        m_engine->updateLocals();
+    });
+
     menu->addSeparator();
     addAction(menu, tr("Change Display for Type \"%1\":").arg(item->type), false);
 
     addCheckableAction(menu, spacer + tr("Automatic"), true, typeFormat == AutomaticFormat,
                        [this, item] {
-                            //const QModelIndexList active = activeRows();
+                           //const QModelIndexList active = activeRows();
                            //for (const QModelIndex &idx : active)
                            //    setModelData(LocalsTypeFormatRole, AutomaticFormat, idx);
                            setTypeFormat(item->type, AutomaticFormat);
@@ -1924,10 +1936,16 @@ QMenu *WatchModel::createFormatMenu(WatchItem *item, QWidget *parent)
     for (int format : alternativeFormats) {
         addCheckableAction(menu, spacer + nameForFormat(format), true, format == typeFormat,
                            [this, format, item] {
-                                setTypeFormat(item->type, format);
-                                m_engine->updateLocals();
+                               setTypeFormat(item->type, format);
+                               m_engine->updateLocals();
                            });
     }
+
+    addAction(menu, tr("Reset All Formats for Types"), true, [this]() {
+        theTypeFormats.clear();
+        saveFormats();
+        m_engine->updateLocals();
+    });
 
     return menu;
 }
@@ -2069,6 +2087,7 @@ void WatchHandler::cleanup()
     theTemporaryWatchers.clear();
     saveWatchers();
     m_model->reinitialize();
+    Internal::setValueAnnotations(m_model->m_location, {});
     emit m_model->updateFinished();
     m_model->m_separatedView->hide();
 }
@@ -2221,6 +2240,16 @@ void WatchHandler::notifyUpdateFinished()
             item->wantsChildren = false;
         }
     });
+
+    QMap<QString, QString> values;
+    if (boolSetting(UseAnnotationsInMainEditor)) {
+        m_model->forAllItems([&values](WatchItem *item) {
+            const QString expr = item->sourceExpression();
+            if (!expr.isEmpty())
+                values[expr] = item->value;
+        });
+    }
+    Internal::setValueAnnotations(m_model->m_location, values);
 
     m_model->m_contentsValid = true;
     updateLocalsWindow();
@@ -2449,7 +2478,7 @@ void WatchModel::clearWatches()
         return;
 
     const QDialogButtonBox::StandardButton ret = CheckableMessageBox::doNotAskAgainQuestion(
-                ICore::mainWindow(), tr("Remove All Expression Evaluators"),
+                ICore::dialogParent(), tr("Remove All Expression Evaluators"),
                 tr("Are you sure you want to remove all expression evaluators?"),
                 ICore::settings(), "RemoveAllWatchers");
     if (ret != QDialogButtonBox::Yes)
@@ -2671,7 +2700,7 @@ void WatchHandler::addDumpers(const GdbMi &dumpers)
         DisplayFormats formats;
         formats.append(RawFormat);
         QString reportedFormats = dumper["formats"].data();
-        foreach (const QStringRef &format, reportedFormats.splitRef(',')) {
+        foreach (const QString &format, reportedFormats.split(',')) {
             if (int f = format.toInt())
                 formats.append(DisplayFormat(f));
         }
@@ -2736,6 +2765,11 @@ void WatchHandler::recordTypeInfo(const GdbMi &typeInfo)
             m_model->m_reportedTypeInfo.insert(typeName, ti);
         }
     }
+}
+
+void WatchHandler::setLocation(const Location &loc)
+{
+    m_model->m_location = loc;
 }
 
 /////////////////////////////////////////////////////////////////////

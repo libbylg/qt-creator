@@ -110,7 +110,7 @@ static void openFileComponent(const ModelNode &modelNode)
 {
     QmlDesignerPlugin::instance()->viewManager().nextFileIsCalledInternally();
     Core::EditorManager::openEditor(modelNode.metaInfo().componentFileName(),
-        Core::Id(), Core::EditorManager::DoNotMakeVisible);
+        Utils::Id(), Core::EditorManager::DoNotMakeVisible);
 }
 
 static void openFileComponentForDelegate(const ModelNode &modelNode)
@@ -136,7 +136,7 @@ static void openComponentSourcePropertyOfLoader(const ModelNode &modelNode)
         componentModelNode = modelNode.nodeListProperty("component").toModelNodeList().constFirst();
     }
 
-    Core::EditorManager::openEditor(componentModelNode.metaInfo().componentFileName(), Core::Id(), Core::EditorManager::DoNotMakeVisible);
+    Core::EditorManager::openEditor(componentModelNode.metaInfo().componentFileName(), Utils::Id(), Core::EditorManager::DoNotMakeVisible);
 }
 
 static void openSourcePropertyOfLoader(const ModelNode &modelNode)
@@ -146,7 +146,7 @@ static void openSourcePropertyOfLoader(const ModelNode &modelNode)
     QString componentFileName = modelNode.variantProperty("source").value().toString();
 
     QFileInfo fileInfo(modelNode.model()->fileUrl().toLocalFile());
-    Core::EditorManager::openEditor(fileInfo.absolutePath() + "/" + componentFileName, Core::Id(), Core::EditorManager::DoNotMakeVisible);
+    Core::EditorManager::openEditor(fileInfo.absolutePath() + "/" + componentFileName, Utils::Id(), Core::EditorManager::DoNotMakeVisible);
 }
 
 
@@ -271,7 +271,7 @@ void DocumentManager::removeEditors(const QList<Core::IEditor *> &editors)
         delete m_designDocumentHash.take(editor).data();
 }
 
-void DocumentManager::goIntoComponent(const ModelNode &modelNode)
+bool DocumentManager::goIntoComponent(const ModelNode &modelNode)
 {
     if (modelNode.isValid() && modelNode.isComponent() && designDocument()) {
         QmlDesignerPlugin::instance()->viewManager().setComponentNode(modelNode);
@@ -286,9 +286,14 @@ void DocumentManager::goIntoComponent(const ModelNode &modelNode)
             openComponentSourcePropertyOfLoader(modelNode);
         else
             openInlineComponent(modelNode);
+
         ModelNode rootModelNode = designDocument()->rewriterView()->rootModelNode();
         applyProperties(rootModelNode, oldProperties);
+
+        return true;
     }
+
+    return false;
 }
 
 bool DocumentManager::createFile(const QString &filePath, const QString &contents)
@@ -304,11 +309,12 @@ void DocumentManager::addFileToVersionControl(const QString &directoryPath, cons
 {
     Core::IVersionControl *versionControl = Core::VcsManager::findVersionControlForDirectory(directoryPath);
     if (versionControl && versionControl->supportsOperation(Core::IVersionControl::AddOperation)) {
-        const QMessageBox::StandardButton button =
-                QMessageBox::question(Core::ICore::mainWindow(),
-                                      Core::VcsManager::msgAddToVcsTitle(),
-                                      Core::VcsManager::msgPromptToAddToVcs(QStringList(newFilePath), versionControl),
-                                      QMessageBox::Yes | QMessageBox::No);
+        const QMessageBox::StandardButton button
+            = QMessageBox::question(Core::ICore::dialogParent(),
+                                    Core::VcsManager::msgAddToVcsTitle(),
+                                    Core::VcsManager::msgPromptToAddToVcs(QStringList(newFilePath),
+                                                                          versionControl),
+                                    QMessageBox::Yes | QMessageBox::No);
         if (button == QMessageBox::Yes && !versionControl->vcsAdd(newFilePath)) {
             Core::AsynchronousMessageBox::warning(Core::VcsManager::msgAddToVcsFailedTitle(),
                                                    Core::VcsManager::msgToAddToVcsFailed(QStringList(newFilePath), versionControl));
@@ -398,19 +404,20 @@ void DocumentManager::findPathToIsoProFile(bool *iconResourceFileAlreadyExists, 
         qCDebug(documentManagerLog) << "Checking" << node->displayName() << "(" << node << ")";
 
         if (node->isVirtualFolderType() && node->displayName() == "Resources") {
-            auto virtualFolderNode = dynamic_cast<ProjectExplorer::VirtualFolderNode*>(node);
+            ProjectExplorer::FolderNode *virtualFolderNode = node->asFolderNode();
+            if (QTC_GUARD(virtualFolderNode)) {
+                for (int subFolderIndex = 0; subFolderIndex < virtualFolderNode->folderNodes().size() && !iconQrcFileNode; ++subFolderIndex) {
+                    ProjectExplorer::FolderNode *subFolderNode = virtualFolderNode->folderNodes().at(subFolderIndex);
 
-            for (int subFolderIndex = 0; subFolderIndex < virtualFolderNode->folderNodes().size() && !iconQrcFileNode; ++subFolderIndex) {
-                ProjectExplorer::FolderNode *subFolderNode = virtualFolderNode->folderNodes().at(subFolderIndex);
+                    qCDebug(documentManagerLog) << "Checking if" << subFolderNode->displayName() << "("
+                        << subFolderNode << ") is" << isoIconsQrcFile;
 
-                qCDebug(documentManagerLog) << "Checking if" << subFolderNode->displayName() << "("
-                    << subFolderNode << ") is" << isoIconsQrcFile;
+                    if (subFolderNode->isFolderNodeType() && subFolderNode->displayName() == isoIconsQrcFile) {
+                        qCDebug(documentManagerLog) << "Found" << isoIconsQrcFile << "in" << virtualFolderNode->filePath();
 
-                if (subFolderNode->isFolderNodeType() && subFolderNode->displayName() == isoIconsQrcFile) {
-                    qCDebug(documentManagerLog) << "Found" << isoIconsQrcFile << "in" << virtualFolderNode->filePath();
-
-                    iconQrcFileNode = subFolderNode;
-                    *resourceFileProPath = iconQrcFileNode->parentProjectNode()->filePath().toString();
+                        iconQrcFileNode = subFolderNode;
+                        *resourceFileProPath = iconQrcFileNode->parentProjectNode()->filePath().toString();
+                    }
                 }
             }
         }
@@ -488,5 +495,12 @@ bool DocumentManager::belongsToQmakeProject()
     return proNode;
 }
 
+Utils::FilePath DocumentManager::currentResourcePath()
+{
+    Utils::FilePath resourcePath = currentProjectDirPath();
+    if (resourcePath.isEmpty())
+        return currentFilePath().absolutePath();
+    return resourcePath;
+}
 
 } // namespace QmlDesigner

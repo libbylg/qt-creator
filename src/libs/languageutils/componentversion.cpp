@@ -52,10 +52,10 @@ ComponentVersion::ComponentVersion(const QString &versionString)
     if (dotIdx == -1)
         return;
     bool ok = false;
-    int maybeMajor = versionString.leftRef(dotIdx).toInt(&ok);
+    int maybeMajor = versionString.left(dotIdx).toInt(&ok);
     if (!ok)
         return;
-    int maybeMinor = versionString.midRef(dotIdx + 1).toInt(&ok);
+    int maybeMinor = versionString.mid(dotIdx + 1).toInt(&ok);
     if (!ok)
         return;
     _major = maybeMajor;
@@ -73,8 +73,12 @@ bool ComponentVersion::isValid() const
 
 QString ComponentVersion::toString() const
 {
-    return QString::fromLatin1("%1.%2").arg(QString::number(_major),
-                                            QString::number(_minor));
+    QByteArray temp;
+    QByteArray result;
+    result += temp.setNum(_major);
+    result += '.';
+    result += temp.setNum(_minor);
+    return QString::fromLatin1(result);
 }
 
 void ComponentVersion::addToHash(QCryptographicHash &hash) const

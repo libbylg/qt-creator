@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <coreplugin/id.h>
+#include <utils/id.h>
 
 #include <QToolButton>
 
@@ -59,7 +59,7 @@ public slots:
     void slotHide();
     void slotNext();
     void slotPrev();
-    void toggleMaximized();
+    static void toggleMaximized();
 
 protected:
     void focusInEvent(QFocusEvent *e) override;

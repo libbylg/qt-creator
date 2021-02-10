@@ -3,6 +3,7 @@ var File = require("qbs.File")
 var FileInfo = require("qbs.FileInfo")
 var MinimumLLVMVersion = "8.0.0" // CLANG-UPGRADE-CHECK: Adapt minimum version numbers.
 var Process = require("qbs.Process")
+var Utilities = require("qbs.Utilities")
 
 function readOutput(executable, args)
 {
@@ -34,9 +35,13 @@ function isSuitableLLVMConfig(llvmConfigCandidate, qtcFunctions)
 
 function llvmConfig(hostOS, qtcFunctions)
 {
+    var llvmConfigFromEnv = Environment.getEnv("LLVM_CONFIG");
+    if (llvmConfigFromEnv)
+        return llvmConfigFromEnv;
     var llvmInstallDirFromEnv = Environment.getEnv("LLVM_INSTALL_DIR")
     var llvmConfigVariants = [
-        "llvm-config", "llvm-config-7", "llvm-config-8", "llvm-config-9"
+        // CLANG-UPGRADE-CHECK: Adapt once we require a new minimum version.
+        "llvm-config", "llvm-config-11", "llvm-config-10", "llvm-config-9"
     ];
 
     // Prefer llvm-config* from LLVM_INSTALL_DIR
@@ -110,7 +115,9 @@ function formattingLibs(llvmConfig, qtcFunctions, targetOS)
     var clangVersion = version(llvmConfig)
     var libs = []
     if (qtcFunctions.versionIsAtLeast(clangVersion, MinimumLLVMVersion)) {
-        if (qtcFunctions.versionIsAtLeast(clangVersion, "8.0.0")) {
+        var hasLibClangFormat = File.directoryEntries(libDir(llvmConfig), File.Files)
+                .some(function(p) { return p.contains("clangFormat"); });
+        if (hasLibClangFormat) {
             libs.push(
                 "clangFormat",
                 "clangToolingInclusions",
@@ -120,13 +127,7 @@ function formattingLibs(llvmConfig, qtcFunctions, targetOS)
                 "clangBasic"
             );
         } else {
-            libs.push(
-                "clangFormat",
-                "clangToolingCore",
-                "clangRewrite",
-                "clangLex",
-                "clangBasic"
-            );
+            libs.push("clang-cpp");
         }
         libs = libs.concat(extraLibraries(llvmConfig, targetOS));
     }
@@ -136,7 +137,9 @@ function formattingLibs(llvmConfig, qtcFunctions, targetOS)
 
 function toolingLibs(llvmConfig, targetOS)
 {
-    var fixedList = [
+    var hasLibClangTooling = File.directoryEntries(libDir(llvmConfig), File.Files)
+            .some(function(p) { return p.contains("clangTooling"); });
+    var fixedList = hasLibClangTooling ? [
         "clangTooling",
         "clangFrontend",
         "clangIndex",
@@ -152,7 +155,7 @@ function toolingLibs(llvmConfig, targetOS)
         "clangAST",
         "clangLex",
         "clangBasic",
-    ];
+    ] : ["clang-cpp"];
 
     return fixedList.concat(extraLibraries(llvmConfig, targetOS));
 }

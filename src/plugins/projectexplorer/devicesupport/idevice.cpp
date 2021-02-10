@@ -70,7 +70,7 @@
  */
 
 /*!
- * \fn Core::Id ProjectExplorer::IDevice::invalidId()
+ * \fn Utils::Id ProjectExplorer::IDevice::invalidId()
  * A value that no device can ever have as its internal id.
  */
 
@@ -98,9 +98,9 @@
  */
 
 
-static Core::Id newId()
+static Utils::Id newId()
 {
-    return Core::Id::fromString(QUuid::createUuid().toString());
+    return Utils::Id::fromString(QUuid::createUuid().toString());
 }
 
 namespace ProjectExplorer {
@@ -124,7 +124,6 @@ const char TimeoutKey[] = "Timeout";
 const char HostKeyCheckingKey[] = "HostKeyChecking";
 
 const char DebugServerKey[] = "DebugServerKey";
-const char PeripheralDescriptionFileKey[] = "PeripheralDescriptionFileKey";
 const char QmlsceneKey[] = "QmlsceneKey";
 
 using AuthType = QSsh::SshConnectionParameters::AuthenticationType;
@@ -141,9 +140,9 @@ public:
 
     Utils::DisplayName displayName;
     QString displayType;
-    Core::Id type;
+    Utils::Id type;
     IDevice::Origin origin = IDevice::AutoDetected;
-    Core::Id id;
+    Utils::Id id;
     IDevice::DeviceState deviceState = IDevice::DeviceStateUnknown;
     IDevice::MachineType machineType = IDevice::Hardware;
     Utils::OsType osType = Utils::OsTypeOther;
@@ -152,7 +151,6 @@ public:
     QSsh::SshConnectionParameters sshParameters;
     Utils::PortList freePorts;
     QString debugServerPath;
-    QString peripheralDescriptionFilePath;
     QString qmlsceneCommand;
 
     QList<Utils::Icon> deviceIcons;
@@ -173,7 +171,7 @@ void IDevice::setOpenTerminal(const IDevice::OpenTerminal &openTerminal)
     d->openTerminal = openTerminal;
 }
 
-void IDevice::setupId(Origin origin, Core::Id id)
+void IDevice::setupId(Origin origin, Utils::Id id)
 {
     d->origin = origin;
     QTC_CHECK(origin == ManuallyAdded || id.isValid());
@@ -240,12 +238,12 @@ IDevice::DeviceInfo IDevice::deviceInformation() const
     \sa ProjectExplorer::IDeviceFactory
  */
 
-Core::Id IDevice::type() const
+Utils::Id IDevice::type() const
 {
     return d->type;
 }
 
-void IDevice::setType(Core::Id type)
+void IDevice::setType(Utils::Id type)
 {
     d->type = type;
 }
@@ -271,7 +269,7 @@ bool IDevice::isAutoDetected() const
     \sa ProjectExplorer::DeviceManager::findInactiveAutoDetectedDevice()
 */
 
-Core::Id IDevice::id() const
+Utils::Id IDevice::id() const
 {
     return d->id;
 }
@@ -342,14 +340,14 @@ void IDevice::setDeviceState(const IDevice::DeviceState state)
     d->deviceState = state;
 }
 
-Core::Id IDevice::typeFromMap(const QVariantMap &map)
+Utils::Id IDevice::typeFromMap(const QVariantMap &map)
 {
-    return Core::Id::fromSetting(map.value(QLatin1String(TypeKey)));
+    return Utils::Id::fromSetting(map.value(QLatin1String(TypeKey)));
 }
 
-Core::Id IDevice::idFromMap(const QVariantMap &map)
+Utils::Id IDevice::idFromMap(const QVariantMap &map)
 {
-    return Core::Id::fromSetting(map.value(QLatin1String(IdKey)));
+    return Utils::Id::fromSetting(map.value(QLatin1String(IdKey)));
 }
 
 /*!
@@ -362,7 +360,7 @@ void IDevice::fromMap(const QVariantMap &map)
 {
     d->type = typeFromMap(map);
     d->displayName.fromMap(map, DisplayNameKey);
-    d->id = Core::Id::fromSetting(map.value(QLatin1String(IdKey)));
+    d->id = Utils::Id::fromSetting(map.value(QLatin1String(IdKey)));
     if (!d->id.isValid())
         d->id = newId();
     d->origin = static_cast<Origin>(map.value(QLatin1String(OriginKey), ManuallyAdded).toInt());
@@ -392,7 +390,6 @@ void IDevice::fromMap(const QVariantMap &map)
     d->version = map.value(QLatin1String(VersionKey), 0).toInt();
 
     d->debugServerPath = map.value(QLatin1String(DebugServerKey)).toString();
-    d->peripheralDescriptionFilePath = map.value(QLatin1String(PeripheralDescriptionFileKey)).toString();
     d->qmlsceneCommand = map.value(QLatin1String(QmlsceneKey)).toString();
     d->extraData = map.value(ExtraDataKey).toMap();
 }
@@ -424,7 +421,6 @@ QVariantMap IDevice::toMap() const
     map.insert(QLatin1String(VersionKey), d->version);
 
     map.insert(QLatin1String(DebugServerKey), d->debugServerPath);
-    map.insert(QLatin1String(PeripheralDescriptionFileKey), d->peripheralDescriptionFilePath);
     map.insert(QLatin1String(QmlsceneKey), d->qmlsceneCommand);
     map.insert(ExtraDataKey, d->extraData);
 
@@ -508,17 +504,6 @@ void IDevice::setDebugServerPath(const QString &path)
     d->debugServerPath = path;
 }
 
-
-QString IDevice::peripheralDescriptionFilePath() const
-{
-    return d->peripheralDescriptionFilePath;
-}
-
-void IDevice::setPeripheralDescriptionFilePath(const QString &path)
-{
-    d->peripheralDescriptionFilePath = path;
-}
-
 QString IDevice::qmlsceneCommand() const
 {
     return d->qmlsceneCommand;
@@ -529,12 +514,12 @@ void IDevice::setQmlsceneCommand(const QString &path)
     d->qmlsceneCommand = path;
 }
 
-void IDevice::setExtraData(Core::Id kind, const QVariant &data)
+void IDevice::setExtraData(Utils::Id kind, const QVariant &data)
 {
     d->extraData.insert(kind.toString(), data);
 }
 
-QVariant IDevice::extraData(Core::Id kind) const
+QVariant IDevice::extraData(Utils::Id kind) const
 {
     return d->extraData.value(kind.toString());
 }

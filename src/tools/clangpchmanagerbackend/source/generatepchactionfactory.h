@@ -68,9 +68,9 @@ public:
         , m_fileContent(fileContent)
     {}
 
-    clang::FrontendAction *create() override
+    std::unique_ptr<clang::FrontendAction> create() override
     {
-        return new GeneratePCHAction{m_filePath, m_fileContent};
+        return std::make_unique<GeneratePCHAction>(m_filePath, m_fileContent);
     }
 
 private:

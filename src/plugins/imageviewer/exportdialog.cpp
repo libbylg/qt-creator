@@ -30,27 +30,19 @@
 
 #include <utils/pathchooser.h>
 
-#include <QApplication>
-#include <QDesktopWidget>
 #include <QDialogButtonBox>
-#include <QFileDialog>
-#include <QFormLayout>
-#include <QHBoxLayout>
-#include <QMessageBox>
-#include <QLabel>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QSpinBox>
-#include <QToolButton>
-#include <QVBoxLayout>
-
-#include <QImageWriter>
-
-#include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QFormLayout>
+#include <QHBoxLayout>
+#include <QImageWriter>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
 #include <QMimeDatabase>
-#include <QMimeType>
+#include <QScreen>
+#include <QSpinBox>
+#include <QToolButton>
 
 namespace ImageViewer {
 namespace Internal {
@@ -88,11 +80,9 @@ ExportDialog::ExportDialog(QWidget *parent)
     , m_heightSpinBox(new QSpinBox(this))
     , m_aspectRatio(1)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-
     auto formLayout = new QFormLayout(this);
 
-    m_pathChooser->setMinimumWidth(QApplication::desktop()->availableGeometry(this).width() / 5);
+    m_pathChooser->setMinimumWidth(screen()->availableGeometry().width() / 5);
     m_pathChooser->setExpectedKind(Utils::PathChooser::SaveFile);
     m_pathChooser->setPromptDialogFilter(imageNameFilterString());
     formLayout->addRow(tr("File:"), m_pathChooser);
@@ -189,12 +179,12 @@ void ExportDialog::exportHeightChanged(int height)
 
 QString ExportDialog::exportFileName() const
 {
-    return m_pathChooser->fileName().toString();
+    return m_pathChooser->filePath().toString();
 }
 
 void ExportDialog::setExportFileName(const QString &f)
 {
-    m_pathChooser->setFileName(Utils::FilePath::fromString(f));
+    m_pathChooser->setFilePath(Utils::FilePath::fromString(f));
 }
 
 ExportData ExportDialog::exportData() const

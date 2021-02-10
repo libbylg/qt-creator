@@ -36,8 +36,7 @@
 #include <debugger/debuggertooltipmanager.h>
 #include <debugger/outputcollector.h>
 
-#include <coreplugin/id.h>
-
+#include <utils/id.h>
 #include <utils/qtcprocess.h>
 
 #include <QProcess>
@@ -102,13 +101,10 @@ private: ////////// General Interface //////////
     // Something went wrong with the adapter *before* adapterStarted() was emitted.
     // Make sure to clean up everything before emitting this signal.
     void handleAdapterStartFailed(const QString &msg,
-        Core::Id settingsIdHint = Core::Id());
+        Utils::Id settingsIdHint = Utils::Id());
 
-    // This triggers the initial breakpoint synchronization and causes
-    // finishInferiorSetup() being called once done.
+    // Called after target setup.
     void handleInferiorPrepared();
-    // This notifies the base of a successful inferior setup.
-    void finishInferiorSetup();
 
     void handleDebugInfoLocation(const DebuggerResponse &response);
 
@@ -157,10 +153,6 @@ private: ////////// General Interface //////////
     int m_oldestAcceptableToken = -1;
     int m_nonDiscardableCount = 0;
 
-    using CommandsDoneCallback = void (GdbEngine::*)();
-    // This function is called after all previous responses have been received.
-    CommandsDoneCallback m_commandsDoneCallback = nullptr;
-
     bool m_rerunPending = false;
 
     ////////// Gdb Output, State & Capability Handling //////////
@@ -176,7 +168,6 @@ private: ////////// General Interface //////////
 
     // Gdb initialization sequence
     void handleShowVersion(const DebuggerResponse &response);
-    void handleListFeatures(const DebuggerResponse &response);
     void handlePythonSetup(const DebuggerResponse &response);
 
     int m_gdbVersion = 100;    // 7.6.1 is 70601
@@ -186,7 +177,6 @@ private: ////////// General Interface //////////
     ////////// Inferior Management //////////
 
     // This should be always the last call in a function.
-    bool stateAcceptsBreakpointChanges() const final;
     bool acceptsBreakpoint(const BreakpointParameters &bp) const final;
     void insertBreakpoint(const Breakpoint &bp) final;
     void removeBreakpoint(const Breakpoint &bp) final;
@@ -205,7 +195,7 @@ private: ////////// General Interface //////////
     void executeRunToFunction(const QString &functionName) final;
     void executeJumpToLine(const ContextData &data) final;
     void executeReturn() final;
-    void executeRecordReverse(bool reverse);
+    void executeRecordReverse(bool reverse) final;
 
     void handleExecuteContinue(const DebuggerResponse &response);
     void handleExecuteStep(const DebuggerResponse &response);
@@ -233,6 +223,9 @@ private: ////////// General Interface //////////
     void handleBreakCondition(const DebuggerResponse &response, const Breakpoint &bp);
     void handleBreakThreadSpec(const DebuggerResponse &response, const Breakpoint &bp);
     void handleBreakLineNumber(const DebuggerResponse &response, const Breakpoint &bp);
+    void handleTracepointInsert(const DebuggerResponse &response, const Breakpoint &bp);
+    void handleTracepointHit(const GdbMi &data);
+    void handleTracepointModified(const GdbMi &data);
     void handleInsertInterpreterBreakpoint(const DebuggerResponse &response, const Breakpoint &bp);
     void handleInterpreterBreakpointModified(const GdbMi &data);
     void handleWatchInsert(const DebuggerResponse &response, const Breakpoint &bp);
@@ -241,6 +234,7 @@ private: ////////// General Interface //////////
     QString breakpointLocation(const BreakpointParameters &data); // For gdb/MI.
     QString breakpointLocation2(const BreakpointParameters &data); // For gdb/CLI fallback.
     QString breakLocation(const QString &file) const;
+    void updateTracepointCaptures(const Breakpoint &bp);
 
     //
     // Modules specific stuff
@@ -366,7 +360,6 @@ private: ////////// General Interface //////////
     // HACK:
     QString m_currentThread;
     QString m_lastWinException;
-    QString m_lastMissingDebugInfo;
     bool m_expectTerminalTrap = false;
     bool usesExecInterrupt() const;
     bool usesTargetAsync() const;
@@ -391,11 +384,11 @@ private: ////////// General Interface //////////
     bool isPlainEngine() const;
     bool isCoreEngine() const;
     bool isRemoteEngine() const;
-    bool isAttachEngine() const;
+    bool isLocalAttachEngine() const;
     bool isTermEngine() const;
 
     void setupEngine() final;
-    void runEngine() final;
+    void runEngine();
     void shutdownEngine() final;
 
     void interruptInferior2();
@@ -406,7 +399,8 @@ private: ////////// General Interface //////////
     void handleFileExecAndSymbols(const DebuggerResponse &response);
 
     // Attach
-    void handleAttach(const DebuggerResponse &response);
+    void handleLocalAttach(const DebuggerResponse &response);
+    void handleRemoteAttach(const DebuggerResponse &response);
 
     // Remote
     void callTargetRemote();
@@ -429,6 +423,7 @@ private: ////////// General Interface //////////
 
     QString mainFunction() const;
     void setupInferior();
+    void claimInitialBreakpoints();
 
     Utils::QtcProcess m_gdbProc;
     OutputCollector m_outputCollector;
